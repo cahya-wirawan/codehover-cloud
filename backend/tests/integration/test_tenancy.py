@@ -209,7 +209,25 @@ def test_oauth_state_rules(world: World, runtime: Db) -> None:
             st=digest(secrets.token_hex(8)),
             ttl=ttl,
         )
-    for bad_path in ("//evil.example", "https://evil.example", "/\\evil", "relative"):
+    for good_path in ("/", "/w/settings?tab=members", "/p/0193/code#L10", "/a-b_c.d~e"):
+        create_tx(runtime, secrets.token_hex(8), return_path=good_path)
+    bad_paths = (
+        "//evil.example",
+        "https://evil.example",
+        "/\\evil",
+        "relative",
+        "/\t/evil.example",
+        "/\n/evil.example",
+        "/\r\n//evil.example",
+        "/ /evil",
+        "/x//y",
+        "/..",
+        "/a/../b",
+        "/./x",
+        "/a/..?q",
+        "/\u00e9vil",
+    )
+    for bad_path in bad_paths:
         savepoint = runtime.conn.begin_nested()
         with pytest.raises(REJECTED):
             create_tx(runtime, secrets.token_hex(8), return_path=bad_path)
@@ -321,6 +339,34 @@ def test_integrity_rules(world: World, ddl: Db) -> None:
         k=f"workspaces/{world.b.workspace}/x.json",
         sha="0" * 64,
     )
+    a, b = world.a.workspace, world.b.workspace
+    ddl.run(  # a well-formed key under the build's own workspace is accepted
+        "INSERT INTO artifacts(workspace_id, build_id, kind, object_key, sha256, byte_count, content_type)"
+        " VALUES (:w, :b, 'manifest', :k, :sha, 1, 'application/json')",
+        w=a,
+        b=world.a.build,
+        k=f"workspaces/{a}/projects/p/builds/b/manifest.json",
+        sha="0" * 64,
+    )
+    for bad_key in (
+        f"workspaces/{a}/../{b}/x.json",
+        f"workspaces/{a}/./x.json",
+        f"workspaces/{a}//x.json",
+        f"workspaces/{a}/x\\y.json",
+        f"workspaces/{a}/x y.json",
+        f"workspaces/{a}/..",
+    ):
+        expect(
+            ddl,
+            REJECTED,
+            "INSERT INTO artifacts(workspace_id, build_id, kind, variant, object_key, sha256, byte_count,"
+            " content_type) VALUES (:w, :b, 'export', :v, :k, :sha, 1, 'application/zip')",
+            w=a,
+            b=world.a.build,
+            v=secrets.token_hex(4),
+            k=bad_key,
+            sha="0" * 64,
+        )
     for bad in ("../etc/passwd", "/abs", "a//b", "a\\b", "x/../y"):
         expect(
             ddl,

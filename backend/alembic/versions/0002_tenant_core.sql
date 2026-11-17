@@ -50,7 +50,14 @@ CREATE TABLE oauth_transactions (
   purpose text NOT NULL CHECK (purpose IN ('login', 'link', 'install')),
   nonce_hash bytea CHECK (nonce_hash IS NULL OR octet_length(nonce_hash) = 32),
   encrypted_pkce_verifier bytea,
-  return_path text NOT NULL DEFAULT '/' CHECK (return_path ~ '^/([^/\\]|$)' AND char_length(return_path) <= 512),
+  -- Strict allowlist (no whitespace/control chars: browsers strip tabs/newlines, turning "/\t/x" into "//x"),
+  -- no "//" anywhere and no dot segments. The application applies the same rule before redirecting.
+  return_path text NOT NULL DEFAULT '/' CHECK (
+    char_length(return_path) <= 512
+    AND return_path ~ '^/[A-Za-z0-9._~!$&''()*+,;=:@%/?#-]*$'
+    AND return_path !~ '//'
+    AND return_path !~ '(^|/)\.\.?(/|\?|#|$)'
+  ),
   initiating_session_id uuid REFERENCES sessions(id),
   workspace_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -298,7 +305,11 @@ CREATE TABLE artifacts (
   expires_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (build_id, kind, variant),
-  CHECK (object_key LIKE 'workspaces/' || workspace_id::text || '/%'),
+  -- Own workspace prefix, conservative charset, no empty or dot segments (some S3-compatible stores and
+  -- filesystem adapters normalize paths, which would let "../" escape the prefix).
+  CHECK (object_key LIKE 'workspaces/' || workspace_id::text || '/%'
+         AND object_key ~ '^workspaces/[0-9a-f-]{36}/[A-Za-z0-9._/-]+$'
+         AND object_key !~ '(^|/)\.\.?(/|$)|//'),
   FOREIGN KEY (workspace_id, build_id) REFERENCES builds(workspace_id, id)
 );
 
