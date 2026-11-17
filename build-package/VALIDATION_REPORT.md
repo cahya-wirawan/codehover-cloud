@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-17 · Package version 0.3.4
+Date: 2026-11-17 · Package version 0.3.5
+
+0.3.5 records sign-in decisions implemented in T03. They are exercised by 26 sign-in integration tests on PostgreSQL 18 with mocked Google and GitHub providers, which sign real RS256 ID tokens and check PKCE. Nine code mutations of security checks were applied; eight were caught. The ninth, dropping the explicit RS256 allowlist, is equivalent, because joserfc's defaults already reject `alg: none` and HS256 algorithm-confusion tokens; the allowlist stays as defense in depth. The Docker gateway was also checked: signed-out 401 with `no-store`, and unconfigured providers redirect to the login page.
 
 0.3.4 adds `idempotency_keys` and the pre-authentication lookups to 05. Both are implemented by application migration 0002, which was:
 - executed on PostgreSQL 18 (upgrade, downgrade and re-upgrade, also inside the Compose `migrate` job);

@@ -4,6 +4,15 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-11-17
+
+### Changed
+
+- Decisions made while implementing sign-in (T03) are now in the spec:
+  - 09: the CSRF derivation, the exact-Origin rule, the session touch interval, reauthentication by signing in again, and the development cookie name;
+  - 06: the `return_to` parameter, callback error redirects, authentication error codes, and `no-store` on API responses;
+  - 05: sealed PKCE verifier and nonce storage.
+
 ## [0.3.4] - 2026-11-17
 
 ### Added

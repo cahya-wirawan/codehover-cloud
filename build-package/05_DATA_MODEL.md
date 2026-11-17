@@ -28,7 +28,7 @@ Lookup functions are `SECURITY DEFINER` with a fixed `search_path`, owned by the
 | users | display_name text, primary_email text nullable, status text, deleted_at | Identity subject is authority; unique email not used to merge; account deletion |
 | oauth_identities | user_id FK, provider text, issuer text, subject text, verified_email text nullable | UNIQUE(provider,issuer,subject); no browser tokens |
 | sessions | user_id FK, token_hash bytea, csrf_hash bytea, expires_at, last_seen_at, revoked_at | UNIQUE token_hash, expiry index; 30-day absolute, 7-day idle |
-| oauth_transactions | state_hash bytea, provider, nonce_hash, encrypted_pkce_verifier, return_path, expires_at, consumed_at | One-time state, 10-minute TTL; includes link/login purpose and initiating session |
+| oauth_transactions | state_hash bytea, provider, nonce_hash, encrypted_pkce_verifier, return_path, expires_at, consumed_at | One-time state, 10-minute TTL; includes link/login purpose and initiating session. `encrypted_pkce_verifier` holds the AES-GCM-sealed PKCE verifier and OIDC nonce, bound to the state digest as associated data; `nonce_hash` cross-checks the nonce |
 | workspaces | name varchar(80), slug varchar(48), status, deleted_at | UNIQUE slug; tombstone before purge |
 | memberships | workspace_id, user_id, role | UNIQUE(workspace_id,user_id); owner invariant service transaction lock |
 | invitations | workspace_id, email_normalized, role, token_hash, expires_at, accepted_at | 7-day TTL; unique live invitation by workspace/email |

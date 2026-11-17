@@ -4,7 +4,7 @@ Base `/api/v1`; the path carries the API MAJOR and OpenAPI `info.version` the fu
 
 ## Shared behavior
 
-Error response: `{ "error": { "code": "ESTIMATE_EXPIRED", "message": "Refresh this estimate before building.", "request_id": "...", "retryable": false, "details": {"estimate_id":"..."} } }`. Never return source, credentials, stack traces or provider bodies in errors. 400 invalid syntax, 401 sign-in, 403 role/CSRF, 404 resource absent/unauthorized, 409 state/idempotency/ETag conflict, 410 expired export, 422 semantic invalid input, 429 throttled with Retry-After, 503 dependency unavailable. Pydantic validation errors are normalized to the envelope.
+Error response: `{ "error": { "code": "ESTIMATE_EXPIRED", "message": "Refresh this estimate before building.", "request_id": "...", "retryable": false, "details": {"estimate_id":"..."} } }`. Never return source, credentials, stack traces or provider bodies in errors. Authentication codes include `UNAUTHENTICATED` (401), `ORIGIN_REJECTED`, `CSRF_REJECTED` and `REAUTH_REQUIRED` (403), and `LAST_IDENTITY` (409). All API responses carry `Cache-Control: no-store`. 400 invalid syntax, 401 sign-in, 403 role/CSRF, 404 resource absent/unauthorized, 409 state/idempotency/ETag conflict, 410 expired export, 422 semantic invalid input, 429 throttled with Retry-After, 503 dependency unavailable. Pydantic validation errors are normalized to the envelope.
 
 Collection responses: `{items: [...], next_cursor: "opaque-or-null"}`; default limit 25, max 100. Cursor encodes sort key `(created_at,id)` and filter digest with integrity signature. Filters/sort are allowlisted. Path is always a query value/opaque file ID, never a filesystem join from a route. URI decoding happens once.
 
@@ -14,8 +14,8 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 
 | Method and route | Input → response | Access / side effect |
 |---|---|---|
-| GET `/auth/{google|github}/start` | safe return path → 302 provider | Anonymous; one-time state server stored |
-| GET `/auth/{provider}/callback` | code/state → 302 app, session cookie | Validated transaction; OIDC checks for Google |
+| GET `/auth/{google|github}/start` | `return_to` (relative path, revalidated server-side) → 302 provider | Anonymous; one-time state server stored; unconfigured provider → 302 `/login?error=unavailable` |
+| GET `/auth/{provider}/callback` | code/state → 302 app, session cookie | Validated transaction; OIDC checks for Google. Failures redirect to `/login?error=denied\|expired\|provider\|unavailable`; a link conflict redirects to `/account/security?error=link_conflict` |
 | GET `/auth/csrf` | none → token | Same-origin; session bound |
 | GET `/me` | none → id, profile, linked providers | Authenticated |
 | POST `/auth/logout` | none → 204 | Self; revoke and clear cookie |

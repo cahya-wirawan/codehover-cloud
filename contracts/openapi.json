@@ -1,6 +1,82 @@
 {
   "components": {
     "schemas": {
+      "CsrfResponse": {
+        "properties": {
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CsrfResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IdentityOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "verified_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Email"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "verified_email",
+          "created_at"
+        ],
+        "title": "IdentityOut",
+        "type": "object"
+      },
+      "LinkResponse": {
+        "properties": {
+          "redirect_url": {
+            "title": "Redirect Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirect_url"
+        ],
+        "title": "LinkResponse",
+        "type": "object"
+      },
       "LiveResponse": {
         "properties": {
           "status": {
@@ -18,6 +94,45 @@
           "version"
         ],
         "title": "LiveResponse",
+        "type": "object"
+      },
+      "MeResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identities": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityOut"
+            },
+            "title": "Identities",
+            "type": "array"
+          },
+          "primary_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Email"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "primary_email",
+          "identities"
+        ],
+        "title": "MeResponse",
         "type": "object"
       },
       "ReadyResponse": {
@@ -47,6 +162,103 @@
         ],
         "title": "ReadyResponse",
         "type": "object"
+      },
+      "SessionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SessionList",
+        "type": "object"
+      },
+      "SessionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "current"
+        ],
+        "title": "SessionOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
       }
     }
   },
@@ -56,6 +268,187 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/auth/csrf": {
+      "get": {
+        "operationId": "csrf_api_v1_auth_csrf_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Csrf",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/{provider}/callback": {
+      "get": {
+        "operationId": "callback_api_v1_auth__provider__callback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google",
+                "github"
+              ],
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/{provider}/start": {
+      "get": {
+        "operationId": "start_api_v1_auth__provider__start_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google",
+                "github"
+              ],
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return To"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "operationId": "live_api_v1_health_live_get",
@@ -98,6 +491,166 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/me/identities/{identity_id}": {
+      "delete": {
+        "operationId": "unlink_api_v1_me_identities__identity_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unlink",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/me/identities/{provider}/link": {
+      "post": {
+        "operationId": "link_api_v1_me_identities__provider__link_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google",
+                "github"
+              ],
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/me/sessions": {
+      "get": {
+        "operationId": "sessions_api_v1_me_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/me/sessions/{session_id}": {
+      "delete": {
+        "operationId": "revoke_session_api_v1_me_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Session",
+        "tags": [
+          "auth"
         ]
       }
     }
