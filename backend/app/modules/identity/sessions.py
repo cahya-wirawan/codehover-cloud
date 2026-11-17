@@ -24,6 +24,10 @@ from app.core.tenancy import set_context
 
 SECURE_COOKIE = "__Host-codehover_session"
 DEV_COOKIE = "codehover_session_dev"
+# Binds an OAuth flow to the browser that started it (login CSRF protection); lives only for the flow.
+SECURE_FLOW_COOKIE = "__Host-codehover_oauth"
+DEV_FLOW_COOKIE = "codehover_oauth_dev"
+FLOW_COOKIE_SECONDS = 600
 ABSOLUTE_LIFETIME = timedelta(days=30)
 IDLE_TIMEOUT = timedelta(days=7)
 TOUCH_INTERVAL = timedelta(minutes=5)
@@ -33,6 +37,32 @@ UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 def cookie_name(settings: Settings) -> str:
     return SECURE_COOKIE if settings.session_cookie_secure else DEV_COOKIE
+
+
+def flow_cookie_name(settings: Settings) -> str:
+    return SECURE_FLOW_COOKIE if settings.session_cookie_secure else DEV_FLOW_COOKIE
+
+
+def set_flow_cookie(response: Response, settings: Settings, binding: str) -> None:
+    response.set_cookie(
+        flow_cookie_name(settings),
+        binding,
+        max_age=FLOW_COOKIE_SECONDS,
+        path="/",
+        secure=settings.session_cookie_secure,
+        httponly=True,
+        samesite="lax",  # sent on the provider's top-level redirect back to the callback
+    )
+
+
+def clear_flow_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(
+        flow_cookie_name(settings),
+        path="/",
+        secure=settings.session_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
 
 
 def set_session_cookie(response: Response, settings: Settings, token: str) -> None:

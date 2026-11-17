@@ -23,8 +23,11 @@ from app.modules.identity.sessions import (
     CurrentPrincipal,
     Db,
     OptionalPrincipal,
+    clear_flow_cookie,
     clear_session_cookie,
     csrf_for,
+    flow_cookie_name,
+    set_flow_cookie,
     set_session_cookie,
 )
 
@@ -98,15 +101,18 @@ async def start(
     impl = _provider(request, provider)
     if impl is None:
         return _redirect(LOGIN_PAGE, error="unavailable")
-    url = await service.begin_authorization(
+    settings = _settings(request)
+    url, binding = await service.begin_authorization(
         db,
-        _settings(request),
+        settings,
         request.app.state.sealer,
         impl,
         purpose="login",
         return_path=safe_return_path(return_to),
     )
-    return _redirect(url)
+    response = _redirect(url)
+    set_flow_cookie(response, settings, binding)  # login CSRF: the callback must come from this browser
+    return response
 
 
 @router.get("/auth/{provider}/callback", response_class=RedirectResponse, status_code=302)
@@ -119,6 +125,20 @@ async def callback(
     state: str | None = Query(default=None, max_length=256),
     error: str | None = Query(default=None, max_length=256),
 ) -> RedirectResponse:
+    response = await _complete(provider, request, db, principal, code, state, error)
+    clear_flow_cookie(response, _settings(request))  # a flow binding is single-use, whatever the outcome
+    return response
+
+
+async def _complete(
+    provider: Provider,
+    request: Request,
+    db: Db,
+    principal: OptionalPrincipal,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+) -> RedirectResponse:
     impl = _provider(request, provider)
     if impl is None:
         return _redirect(LOGIN_PAGE, error="unavailable")
@@ -127,7 +147,13 @@ async def callback(
     settings = _settings(request)
     try:
         completed = await service.complete_authorization(
-            db, settings, request.app.state.sealer, impl, state=state, code=code
+            db,
+            settings,
+            request.app.state.sealer,
+            impl,
+            state=state,
+            code=code,
+            binding=request.cookies.get(flow_cookie_name(settings)),
         )
     except AuthFlowError as flow:
         return _redirect(LOGIN_PAGE, error=flow.code)
@@ -195,20 +221,24 @@ def _require_recent_sign_in(principal: CsrfPrincipal) -> None:
 
 
 @router.post("/me/identities/{provider}/link", response_model=LinkResponse)
-async def link(provider: Provider, request: Request, db: Db, principal: CsrfPrincipal) -> LinkResponse:
+async def link(
+    provider: Provider, request: Request, response: Response, db: Db, principal: CsrfPrincipal
+) -> LinkResponse:
     _require_recent_sign_in(principal)
     impl = _provider(request, provider)
     if impl is None:
         raise ApiError(404, "NOT_FOUND", "Sign-in provider not available.")
-    url = await service.begin_authorization(
+    settings = _settings(request)
+    url, binding = await service.begin_authorization(
         db,
-        _settings(request),
+        settings,
         request.app.state.sealer,
         impl,
         purpose="link",
         return_path=SECURITY_PAGE,
         initiating_session_id=principal.session_id,
     )
+    set_flow_cookie(response, settings, binding)
     return LinkResponse(redirect_url=url)
 
 

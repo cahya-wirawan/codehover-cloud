@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.3.5",
+  "package_version": "0.3.6",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -65,7 +65,7 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "8a98395de46e32163f665a927e56fb26d5cb6d70fab4e27fcf2f86779830cc78"
+      "sha256": "904f8f6c389098974bc41158d8742b66ec8a1b838409d26efdbeba5246dfb81f"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
@@ -81,7 +81,7 @@
     },
     "09_AUTH_AND_PERMISSIONS.md": {
       "status": "complete specification",
-      "sha256": "5877cb087e64e7026a55a381d518654458ed1675538f90b00c1a38d7017ca1cd"
+      "sha256": "d1a544da5a0e023a2b5bb68c7c473fbe8f03559200e866d4ac52be641a8f29aa"
     },
     "10_OFFLINE_SYNC_AND_STORAGE.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "d8b5a951d63d2d9d172fc20ab4e4d995dd3200bacd4071279f54ddcf45869e2a"
+      "sha256": "b73def0259325e0c606c15a202a1be4ced9545236c5d2b09421d41709da98574"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "674ee09ef918cfd4b7d10968da7704a76659f55e4d021f5bbd6a7a52b6172332"
+      "sha256": "5c87a09757510b8297230e939c23ff7df257c604ed72c900142de8d4d5651bdf"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "2e44d154855c79037cfb2ea4ef9ef513c11aee9c64608acf4eac598fe191f167"
+      "sha256": "1a2bbc0f79ac9efb85f1fa8e1671ca67aa9e2aad891c4a5837151a9a4e64b506"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "d5d1d767be9218f02ebda081a83a2b2fede85055e910e5a94a09329966486fcc"
+      "sha256": "6d7ff4be0be7debf12dc50067f10057f5d85815ef89e542bc291bc2c893cbbbb"
     },
     "contracts/core_schema.sql": {
       "status": "reference template/schema",
@@ -216,5 +216,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "10ec243395dc062a5c3daa639fa662737cf3fa3a4841e197a23a449606e659e2"
+  "master_spec_sha256": "5619b6761563beb5e2028b6b45bdfa320a3d58320e520251c22645cee0907324"
 }

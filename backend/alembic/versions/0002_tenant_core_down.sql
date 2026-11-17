@@ -1,6 +1,6 @@
 -- Reverse of 0002_tenant_core.sql. Functions first, then tables in dependency order.
-DROP FUNCTION app_private.oauth_transaction_consume(bytea, text);
-DROP FUNCTION app_private.oauth_transaction_create(bytea, text, text, bytea, bytea, text, uuid, uuid, interval);
+DROP FUNCTION app_private.oauth_transaction_consume(bytea, bytea, text);
+DROP FUNCTION app_private.oauth_transaction_create(bytea, bytea, text, text, bytea, bytea, text, uuid, uuid, interval);
 DROP FUNCTION app_private.session_by_token(bytea);
 DROP FUNCTION app_private.create_user_with_identity(text, text, text, text, text);
 DROP FUNCTION app_private.identity_user(text, text, text);

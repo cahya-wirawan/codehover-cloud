@@ -176,11 +176,17 @@ def test_sessions_resolve_by_token_digest_only_while_live(world: World, runtime:
 
 
 # ---------------------------------------------------------------- OAuth transactions
+def binding_of(state: str) -> bytes:
+    """The digest of the browser-binding cookie of the browser that started this flow."""
+    return digest("browser-" + state)
+
+
 def create_tx(db: Db, state: str, *, ttl: str = "10 minutes", purpose: str = "login", **kw: Any) -> None:
     db.run(
-        "SELECT app_private.oauth_transaction_create(:st, 'google', :purpose, :nonce, NULL, :rp,"
+        "SELECT app_private.oauth_transaction_create(:st, :bind, 'google', :purpose, :nonce, NULL, :rp,"
         " :sess, NULL, CAST(:ttl AS interval))",
         st=digest(state),
+        bind=binding_of(state),
         purpose=purpose,
         nonce=digest("n-" + state),
         rp=kw.get("return_path", "/"),
@@ -192,10 +198,13 @@ def create_tx(db: Db, state: str, *, ttl: str = "10 minutes", purpose: str = "lo
 def test_oauth_state_is_single_use_and_bound_to_provider(world: World, runtime: Db) -> None:
     state = secrets.token_urlsafe(32)
     create_tx(runtime, state, return_path="/w/settings")
-    consume = "SELECT return_path FROM app_private.oauth_transaction_consume(:st, :p)"
-    assert runtime.rows(consume, st=digest(state), p="github") == []  # wrong provider
-    assert runtime.rows(consume, st=digest(state), p="google")[0][0] == "/w/settings"
-    assert runtime.rows(consume, st=digest(state), p="google") == []  # replay
+    consume = "SELECT return_path FROM app_private.oauth_transaction_consume(:st, :b, :p)"
+    mine, theirs = binding_of(state), digest("another-browser")
+    assert runtime.rows(consume, st=digest(state), b=mine, p="github") == []  # wrong provider
+    # Another browser (login CSRF) is refused and does not burn the transaction for the real one.
+    assert runtime.rows(consume, st=digest(state), b=theirs, p="google") == []
+    assert runtime.rows(consume, st=digest(state), b=mine, p="google")[0][0] == "/w/settings"
+    assert runtime.rows(consume, st=digest(state), b=mine, p="google") == []  # replay
     expect(runtime, DENIED, "SELECT count(*) FROM oauth_transactions")  # no direct access at all
 
 
@@ -204,9 +213,10 @@ def test_oauth_state_rules(world: World, runtime: Db) -> None:
         expect(
             runtime,
             sa.exc.DataError,  # 22023 invalid_parameter_value
-            "SELECT app_private.oauth_transaction_create(:st, 'google', 'login', NULL, NULL, '/', NULL, NULL,"
-            " CAST(:ttl AS interval))",
+            "SELECT app_private.oauth_transaction_create(:st, :b, 'google', 'login', NULL, NULL, '/', NULL,"
+            " NULL, CAST(:ttl AS interval))",
             st=digest(secrets.token_hex(8)),
+            b=digest("b"),
             ttl=ttl,
         )
     for good_path in ("/", "/w/settings?tab=members", "/p/0193/code#L10", "/a-b_c.d~e"):
@@ -246,7 +256,12 @@ def test_expired_oauth_state_cannot_be_consumed(ddl: Db) -> None:
         s=digest(state),
     )
     assert (
-        ddl.rows("SELECT 1 FROM app_private.oauth_transaction_consume(:s, 'google')", s=digest(state)) == []
+        ddl.rows(
+            "SELECT 1 FROM app_private.oauth_transaction_consume(:s, :b, 'google')",
+            s=digest(state),
+            b=binding_of(state),
+        )
+        == []
     )
 
 

@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-11-17
+
+### Security
+
+- 09 and 05: every OAuth flow is bound to the browser that started it, through a flow cookie whose digest consumption requires. This closes login CSRF: a callback URL opened in another browser can no longer sign the victim into the attacker's account, nor burn the attacker's transaction. Found by automated security review of T03.
+
 ## [0.3.5] - 2026-11-17
 
 ### Changed

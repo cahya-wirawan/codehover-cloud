@@ -93,6 +93,7 @@ class OAuthTransaction(Base):
     __tablename__ = "oauth_transactions"
     id: Mapped[UUID] = pk()
     state_hash: Mapped[bytes] = mapped_column(LargeBinary)
+    browser_binding_hash: Mapped[bytes] = mapped_column(LargeBinary)
     provider: Mapped[str] = mapped_column(Text)
     purpose: Mapped[str] = mapped_column(Text)
     nonce_hash: Mapped[bytes | None] = mapped_column(LargeBinary)

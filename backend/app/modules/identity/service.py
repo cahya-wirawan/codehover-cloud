@@ -53,19 +53,22 @@ async def begin_authorization(
     purpose: str,
     return_path: str,
     initiating_session_id: UUID | None = None,
-) -> str:
+) -> tuple[str, str]:
+    """Returns (provider URL, browser binding). The caller must set the binding as the flow cookie."""
     state = new_token()
+    binding = new_token()
     nonce = new_token() if provider.uses_nonce else None
     verifier, challenge = pkce_pair()
     state_hash = digest(state)
     sealed = sealer.seal(json.dumps({"verifier": verifier, "nonce": nonce}).encode(), state_hash)
     await db.execute(
         text(
-            "SELECT app_private.oauth_transaction_create(:state, :provider, :purpose, :nonce_hash, :sealed,"
-            " :return_path, :session, NULL, make_interval(secs => :ttl))"
+            "SELECT app_private.oauth_transaction_create(:state, :binding, :provider, :purpose, :nonce_hash,"
+            " :sealed, :return_path, :session, NULL, make_interval(secs => :ttl))"
         ),
         {
             "state": state_hash,
+            "binding": digest(binding),
             "provider": provider.name,
             "purpose": purpose,
             "nonce_hash": digest(nonce) if nonce else None,
@@ -76,7 +79,7 @@ async def begin_authorization(
         },
     )
     await db.commit()
-    return provider.authorization_url(
+    url = provider.authorization_url(
         AuthorizationRequest(
             state=state,
             code_challenge=challenge,
@@ -84,19 +87,29 @@ async def begin_authorization(
             nonce=nonce,
         )
     )
+    return url, binding
 
 
 async def complete_authorization(
-    db: AsyncSession, settings: Settings, sealer: Sealer, provider: OAuthProvider, *, state: str, code: str
+    db: AsyncSession,
+    settings: Settings,
+    sealer: Sealer,
+    provider: OAuthProvider,
+    *,
+    state: str,
+    code: str,
+    binding: str | None,
 ) -> CompletedAuthorization:
+    if not binding:
+        raise AuthFlowError("expired")  # no flow cookie: not the browser that started it (login CSRF)
     state_hash = digest(state)
     row = (
         await db.execute(
             text(
                 "SELECT purpose, nonce_hash, encrypted_pkce_verifier, return_path, initiating_session_id"
-                " FROM app_private.oauth_transaction_consume(:state, :provider)"
+                " FROM app_private.oauth_transaction_consume(:state, :binding, :provider)"
             ),
-            {"state": state_hash, "provider": provider.name},
+            {"state": state_hash, "binding": digest(binding), "provider": provider.name},
         )
     ).one_or_none()
     # Commit the consumption before calling the provider: the state is single-use even if the exchange

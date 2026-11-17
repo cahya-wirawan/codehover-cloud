@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-17 · Package version 0.3.5
+Date: 2026-11-17 · Package version 0.3.6
+
+0.3.6 binds OAuth flows to the starting browser (09). The login-CSRF integration test opens a callback in a browser without the flow cookie, then with a forged cookie, and confirms that both are refused and that the originating browser can still complete. A schema mutation that ignores the binding is caught by two tests. Removing the application's missing-cookie check is an equivalent change, because the database guard still refuses; the check stays as a second layer. 73 backend tests pass.
 
 0.3.5 records sign-in decisions implemented in T03. They are exercised by 26 sign-in integration tests on PostgreSQL 18 with mocked Google and GitHub providers, which sign real RS256 ID tokens and check PKCE. Nine code mutations of security checks were applied; eight were caught. The ninth, dropping the explicit RS256 allowlist, is equivalent, because joserfc's defaults already reject `alg: none` and HS256 algorithm-confusion tokens; the allowlist stays as defense in depth. The Docker gateway was also checked: signed-out 401 with `no-store`, and unconfigured providers redirect to the login page.
 

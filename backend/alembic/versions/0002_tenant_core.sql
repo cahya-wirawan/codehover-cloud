@@ -46,6 +46,10 @@ CREATE INDEX ix_sessions_expires_at ON sessions(expires_at);
 CREATE TABLE oauth_transactions (
   id uuid PRIMARY KEY DEFAULT uuidv7(),
   state_hash bytea NOT NULL UNIQUE CHECK (octet_length(state_hash) = 32),
+  -- Digest of a random value held in a short-lived cookie by the browser that started the flow.
+  -- Consumption requires it, so a callback replayed in another browser (login CSRF) neither succeeds
+  -- nor burns the transaction.
+  browser_binding_hash bytea NOT NULL CHECK (octet_length(browser_binding_hash) = 32),
   provider text NOT NULL CHECK (provider IN ('google', 'github', 'github_app')),
   purpose text NOT NULL CHECK (purpose IN ('login', 'link', 'install')),
   nonce_hash bytea CHECK (nonce_hash IS NULL OR octet_length(nonce_hash) = 32),
@@ -548,8 +552,8 @@ $$;
 
 -- OAuth state: create, then consume exactly once before expiry.
 CREATE FUNCTION app_private.oauth_transaction_create(
-  p_state_hash bytea, p_provider text, p_purpose text, p_nonce_hash bytea, p_encrypted_pkce bytea,
-  p_return_path text, p_initiating_session uuid, p_workspace uuid, p_ttl interval
+  p_state_hash bytea, p_binding_hash bytea, p_provider text, p_purpose text, p_nonce_hash bytea,
+  p_encrypted_pkce bytea, p_return_path text, p_initiating_session uuid, p_workspace uuid, p_ttl interval
 ) RETURNS uuid
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE tid uuid;
@@ -557,20 +561,21 @@ BEGIN
   IF p_ttl <= interval '0' OR p_ttl > interval '10 minutes' THEN
     RAISE EXCEPTION 'OAuth transaction TTL must be within (0, 10 minutes]' USING ERRCODE = '22023';
   END IF;
-  INSERT INTO public.oauth_transactions(state_hash, provider, purpose, nonce_hash, encrypted_pkce_verifier,
-                                        return_path, initiating_session_id, workspace_id, expires_at)
-    VALUES (p_state_hash, p_provider, p_purpose, p_nonce_hash, p_encrypted_pkce, p_return_path,
+  INSERT INTO public.oauth_transactions(state_hash, browser_binding_hash, provider, purpose, nonce_hash,
+                                        encrypted_pkce_verifier, return_path, initiating_session_id,
+                                        workspace_id, expires_at)
+    VALUES (p_state_hash, p_binding_hash, p_provider, p_purpose, p_nonce_hash, p_encrypted_pkce, p_return_path,
             p_initiating_session, p_workspace, now() + p_ttl)
     RETURNING id INTO tid;
   RETURN tid;
 END $$;
 
-CREATE FUNCTION app_private.oauth_transaction_consume(p_state_hash bytea, p_provider text)
+CREATE FUNCTION app_private.oauth_transaction_consume(p_state_hash bytea, p_binding_hash bytea, p_provider text)
   RETURNS TABLE(purpose text, nonce_hash bytea, encrypted_pkce_verifier bytea, return_path text,
                 initiating_session_id uuid, workspace_id uuid)
   LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   UPDATE public.oauth_transactions t SET consumed_at = now()
-  WHERE t.state_hash = p_state_hash AND t.provider = p_provider
+  WHERE t.state_hash = p_state_hash AND t.browser_binding_hash = p_binding_hash AND t.provider = p_provider
     AND t.consumed_at IS NULL AND t.expires_at > now()
   RETURNING t.purpose, t.nonce_hash, t.encrypted_pkce_verifier, t.return_path, t.initiating_session_id, t.workspace_id
 $$;
@@ -580,8 +585,8 @@ ALTER FUNCTION app_private.create_workspace(text, text) OWNER TO app_resolver;
 ALTER FUNCTION app_private.identity_user(text, text, text) OWNER TO app_resolver;
 ALTER FUNCTION app_private.create_user_with_identity(text, text, text, text, text) OWNER TO app_resolver;
 ALTER FUNCTION app_private.session_by_token(bytea) OWNER TO app_resolver;
-ALTER FUNCTION app_private.oauth_transaction_create(bytea, text, text, bytea, bytea, text, uuid, uuid, interval)
-  OWNER TO app_resolver;
-ALTER FUNCTION app_private.oauth_transaction_consume(bytea, text) OWNER TO app_resolver;
+ALTER FUNCTION app_private.oauth_transaction_create(bytea, bytea, text, text, bytea, bytea, text, uuid, uuid,
+  interval) OWNER TO app_resolver;
+ALTER FUNCTION app_private.oauth_transaction_consume(bytea, bytea, text) OWNER TO app_resolver;
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA app_private FROM PUBLIC;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app_private TO app_runtime;

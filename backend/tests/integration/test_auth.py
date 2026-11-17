@@ -172,6 +172,14 @@ async def unsafe(client: httpx.AsyncClient, method: str, url: str, **kw: Any) ->
     return await client.request(method, url, headers=headers, **kw)
 
 
+def issues_session(response: httpx.Response) -> bool:
+    """True if any Set-Cookie header sets (not clears) the session cookie."""
+    return any(
+        header.startswith("__Host-codehover_session=") and "max-age=0" not in header.lower()
+        for header in response.headers.get_list("set-cookie")
+    )
+
+
 def ddl(sql: str, **params: Any) -> list[Any]:
     with engine(MIGRATION_URL).begin() as conn:
         result = conn.execute(sa.text(sql), params)
@@ -249,7 +257,33 @@ async def test_state_is_single_use(client: httpx.AsyncClient, idp: FakeIdP) -> N
     client.cookies.clear()
     replay = await client.get("/api/v1/auth/google/callback", params={"code": code, "state": state})
     assert first.headers["location"] == "/"
-    assert replay.headers["location"] == "/login?error=expired" and "set-cookie" not in replay.headers
+    assert replay.headers["location"] == "/login?error=expired" and not issues_session(replay)
+
+
+async def test_login_csrf_callback_in_another_browser_is_refused_without_burning_state(
+    client: httpx.AsyncClient, idp: FakeIdP
+) -> None:
+    # The attacker starts a sign-in with their own account in their own browser ...
+    start = await client.get("/api/v1/auth/google/start")
+    attacker_cookies = dict(client.cookies)
+    code = idp.authorize(start.headers["location"])
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    # ... and lures the victim's browser (no flow cookie) to the callback URL.
+    client.cookies.clear()
+    victim = await client.get("/api/v1/auth/google/callback", params={"code": code, "state": state})
+    assert victim.headers["location"] == "/login?error=expired"
+    assert not issues_session(victim)
+    # A forged cookie value does not help either.
+    client.cookies.set("__Host-codehover_oauth", "forged-binding-value")
+    forged = await client.get("/api/v1/auth/google/callback", params={"code": code, "state": state})
+    assert forged.headers["location"] == "/login?error=expired"
+    # The refused attempts did not consume the transaction: the originating browser can still finish.
+    client.cookies.clear()
+    client.cookies.update(attacker_cookies)
+    original = await client.get("/api/v1/auth/google/callback", params={"code": code, "state": state})
+    assert (
+        original.headers["location"] == "/" and "__Host-codehover_session=" in original.headers["set-cookie"]
+    )
 
 
 async def test_state_from_another_provider_is_rejected(client: httpx.AsyncClient, idp: FakeIdP) -> None:
@@ -277,7 +311,7 @@ async def test_invalid_id_tokens_are_rejected(
 ) -> None:
     tamper(idp)
     response = await sign_in(client, idp)
-    assert response.headers["location"] == "/login?error=provider" and "set-cookie" not in response.headers
+    assert response.headers["location"] == "/login?error=provider" and not issues_session(response)
 
 
 async def test_provider_denial_and_missing_provider(client: httpx.AsyncClient) -> None:
