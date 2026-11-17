@@ -36,7 +36,9 @@ Create build, stage task, reservation and outbox row in one SQL transaction. Dis
 
 Lease default 120s, heartbeat every 20s, bounded HTTP call 90s. Long stages split into per-file/page work units. A worker that loses its fencing generation may no longer commit artifacts, settle reservations, or advance stage state. Unique task key `(build_id, stage, variant, work_key)` and compare-and-set status eliminate duplicate finalization. Call attempt records distinguish started/completed/unknown external spend. Exactly-once model execution is not promised; provider request idempotency/status lookup is used where supported. Unknown billing outcomes require reconciliation and cannot silently receive another unrestricted budget reservation.
 
-Transient errors: capped retries at 5/30/120 seconds plus jitter, max three retries; persist `next_attempt_at` in SQL. Scheduler releases due tasks through outbox. Permanent input/schema/auth errors fail immediately; invalid model response gets one repair call inside budget. Poison tasks go to dead-letter queue and SQL failed state. No infinite nack/requeue loop.
+Transient errors: capped retries at 5/30/120 seconds plus jitter, max three retries; persist `next_attempt_at` in SQL. Scheduler releases due tasks through outbox. Permanent input/schema/auth errors fail immediately; invalid model response gets one repair call inside budget. Poison tasks go to dead-letter queue and SQL failed state. No infinite nack/requeue loop. RabbitMQ 4 quorum queues apply a default delivery limit of 20 and drop over-limit messages unless a dead-letter exchange is configured, so declare the DLX by policy for every work queue; retries are scheduled from SQL, never by broker requeue.
+
+The dispatcher, scheduler and lease reconciler scan work across all workspaces, which FORCE RLS denies to the runtime role. They connect as `app_system`, a role limited to the outbox and task scheduling columns (see document 05, "Tenant context resolution and database roles"). Task workers process one task inside its workspace context as `app_runtime`.
 
 ## Snapshot and artifact contracts
 

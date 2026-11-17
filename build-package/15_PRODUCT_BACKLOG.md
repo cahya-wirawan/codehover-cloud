@@ -5,13 +5,13 @@ Each task needs implementation, focused verification and updated contracts; esti
 | Task | Priority / effort | Concrete deliverable | Depends on | Done when |
 |---|---|---|---|---|
 | T01 | P0/M | Create monorepo, Python/Node locks, lint/type/build CI | — | Both applications compile and health smoke passes |
-| T02 | P0/L | Alembic identity/workspace/project/build/job/ledger tables, uuidv7, RLS and runtime role | T01 | Fresh/upgrade and wrong-tenant tests pass |
+| T02 | P0/L | Alembic identity/workspace/project/build/job/ledger tables, uuidv7, RLS, runtime/system/resolver roles and lookup functions | T01 | Fresh/upgrade and wrong-tenant tests pass; `contracts/core_schema_checks.sql` assertions ported to CI |
 | T03 | P0/L | Google/GitHub callbacks, SQL sessions, CSRF, explicit link/unlink | T02 | Callback replay/link collision/security tests pass |
 | T04 | P0/M | Workspace/member/invitation policy including verified email and final owner | T03 | Role matrix and concurrent removal tests pass |
-| T05 | P0/L | GitHub App connect/installation association and repo/ref listing | T03–04 | Spoofed install and forbidden repo denied |
+| T05 | P0/L | GitHub App connect/installation association (App user-token verification) and repo/ref listing | T03–04 | Spoofed install, other user's installation and forbidden repo denied |
 | T06 | P0/L | Immutable archive acquisition, bounded extraction, secret exclusion/scan | T05 | Traversal/link/bomb/input-size fixtures blocked |
 | T07 | P0/L | SQL tasks/outbox, publisher confirms, worker lease/fencing/reconciler | T02 | Publish/ack/crash fault suite passes |
-| T08 | P0/M | Versioned engine interfaces, parse/rank and deterministic replay artifacts | T06–07 | SHA/span/source manifest matches fixture |
+| T08 | P0/L | Versioned engine interfaces, sandboxed parse runner, parse/rank and deterministic replay artifacts | T06–07 | SHA/span/source manifest matches fixture; parser network-isolation and no-credential tests pass |
 | T09 | P0/L | Private tree/file/symbol/guide endpoints and minimal viewer | T08 | Wrong tenant blocked for every payload/asset |
 | T10 | P0/L | Catalog, estimate expiry/config hashes, reservation and settlement ledger | T02,08 | Racing reservations cannot exceed cap |
 | T11 | P0/L | Provider gateway, strict explanations/guide generation, call retry and provenance | T10 | Schema/injection/cost fixtures pass |

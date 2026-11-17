@@ -10,12 +10,15 @@ x-app-env: &app-env
   PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
   SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
   SESSION_SECRET: ${SESSION_SECRET:?set random session secret}
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set data encryption key}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
   GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
   GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
   GITHUB_APP_ID: ${GITHUB_APP_ID:-}
   GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+  GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
+  GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
   GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_key
   GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
   MODEL_PROVIDER: ${MODEL_PROVIDER:-replay}
@@ -45,6 +48,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set DDL secret}
       POSTGRES_DB: codehover
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set runtime secret}
+      APP_SYSTEM_DB_PASSWORD: ${APP_SYSTEM_DB_PASSWORD:?set system-loop secret}
       PGDATA: /var/lib/postgresql/18/docker
     volumes:
       - pgdata:/var/lib/postgresql
@@ -117,6 +121,10 @@ services:
     restart: unless-stopped
   dispatcher:
     <<: *backend
+    # Cross-tenant control loop: app_system role, scheduling columns only (05, core_schema.sql).
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql+psycopg://app_system:${APP_SYSTEM_DB_PASSWORD:?set system-loop secret}@db:5432/codehover
     command: [python, -m, app.workers.dispatcher]
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -124,6 +132,10 @@ services:
     restart: unless-stopped
   scheduler:
     <<: *backend
+    # Cross-tenant control loop: app_system role, scheduling columns only (05, core_schema.sql).
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql+psycopg://app_system:${APP_SYSTEM_DB_PASSWORD:?set system-loop secret}@db:5432/codehover
     command: [python, -m, app.workers.scheduler]
     depends_on:
       migrate: {condition: service_completed_successfully}

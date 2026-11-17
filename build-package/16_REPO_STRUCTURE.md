@@ -4,6 +4,7 @@ Repository name: `codehover-cloud`. This package does not create or modify a Git
 
 | Path | Responsibility |
 |---|---|
+| `VERSION` | Application SemVer for the release commit (document 23); backend `pyproject.toml`, frontend `package.json` and image tags are derived from it in CI |
 | `backend/pyproject.toml`, `requirements.lock` | Exact Python dependencies and installation contract |
 | `backend/app/main.py` | FastAPI factory, middleware and routers |
 | `backend/app/core/` | Settings, DB transaction scope, policy, crypto, error envelope |
@@ -20,8 +21,9 @@ Repository name: `codehover-cloud`. This package does not create or modify a Git
 | `frontend/src/lib/{api,schemas,format}/` | Generated typed API, shared schema validation and formatters |
 | `frontend/src/styles/tokens.css` | Light/dark semantic design tokens |
 | `frontend/e2e/` | Playwright end-to-end journeys |
-| `contracts/` | Generated OpenAPI, JSON schemas and versioned artifact schema |
-| `deployment/` | Dockerfiles, Compose, nginx, broker config and runbooks |
+| `contracts/` | Generated OpenAPI (`info.version` SemVer), JSON schemas with SemVer `$id` URNs, versioned artifact schemas |
+| `deployment/` | Dockerfiles with `<Dockerfile>.dockerignore` allowlists (build context is the repo root), Compose, nginx, broker config and runbooks |
+| `.gitignore` | Must cover `deployment/.env`, `deployment/secrets/`, `.venv/`, `node_modules/`, `dist/` |
 | `docs/` | PRD, architecture decisions, threat model, model eval reports |
 | `.github/workflows/` | Lint/types/unit/integration/eval/build/SBOM/image scan/release |
 

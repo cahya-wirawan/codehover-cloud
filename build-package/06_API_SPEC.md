@@ -1,6 +1,6 @@
 # API and event contracts
 
-Base `/api/v1`; JSON UTF-8; UUID strings; RFC3339 UTC timestamps; amounts explicitly named `*_micro_usd`. Same-origin opaque session cookie, CSRF header on unsafe authenticated actions, Origin checks. OAuth callbacks and signed provider webhook endpoints use dedicated validation instead of session CSRF. FastAPI emits authoritative OpenAPI 3.1 from Pydantic models; generated TypeScript client is checked for drift in CI. The tables below specify the full planned MVP contract; `contracts/` contains machine-readable key schema examples, not a claim that an API exists.
+Base `/api/v1`; the path carries the API MAJOR and OpenAPI `info.version` the full SemVer, with additive-only changes inside a major and `Deprecation`/`Sunset` headers before removal (document 23). JSON UTF-8; UUID strings; RFC3339 UTC timestamps; amounts explicitly named `*_micro_usd`. Same-origin opaque session cookie, CSRF header on unsafe authenticated actions, Origin checks. OAuth callbacks and signed provider webhook endpoints use dedicated validation instead of session CSRF. FastAPI emits authoritative OpenAPI 3.1 from Pydantic models; generated TypeScript client is checked for drift in CI. The tables below specify the full planned MVP contract; `contracts/` contains machine-readable key schema examples, not a claim that an API exists.
 
 ## Shared behavior
 
@@ -30,7 +30,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/invitations/accept` | token → membership | Signed-in verified invited email |
 | PATCH/DELETE `/workspaces/{wid}/members/{uid}` | role → member/204 | Admin bounded by own role; owner for owners |
 | POST `/workspaces/{wid}/github/install` | none → install_url/state | Admin; associate verified GitHub user |
-| GET `/integrations/github/setup` | installation_id, state → redirect | Validate installation access with provider, not state alone |
+| GET `/integrations/github/setup` | installation_id, state, code → redirect | Exchange code for a GitHub App user access token; require linked GitHub user ID match and installation in `GET /user/installations` (document 09); state alone never suffices |
 | GET/DELETE `/workspaces/{wid}/connections[/{id}]` | cursor/none → list/204 | Admin revoke; cancels/suspends affected operations |
 | GET `/workspaces/{wid}/repositories` | connection, cursor/query → authorized repos | Editor; server provider permissions enforced |
 | GET `/workspaces/{wid}/repositories/{rid}/refs` | query, cursor → refs | Editor |
@@ -54,7 +54,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/builds/{bid}/quality` | status,cursor → checks/coverage | Member |
 | POST `/builds/{bid}/quality/waivers` | claim IDs,reason → waiver | Admin; cannot waive missing deterministic source locations |
 | POST `/projects/{pid}/publication` | build_id,visibility,confirmation → publication | Admin; ETag/idempotency; public confirmation |
-| DELETE `/projects/{pid}/publication` | version → 204 | Admin; immediate stop serving |
+| DELETE `/projects/{pid}/publication` | `If-Match` publication ETag → 204 | Admin; immediate stop serving; no request body |
 | GET `/published/{slug}/...` | resource route → viewer data | Resolver authorizes visibility; shares no private object URL |
 | POST `/builds/{bid}/exports` | format static_zip/kb_json,variant → export | Editor default export permission |
 | GET `/exports/{eid}` | none → state,expires_at | Requester or admin |
@@ -68,7 +68,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/me/export` / `/me/deletion` | reauthentication, confirmation → request | Self; ownership transfer rule |
 | POST `/webhooks/github` | raw signed body → 202 | HMAC verified; delivery deduplicated |
 | POST `/webhooks/stripe` | raw signed body → 200/202 | Signature/timestamp verified; durable receipt then async processing |
-| GET `/health/live` / `/health/ready` | none → status | Live process only; readiness DB/schema, essential dependencies |
+| GET `/health/live` / `/health/ready` | none → status, application `version` | Live process only; readiness DB/schema, essential dependencies |
 
 ## Core request/response examples
 
@@ -84,7 +84,7 @@ Cost figures above are synthetic examples, not provider pricing. Real SHA/hash f
 
 Start build request: `{"estimate_id":"019a90a0-0000-7000-8000-000000000002","cap_micro_usd":5000000}`. Response 202 includes `id`, `status:"queued"`, `snapshot_id`, `commit_sha`, `events_url`, `reserved_micro_usd`, `created_at`. Reject expired estimate, scope/price mismatch, suspended connection, exhausted allowance or duplicate active project build before scheduling.
 
-Symbol response fields: id/build_id, symbol_key, file_id, path, language, kind, signature, span `{start_line,end_line,start_column,end_column}`, card `{summary,details,params,returns,notes}`, relationships `{uses,used_by,ambiguous_targets}`, generation provenance and explanation status. Strings rendered as untrusted text/allowlisted Markdown. File response provides source hash, exact selected line slice, total count, link spans and notes. Ranges refer exclusively to requested build, never latest branch.
+Symbol response fields: id/build_id, symbol_key, file_id, path, language, kind, signature, span `{start_line,end_line,start_column,end_column}` (lines 1-based inclusive; columns 0-based, end-exclusive, counted in Unicode scalar values; the frontend converts to UTF-16 at one tested boundary), card `{summary,details,params:[{name,description}],returns,notes}`, relationships `{uses,used_by,ambiguous_targets}`, generation provenance and explanation status. Strings rendered as untrusted text/allowlisted Markdown. File response provides source hash, exact selected line slice, total count, link spans and notes. Ranges refer exclusively to requested build, never latest branch.
 
 ## Server-sent events
 

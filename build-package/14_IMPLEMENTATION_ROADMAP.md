@@ -5,7 +5,7 @@ Milestones are dependency ordered; no calendar estimates are assumed.
 | Milestone | Deliverables | Dependencies | Exit criteria |
 |---|---|---|---|
 | M0 Foundation | Monorepo, pinned toolchains/locks, FastAPI/Vite shell, migrations, infrastructure Compose, CI | Approved package defaults | Clean build/start; PG18 migration; no secret in frontend |
-| M1 Private replay vertical slice | OAuth/session, membership/RLS, GitHub App verification/acquisition, scan, outbox/Rabbit worker, replay engine, private viewer | M0 | One immutable fixture build end to end; cross-tenant and crash/retry tests pass |
+| M1 Private replay vertical slice | OAuth/session, membership/RLS with resolver and system roles, GitHub App verification/acquisition, scan, sandboxed parse runner, outbox/Rabbit worker, replay engine, private viewer | M0 | One immutable fixture build end to end; cross-tenant, crash/retry and parser network-isolation tests pass |
 | M2 Grounded generation | Catalog/provider gateway, preflight estimate/reservations, explanations/guides/checker, budget/cancel/retry | M1 | Labeled eval baseline; budget race/unknown-spend handled; quality gates enforced |
 | M3 Product experience | Elegant responsive code viewer, search, review, publication controls, export, freshness and audit | M2 | Accessible full E2E; public opt-in/revocation/export tests pass |
 | M4 Operable private beta | Metrics, purge/restore, threat tests, support diagnostics, manual entitlement grants | M3 | Synthetic SLO/load checks, restore drill, zero critical isolation/XSS issues |

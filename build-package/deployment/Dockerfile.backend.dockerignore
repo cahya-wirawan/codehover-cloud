@@ -1,0 +1,9 @@
+# BuildKit Dockerfile-specific ignore file (context = repository root).
+# Allowlist: only the backend sources reach the build context.
+**
+!backend/
+backend/.venv/
+backend/**/__pycache__/
+backend/tests/
+backend/.env*
+backend/**/*.pem
