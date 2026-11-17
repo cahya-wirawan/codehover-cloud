@@ -1,8 +1,43 @@
 # Package validation
 
-Date: 2026-11-17 · Package version 0.3.0
+Date: 2026-11-17 · Package version 0.3.2
 
-0.3.0 adds the versioning system (document 23, `VERSION`, `tools/assemble.py bump`). The SQL contracts are unchanged since 0.2.0, when they were executed as described below. Earlier labels were renumbered: "1.0" is 0.1.0, and "1.1" (briefly "2.0.0") is 0.2.0.
+0.3.2 is the first version whose container templates (`deployment/`) were executed. They ran against the M0 implementation in the repository root. The steps were:
+1. Built both images.
+2. Started the full Compose stack.
+3. Exercised it through the gateway and from a real browser (details below).
+
+The SQL contracts are unchanged since 0.2.0, and the versioning tooling since 0.3.0. Earlier labels were renumbered: "1.0" is 0.1.0, and "1.1" (briefly "2.0.0") is 0.2.0.
+
+## Container templates executed (0.3.2)
+
+Docker 29.8.2, Compose 5.5.1, linux/x86_64, `--profile app`:
+- **Images.**
+  - Both images build from the hash-pinned Python lock and the npm lockfile.
+  - The frontend bundle is byte-identical to a local build.
+  - The backend image contains no tests, `.env` files or keys; its code is root-owned and not writable by the runtime user (uid 10001); its OCI version label is 0.1.0.
+- **Start-up order.**
+  1. `db`, `rabbitmq` and `objectstore` (SeaweedFS 4.52, pinned by digest).
+  2. `migrate`, which exits 0.
+  3. `bootstrap`, which exits 0.
+  4. `api` (healthy), the worker shells, and `web`.
+
+  `/api/v1/health/ready` is ready through the gateway. Re-running `migrate` and `bootstrap` is a no-op.
+- **Gateway.**
+  - `/`, deep links, hashed `/assets/` and `/api/` responses all carry nosniff, Referrer-Policy, X-Frame-Options and the CSP. The assets location fix from 0.2.0 was confirmed.
+  - The SPA shell is `no-cache` and assets are `immutable`.
+  - nginx's request ID reaches API responses.
+- **Browser** (Chrome). The app renders and fetches `/api/v1/health/live` with no console errors or CSP violations. Unknown routes render the in-app not-found view.
+- **Object store.** Bucket `codehover` exists. Anonymous list, read and PUT return 403.
+- **Broker.** The durable topic exchange `codehover.dlx` exists. Policy `codehover-work-dlx` applies to `^codehover\.work\.` quorum queues with the DLX and `delivery-limit` 20.
+- **Database roles.**
+  - The API connects as `app_runtime`.
+  - `app_runtime`, `app_system` and `app_resolver` exist, none superuser or BYPASSRLS.
+  - The application's integration tests pass against the container database: migration down/up cycle, readiness, and role limits.
+- **Shutdown.** The worker, dispatcher and scheduler exit 0 on SIGTERM.
+- **Found and fixed during the run.**
+  - The default host port 5432 collided with a local PostgreSQL; the host-port overrides were added.
+  - A bootstrap log field used a reserved `LogRecord` key and crashed the job; it was fixed in the application, with a regression test.
 
 ## Versioning checks (0.3.0)
 
@@ -61,10 +96,10 @@ The 0.1.0 report listed "document checksum consistency" as passed, but its manif
 
 ## Not performed
 
-- Docker Compose engine validation, image pull/build/start, and `nginx -t`. The Docker daemon was unavailable; nginx changes were reviewed, not executed.
-- Alembic migrations, and SQL beyond the core subset.
+- `nginx -t` as a separate step (the config was loaded and exercised by the running gateway instead). Multi-node RabbitMQ, managed object storage and production TLS ingress.
+- SQL beyond the core subset and the M0 baseline migration.
 - Live OAuth, GitHub App installation, provider calls and billing.
-- Frontend rendering, accessibility, performance, security penetration tests and end-to-end application tests.
+- Accessibility audits, performance, security penetration tests, and end-to-end tests beyond the M0 shell.
 - The GitHub App installation-verification flow (09) relies on GitHub's documented `GET /user/installations` behavior and must be confirmed against a real App in M1.
 
 The core SQL is a subset design reference. The API specification is a design contract, not generated OpenAPI. Container templates require the future application files and exact dependency lockfiles. Production image tags and digests, and the model/provider configuration, remain implementation gates.

@@ -1,0 +1,66 @@
+[project]
+name = "codehover-cloud-backend"
+version = "0.1.0"
+description = "codehover-cloud API, workers and generation engine"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "sqlalchemy[asyncio]>=2.0.36,<2.1",
+  "psycopg[binary,pool]>=3.2",
+  "alembic>=1.14",
+  "httpx>=0.28",
+  "boto3>=1.35",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8",
+  "mypy>=1.13",
+]
+
+# The package itself is not installed: the image copies backend/ and runs from /app,
+# tests run with pythonpath ".". Locks: see README "Dependency locks".
+
+[tool.uv]
+# Only resolve releases published before this instant (supply-chain cooling-off period).
+# Move it forward deliberately when refreshing locks; CI recompiles and diffs the locks.
+exclude-newer = "2026-11-03T00:00:00Z"
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF", "N", "SIM", "PTH"]
+ignore = ["S101"]  # assert is the pytest idiom
+
+[tool.ruff.lint.isort]
+# backend/alembic/ holds migrations; the import name `alembic` is the installed library.
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]  # fixture secrets
+"alembic/**" = ["N999"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app", "alembic"]
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: needs a PostgreSQL 18 database (TEST_DATABASE_URL / TEST_MIGRATION_DATABASE_URL)"]
+addopts = "-ra --strict-markers"

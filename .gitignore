@@ -34,3 +34,18 @@ __pycache__/
 *.egg-info/
 /build/
 .pytest_cache/
+
+# Local configuration and secrets (never commit)
+.env
+deployment/.env
+deployment/secrets/
+
+# Python environments and tool caches
+.venv/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Frontend
+frontend/coverage/

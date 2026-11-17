@@ -1,1 +1,94 @@
 # codehover-cloud
+
+codehover-cloud turns a GitHub repository into a browsable, cited explanation website. The specification lives in [`build-package/`](build-package/README.md); this repository implements it milestone by milestone (`build-package/14_IMPLEMENTATION_ROADMAP.md`).
+
+**Status: M0 foundation.** It includes:
+- the FastAPI shell with health endpoints and the error envelope;
+- the Alembic baseline on PostgreSQL 18;
+- worker process shells and the infrastructure bootstrap;
+- the Vite/React shell, Compose, and CI.
+
+Sign-in, workspaces and builds start in M1.
+
+| Path | Contents |
+|---|---|
+| `backend/` | API (`app/main.py`), workers (`app/workers/`), infrastructure bootstrap (`app/ops/`), migrations (`alembic/`), tests |
+| `frontend/` | React + TypeScript + Vite + Tailwind app |
+| `contracts/openapi.json` | Generated API contract; CI fails if it drifts from the code |
+| `deployment/` | Dockerfiles, Compose, nginx, broker config and local DB bootstrap |
+| `VERSION` | Application version (SemVer, `build-package/23_VERSIONING_AND_RELEASES.md`) |
+
+## Requirements
+
+- Python 3.13 via [uv](https://docs.astral.sh/uv/)
+- Node.js 24 and npm
+- PostgreSQL 18 (local install or container)
+- Docker, for the full stack
+
+## Backend
+
+```bash
+cd backend
+uv venv --python 3.13 .venv && uv pip sync --require-hashes requirements-dev.lock
+.venv/bin/ruff format --check . && .venv/bin/ruff check . && .venv/bin/mypy
+.venv/bin/pytest -m "not integration"                 # unit tests, no services needed
+.venv/bin/pytest tests/unit/test_settings.py -k production   # a single test
+```
+
+Integration tests need a PostgreSQL 18 database bootstrapped with `deployment/init-db.sh`:
+
+```bash
+POSTGRES_USER=codehover_ddl POSTGRES_DB=codehover APP_DB_PASSWORD=runtimepw APP_SYSTEM_DB_PASSWORD=systempw \
+  PGHOST=localhost sh ../deployment/init-db.sh
+TEST_MIGRATION_DATABASE_URL=postgresql+psycopg://codehover_ddl:<pw>@localhost:5432/codehover \
+TEST_DATABASE_URL=postgresql+psycopg://app_runtime:runtimepw@localhost:5432/codehover \
+TEST_SYSTEM_DATABASE_URL=postgresql+psycopg://app_system:systempw@localhost:5432/codehover \
+  .venv/bin/pytest -m integration
+```
+
+To run the API locally:
+1. Apply migrations with the DDL role: `MIGRATION_DATABASE_URL=... .venv/bin/alembic upgrade head`.
+2. Start the server with the runtime role: `DATABASE_URL=... SESSION_SECRET=... APP_ENCRYPTION_KEY=... .venv/bin/uvicorn app.main:app --reload`.
+
+After changing API routes or models, regenerate the contract with `.venv/bin/python -m app.openapi_export`.
+
+**Dependency locks.** `requirements.lock` (runtime, used by the image) and `requirements-dev.lock` are hash-pinned. They are resolved from `pyproject.toml`, accepting only releases published before `[tool.uv] exclude-newer`. To refresh them:
+1. Move that date forward deliberately.
+2. Run `uv pip compile pyproject.toml --universal --python-version 3.13 --generate-hashes --no-header -o requirements.lock`, and the same command with `--extra dev -o requirements-dev.lock`.
+
+CI recompiles both locks and fails on any difference.
+
+## Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev          # http://localhost:5173, proxies /api to 127.0.0.1:8000
+npm run lint && npm run typecheck && npm test && npm run build
+npx vitest run src/app/routes.test.tsx   # a single test file
+npm run check:env    # allowlisted import.meta.env keys only; no secrets in the bundle
+```
+
+`frontend/.npmrc` pins exact versions and applies a `before` cutoff, the same cooling-off period as the Python locks.
+
+## Full stack (Docker Compose)
+
+```bash
+cd deployment
+cp .env.example .env                       # replace every placeholder secret
+mkdir -p secrets && touch secrets/github-app.pem   # placeholder until a GitHub App exists
+docker compose --env-file .env -f compose.yaml --profile app up -d --build
+curl http://localhost:8080/api/v1/health/ready
+```
+
+Start-up order:
+1. Infrastructure: PostgreSQL 18, RabbitMQ and SeaweedFS (local S3).
+2. `migrate`: Alembic, DDL role.
+3. `bootstrap`: the private bucket, plus the broker dead-letter exchange and work-queue policy.
+4. The API, workers and the nginx gateway on port 8080.
+
+`init-db.sh` creates the database roles only on a fresh volume. If a host port is already taken (for example by a local PostgreSQL on 5432), set `DB_HOST_PORT`, `AMQP_HOST_PORT`, `RABBITMQ_MANAGEMENT_HOST_PORT`, `S3_HOST_PORT` or `WEB_HOST_PORT` in `.env`.
+
+## Versioning
+
+`VERSION` holds the application version. `python3 scripts/check_versions.py` verifies that the backend, frontend, lockfile and OpenAPI contract agree with it. The specification package is versioned separately in `build-package/VERSION`.

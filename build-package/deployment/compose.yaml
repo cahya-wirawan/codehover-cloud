@@ -1,8 +1,10 @@
 name: codehover-cloud
 x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-development}
   DATABASE_URL: postgresql+psycopg://app_runtime:${APP_DB_PASSWORD:?set runtime secret}@db:5432/codehover
   AMQP_URL: amqp://${RABBITMQ_USER:-codehover}:${RABBITMQ_PASSWORD:?set broker secret}@rabbitmq:5672/codehover
-  S3_ENDPOINT_URL: http://objectstore:9000
+  RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+  S3_ENDPOINT_URL: http://objectstore:8333
   S3_ACCESS_KEY_ID: ${S3_ROOT_USER:?set local storage user}
   S3_SECRET_ACCESS_KEY: ${S3_ROOT_PASSWORD:?set local storage secret}
   S3_BUCKET: codehover
@@ -53,7 +55,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
       - ./init-db.sh:/docker-entrypoint-initdb.d/10-runtime.sh:ro
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:${DB_HOST_PORT:-5432}:5432"]
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U codehover_ddl -d codehover"]
       interval: 5s
@@ -69,7 +71,7 @@ services:
     volumes:
       - rabbitdata:/var/lib/rabbitmq
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-    ports: ["127.0.0.1:5672:5672", "127.0.0.1:15672:15672"]
+    ports: ["127.0.0.1:${AMQP_HOST_PORT:-5672}:5672", "127.0.0.1:${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"]
     healthcheck:
       test: [CMD, rabbitmq-diagnostics, -q, ping]
       interval: 10s
@@ -77,13 +79,16 @@ services:
       retries: 20
     networks: [services]
   objectstore:
+    # SeaweedFS single node (M0 decision replacing archived MinIO; 21/22). The image's default
+    # command is `weed mini -dir=/data`; env vars seed one admin S3 identity, which also turns
+    # off anonymous access. The app depends only on the S3 API (path-style addressing).
     image: ${OBJECT_STORE_IMAGE:?choose reviewed S3 image}
-    command: server /data --console-address :9001
     environment:
-      MINIO_ROOT_USER: ${S3_ROOT_USER:?set local storage user}
-      MINIO_ROOT_PASSWORD: ${S3_ROOT_PASSWORD:?set local storage secret}
+      AWS_ACCESS_KEY_ID: ${S3_ROOT_USER:?set local storage user}
+      AWS_SECRET_ACCESS_KEY: ${S3_ROOT_PASSWORD:?set local storage secret}
+      S3_BUCKET: codehover
     volumes: ["objects:/data"]
-    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    ports: ["127.0.0.1:${S3_HOST_PORT:-8333}:8333"]
     networks: [services]
   migrate:
     <<: *backend
@@ -95,13 +100,21 @@ services:
     depends_on:
       db: {condition: service_healthy}
     restart: "no"
+  bootstrap:
+    # Idempotent: private bucket, broker dead-letter exchange and work-queue policy (22 step 5).
+    <<: *backend
+    command: [python, -m, app.ops.bootstrap]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+      objectstore: {condition: service_started}
+    restart: "no"
   api:
     <<: *backend
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
     depends_on:
       migrate: {condition: service_completed_successfully}
+      bootstrap: {condition: service_completed_successfully}
       rabbitmq: {condition: service_healthy}
-      objectstore: {condition: service_started}
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=3)"]
       interval: 10s
@@ -146,7 +159,7 @@ services:
     build:
       context: ..
       dockerfile: deployment/Dockerfile.frontend
-    ports: ["127.0.0.1:8080:8080"]
+    ports: ["127.0.0.1:${WEB_HOST_PORT:-8080}:8080"]
     depends_on:
       api: {condition: service_healthy}
     networks: [services]
