@@ -29,11 +29,12 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | DELETE `/workspaces/{wid}/invitations/{id}` | none → 204 | Admin |
 | POST `/invitations/accept` | token → membership | Signed-in verified invited email; unknown/used/revoked/expired → 404 `INVITATION_INVALID`, wrong email → 403 `INVITATION_EMAIL_MISMATCH` |
 | PATCH/DELETE `/workspaces/{wid}/members/{uid}` | role → 204 / 204 | Admin manages viewer/editor only; owner for admins/owners; any member may leave; last owner → 409 `LAST_OWNER` |
-| POST `/workspaces/{wid}/github/install` | none → install_url/state | Admin; associate verified GitHub user |
-| GET `/integrations/github/setup` | installation_id, state, code → redirect | Exchange code for a GitHub App user access token; require linked GitHub user ID match and installation in `GET /user/installations` (document 09); state alone never suffices |
+| POST `/workspaces/{wid}/github/install` | none → `install_url` (+ flow cookie) | Admin; App not configured → 503 `GITHUB_APP_UNAVAILABLE` |
+| GET `/integrations/github/setup` | installation_id (untrusted), state → 302 GitHub App user authorization (PKCE) | Install-phase state, browser- and session-bound |
+| GET `/integrations/github/callback` | code, state → 302 `/w/{wid}/connections?connected=1` or `?error=` | Exchange for a GitHub App user token; require the linked GitHub identity and the installation in `GET /user/installations` (09); re-check admin role; token discarded. Errors: `expired`, `github_identity_required`, `identity_mismatch`, `installation_not_accessible`, `forbidden`, `provider` |
 | GET/DELETE `/workspaces/{wid}/connections[/{id}]` | cursor/none → list/204 | Admin revoke; cancels/suspends affected operations |
-| GET `/workspaces/{wid}/repositories` | connection, cursor/query → authorized repos | Editor; server provider permissions enforced |
-| GET `/workspaces/{wid}/repositories/{rid}/refs` | query, cursor → refs | Editor |
+| GET `/workspaces/{wid}/repositories` | `connection_id` → repositories the installation can read (upserted, internal IDs) | Editor; inactive connection → 409 `CONNECTION_INACTIVE` |
+| GET `/workspaces/{wid}/repositories/{rid}/refs` | none → branches and tags with SHAs | Editor; repository addressed by numeric GitHub ID (rename-safe); outside the installation → 404 |
 | GET/POST `/workspaces/{wid}/projects` | repository_id,name,tracked_ref → project | Member list; editor create |
 | GET/PATCH `/projects/{pid}` | name/config/tracked_ref → project | Viewer read; editor write with ETag |
 | POST `/projects/{pid}/snapshots` | ref → snapshot job/status | Editor; acquisition async |

@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.3.7",
+  "package_version": "0.3.8",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -69,7 +69,7 @@
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "a778e5bed2fa3561c6c72a88828db6018553e48e3de16ba26ecedc1867f540d3"
+      "sha256": "8450869a6faed4654970e5cba475ac96555d77a090f25073e26dfe0071d7a697"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -81,7 +81,7 @@
     },
     "09_AUTH_AND_PERMISSIONS.md": {
       "status": "complete specification",
-      "sha256": "d1a544da5a0e023a2b5bb68c7c473fbe8f03559200e866d4ac52be641a8f29aa"
+      "sha256": "0443b7b9e470e9d005080826247642a4fe66ba321152d29e2293a88adfafd1a7"
     },
     "10_OFFLINE_SYNC_AND_STORAGE.md": {
       "status": "complete specification",
@@ -133,7 +133,7 @@
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
-      "sha256": "202d9b2cbb71911258d3732185fb724b6ca789f54e0172692398393b73cc5306"
+      "sha256": "931234a69b86d44b523731a16ceadd9072dc1381e0b9aded168f8d194ff2d8d0"
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "433bb3bb5d384635f1d7dbc6cdb43e52c1761b59fff76cc31edbb66a95d25c14"
+      "sha256": "0af33946d55f4d6791ed107d8638edcf024eeba3a207b3da99af9d2ec5c4ac46"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "bf88b2229e320e114ee701aeb070f326e398e26c9024b25e4edf8a5b5fe42b71"
+      "sha256": "09f8258732785f1fa9fd948fb7b1fbf9cdde6632ab14877d8c1628a7927d85ed"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "771ca2e2ce65cff37a5970921550bc14ce541b16f660885de0176b20d4979bc3"
+      "sha256": "6d8a3709899fa2aaa8c5907508c093347b625bec04ef5a2747519405c813cc99"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "2e376439ec341f14ae018b8aa4796b9336702e6a59d6c42b91f61d84baac9807"
+      "sha256": "ad5adcac95aff5c3ad7deea82369f78901765729dbc12933056cad1483e27f39"
     },
     "contracts/core_schema.sql": {
       "status": "reference template/schema",
@@ -216,5 +216,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "ab712977dd143e535f53208da27ddfbf9d437cf85d095234902fede2de267abc"
+  "master_spec_sha256": "8c5caf040af510a5f1e155056afe480c062cc7f2b239188bdc533238db10650f"
 }

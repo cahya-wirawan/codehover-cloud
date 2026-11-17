@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-11-18
+
+### Changed
+
+- 06, 09, 22: the GitHub App connect flow as implemented in T05: the two-phase setup and callback, the required linked GitHub identity, the role re-check, the App URL and permission settings, the repository and ref contract, and the error codes.
+
 ## [0.3.7] - 2026-11-18
 
 ### Added

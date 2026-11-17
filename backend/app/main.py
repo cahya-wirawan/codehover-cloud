@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, FastAPI, Request, Response
 from starlette.middleware.base import RequestResponseEndpoint
 
 from app import __version__
+from app.adapters.github.app import GitHubApp
 from app.adapters.oauth import OAuthProvider
 from app.adapters.oauth.github import GitHubProvider
 from app.adapters.oauth.google import GoogleProvider
@@ -20,6 +22,7 @@ from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
 from app.core.security import Sealer
 from app.core.settings import Environment, Settings, get_settings
+from app.modules.github import router as github
 from app.modules.identity import router as identity
 from app.modules.workspaces import router as workspaces
 
@@ -40,6 +43,34 @@ def oauth_providers(settings: Settings, http: httpx.AsyncClient) -> dict[str, OA
             settings.github_oauth_client_id, settings.github_oauth_client_secret.get_secret_value(), http
         )
     return providers
+
+
+def github_app(settings: Settings, http: httpx.AsyncClient) -> GitHubApp | None:
+    """Repository access needs the App's ID, slug, client credentials and a real private key."""
+    required = (
+        settings.github_app_id,
+        settings.github_app_slug,
+        settings.github_app_client_id,
+        settings.github_app_client_secret,
+        settings.github_app_private_key_file,
+    )
+    if not all(required):
+        return None
+    try:
+        pem = Path(str(settings.github_app_private_key_file)).read_text()
+    except OSError:
+        return None
+    if "PRIVATE KEY" not in pem:  # e.g. the empty local placeholder
+        return None
+    assert settings.github_app_client_secret is not None
+    return GitHubApp(
+        app_id=str(settings.github_app_id),
+        slug=str(settings.github_app_slug),
+        client_id=str(settings.github_app_client_id),
+        client_secret=settings.github_app_client_secret.get_secret_value(),
+        private_key_pem=pem,
+        http=http,
+    )
 
 
 async def no_store(request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -78,6 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.http = http
     app.state.sealer = Sealer(settings.app_encryption_key.get_secret_value())
     app.state.oauth_providers = oauth_providers(settings, http)
+    app.state.github_app = github_app(settings, http)
 
     install_error_handlers(app)
     app.middleware("http")(no_store)
@@ -87,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(health.router)
     api.include_router(identity.router)
     api.include_router(workspaces.router)
+    api.include_router(github.router)
     app.include_router(api)
     return app
 

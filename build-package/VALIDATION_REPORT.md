@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.3.7
+Date: 2026-11-18 · Package version 0.3.8
+
+0.3.8 records the T05 GitHub App flow. The implementation passes 10 GitHub integration tests on PostgreSQL 18 against a fake GitHub. The fake checks PKCE, the App JWT signature and issuer, and per-installation repository access. The tests cover spoofed and other users' installations, a different GitHub account, a Google-only user, phase confusion, other-browser and other-session hijacking, mid-flow demotion, a repository removed from the installation, and a revoked connection. Five code mutations of the guards are each caught. 93 backend tests pass.
 
 0.3.7 records T04 workspace membership. The implementation (migration 0003) passes 10 workspace integration tests on PostgreSQL 18, part of 83 backend tests. They cover the role matrix, invitations with verified-email matching, single use, revocation and expiry, non-member 404s, ETag preconditions, a signed and scoped pagination cursor, and a true two-connection race on the last two owners, of which exactly one commits. Mutation checks:
 - The admin role bound, the invitation email check and the member-list workspace filter are each caught.

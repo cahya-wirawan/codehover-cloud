@@ -30,6 +30,72 @@
         "title": "Accepted",
         "type": "object"
       },
+      "ConnectionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConnectionList",
+        "type": "object"
+      },
+      "ConnectionOut": {
+        "properties": {
+          "account": {
+            "title": "Account",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "installation_id": {
+            "title": "Installation Id",
+            "type": "integer"
+          },
+          "last_verified_at": {
+            "format": "date-time",
+            "title": "Last Verified At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "installation_id",
+          "account",
+          "status",
+          "last_verified_at",
+          "created_at"
+        ],
+        "title": "ConnectionOut",
+        "type": "object"
+      },
       "CsrfResponse": {
         "properties": {
           "csrf_token": {
@@ -91,6 +157,19 @@
           "created_at"
         ],
         "title": "IdentityOut",
+        "type": "object"
+      },
+      "InstallStart": {
+        "properties": {
+          "install_url": {
+            "title": "Install Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "install_url"
+        ],
+        "title": "InstallStart",
         "type": "object"
       },
       "InvitationCreate": {
@@ -377,6 +456,112 @@
           "checks"
         ],
         "title": "ReadyResponse",
+        "type": "object"
+      },
+      "RefList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RefOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RefList",
+        "type": "object"
+      },
+      "RefOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "branch",
+              "tag"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sha": {
+            "title": "Sha",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "sha"
+        ],
+        "title": "RefOut",
+        "type": "object"
+      },
+      "RepositoryList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RepositoryList",
+        "type": "object"
+      },
+      "RepositoryOut": {
+        "properties": {
+          "default_branch": {
+            "title": "Default Branch",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "provider_repo_id": {
+            "title": "Provider Repo Id",
+            "type": "integer"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider_repo_id",
+          "owner",
+          "name",
+          "visibility",
+          "default_branch"
+        ],
+        "title": "RepositoryOut",
         "type": "object"
       },
       "RoleChange": {
@@ -820,6 +1005,143 @@
         ]
       }
     },
+    "/api/v1/integrations/github/callback": {
+      "get": {
+        "operationId": "callback_api_v1_integrations_github_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Callback",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/integrations/github/setup": {
+      "get": {
+        "operationId": "setup_api_v1_integrations_github_setup_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "installation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installation Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup",
+        "tags": [
+          "github"
+        ]
+      }
+    },
     "/api/v1/invitations/accept": {
       "post": {
         "operationId": "accept_invitation_api_v1_invitations_accept_post",
@@ -1191,6 +1513,138 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/connections": {
+      "get": {
+        "operationId": "list_connections_api_v1_workspaces__workspace_id__connections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Connections",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/connections/{connection_id}": {
+      "delete": {
+        "operationId": "revoke_connection_api_v1_workspaces__workspace_id__connections__connection_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Connection",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/github/install": {
+      "post": {
+        "operationId": "start_install_api_v1_workspaces__workspace_id__github_install_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallStart"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Install",
+        "tags": [
+          "github"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/invitations": {
       "get": {
         "operationId": "list_invitations_api_v1_workspaces__workspace_id__invitations_get",
@@ -1506,6 +1960,112 @@
         "summary": "Change Role",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/repositories": {
+      "get": {
+        "operationId": "list_repositories_api_v1_workspaces__workspace_id__repositories_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Repositories",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/repositories/{repository_id}/refs": {
+      "get": {
+        "operationId": "list_refs_api_v1_workspaces__workspace_id__repositories__repository_id__refs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Repository Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Refs",
+        "tags": [
+          "github"
         ]
       }
     }
