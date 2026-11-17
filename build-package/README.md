@@ -1,0 +1,33 @@
+# codehover-cloud — build package
+
+Version 1.0 · 17 November 2026 · Status: implementation specification, not a deployed application.
+
+codehover-cloud turns a GitHub repository into a browsable, cited explanation website: annotated source, hover cards, relationships, architecture guides, and downloadable static artifacts. It provides the hosted SaaS workflow around those capabilities: OAuth sign-in, workspace isolation, private repository connections, asynchronous builds, budgets, access-controlled hosting, and subscriptions.
+
+The reference was inspected through authenticated GitHub access at commit `a3f668bc36420b414e7c8e048b06ca5e18ce8ad2`. Repository evidence is distinguished from proposed SaaS behavior in `00_REFERENCE_ANALYSIS.md`. Source was read, not executed. No changes were made to the reference repository.
+
+## Stack and decisions
+
+- API: Python 3.13, FastAPI, Pydantic 2, SQLAlchemy 2.x async ORM, psycopg 3, Alembic.
+- Persistence: PostgreSQL 18, native `uuidv7()` primary keys, S3-compatible private object storage.
+- Jobs: RabbitMQ with aio-pika consumers, transactional outbox, persistent task state in PostgreSQL. No Redis required for MVP.
+- Frontend: React + TypeScript + Vite, Tailwind CSS + shadcn/ui, TanStack Query, React Router, React Hook Form + Zod, Lucide icons, CodeMirror 6 read-only code viewer.
+- Authentication: Google OIDC and GitHub OAuth, server-side opaque sessions. Separate read-only GitHub App for repository ingestion.
+- Engine: independently implemented versioned pipeline, informed by codehover's behavior and contracts. Reuse of any reference code is a separate explicit engineering decision with license review.
+- Infrastructure: Dockerfiles, local Docker Compose, nginx same-origin routing; managed PostgreSQL/RabbitMQ/object storage recommended for production.
+
+## Reading order
+
+Start with `01_PRD.md`, `04_SYSTEM_ARCHITECTURE.md`, `05_DATA_MODEL.md`, `06_API_SPEC.md`, `07_AI_OR_AUTOMATION_PIPELINE.md`, then `15_PRODUCT_BACKLOG.md`. UX and design are in documents 02, 03 and 17. Operations and container contracts are in document 22 and `deployment/`.
+
+All numbered documents are normative proposed requirements for codehover-cloud, except the explicitly classified reference observations. Limits and service objectives are initial targets to validate, not measured performance. Pricing is a hypothesis, not a market or provider price quotation.
+
+## What is included
+
+Detailed PRD, screen specs, flows, architecture, relational model, SQL design reference, REST/event contracts, AI prompts and schemas, security model, billing specification, tests, phased roadmap, actionable backlog, design tokens, release checklist, risks, deployment/runbook, and Docker configuration templates. `CODEHOVER_WEB_MASTER_SPEC.md` combines the documents for a coding agent.
+
+Container files define the intended application interface. Application source and lockfiles are intentionally not included: this is a planning package. Infrastructure can start independently; the application profile becomes runnable after implementation. No end-to-end deployment or OAuth login has been tested in this package.
+
+## First implementation milestone
+
+Complete M1: OAuth sign-in, workspace membership, GitHub App connection, immutable snapshot acquisition, safe scan, and a deterministic replay build delivered through a private viewer. Exit only after cross-workspace tests and worker crash/retry tests pass. Add paid model calls after that vertical slice works.

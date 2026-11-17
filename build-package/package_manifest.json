@@ -1,0 +1,192 @@
+{
+  "product_name": "codehover-cloud",
+  "package_version": "1.0",
+  "research_date": "2026-11-17",
+  "reference_product": "cahya-wirawan/codehover",
+  "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
+  "target_platforms": [
+    "responsive web SaaS",
+    "offline static export"
+  ],
+  "chosen_stack": [
+    "FastAPI",
+    "PostgreSQL 18",
+    "SQLAlchemy 2.x",
+    "Alembic",
+    "native UUIDv7",
+    "RabbitMQ",
+    "aio-pika",
+    "S3-compatible storage",
+    "React",
+    "TypeScript",
+    "Vite",
+    "Tailwind CSS",
+    "shadcn/ui",
+    "Google OIDC",
+    "GitHub OAuth",
+    "GitHub App",
+    "Docker Compose"
+  ],
+  "evidence_classes": [
+    "Verified",
+    "Strongly inferred",
+    "Proposed",
+    "Unknown"
+  ],
+  "starter_code_inclusion": "No application source; reference Dockerfiles/Compose/config, core SQL subset and JSON schemas included",
+  "validation_scope": "Package completeness, JSON/JSON Schema, YAML structure and internal consistency; no Docker engine or live app tests",
+  "known_open_decisions": [
+    "production provider/model/region",
+    "hosting/domain",
+    "pricing validation",
+    "provider contracts",
+    "optional codehover engine reuse review"
+  ],
+  "documents": {
+    "00_REFERENCE_ANALYSIS.md": {
+      "status": "complete specification",
+      "sha256": "ee041ee35a2d2a36d4e592eb30e29ab3e3a4ecc0b0d8748a8950d6fa70c0ad32"
+    },
+    "01_PRD.md": {
+      "status": "complete specification",
+      "sha256": "958e68330fd310f6d60c7f9e6a8325e64b6ed62b82e841ae0bdb45ee07d261a0"
+    },
+    "02_UX_SCREEN_SPEC.md": {
+      "status": "complete specification",
+      "sha256": "cc658393e88c51f83018ccb2039df5b87e3d91b8ad921817459c1c897570b020"
+    },
+    "03_USER_FLOWS.md": {
+      "status": "complete specification",
+      "sha256": "f775840e032ea579e21eddf17dd0d9e6c05b976d5a46a6b7313a8832af6b5201"
+    },
+    "04_SYSTEM_ARCHITECTURE.md": {
+      "status": "complete specification",
+      "sha256": "e9fc87189f16942d62a6bad2167c39f492eb2eb9bc03920eea8318ae069bc8d3"
+    },
+    "05_DATA_MODEL.md": {
+      "status": "complete specification",
+      "sha256": "930bfde6f8be571b1fffb7ab852cdd8e11a1764fb255c12026845493d2671c0e"
+    },
+    "06_API_SPEC.md": {
+      "status": "complete specification",
+      "sha256": "02100f655256799024165ba3c1cb9c0b618033b0aeeab063088f57cbaf82f3c5"
+    },
+    "07_AI_OR_AUTOMATION_PIPELINE.md": {
+      "status": "complete specification",
+      "sha256": "f38543d28e6729c7729a7801361a4ae7446177dc1e232cacce1a5300c87faffb"
+    },
+    "08_SAFETY_PRIVACY_COMPLIANCE.md": {
+      "status": "complete specification",
+      "sha256": "1355156c9fe3d32848095370224fb42906e3056214adb8b3c380731f9fb44aff"
+    },
+    "09_AUTH_AND_PERMISSIONS.md": {
+      "status": "complete specification",
+      "sha256": "3316b1064720bfc08e1bd234b2d192c117aac13dd3b1ca1e183cc31783be7b83"
+    },
+    "10_OFFLINE_SYNC_AND_STORAGE.md": {
+      "status": "complete specification",
+      "sha256": "33cf5b7d3ec3e67f36fbb227fef148002399c972e520629ec2049ad1b876f08b"
+    },
+    "11_MONETIZATION_AND_BILLING.md": {
+      "status": "complete specification",
+      "sha256": "9083174a600b3bd42120e95da76cdd4c578ed71514c9d71fe0d89a7e1b573d81"
+    },
+    "12_ANALYTICS_AND_OBSERVABILITY.md": {
+      "status": "complete specification",
+      "sha256": "fbac5b9c7d351be3d14cfa0bfe1843168486f01f27ac347f2e34d2c2adcaae2b"
+    },
+    "13_TEST_PLAN.md": {
+      "status": "complete specification",
+      "sha256": "9c48c46ca3f1ecc17cbf82de4250fce8f59006ad9999ce87ea6f6eb0da7b00a5"
+    },
+    "14_IMPLEMENTATION_ROADMAP.md": {
+      "status": "complete specification",
+      "sha256": "6cd1cd4939e3de156b234d5d932bf198a05d6f53dfbd5c37ba0ef1d1262206ea"
+    },
+    "15_PRODUCT_BACKLOG.md": {
+      "status": "complete specification",
+      "sha256": "da9ee44a7e329c1e4adaeebd9ff4aaffa3de9f675ef21f31b83f236869cd6952"
+    },
+    "16_REPO_STRUCTURE.md": {
+      "status": "complete specification",
+      "sha256": "d20dae591193cbdedc5f12fc2cd65ad0c827ed64c6fba4af5a3c663c69ce6335"
+    },
+    "17_DESIGN_SYSTEM.md": {
+      "status": "complete specification",
+      "sha256": "a41f392bdb6f6b75ec1053e89fa3602034237481b2d963599dff2a525c224a8e"
+    },
+    "18_RELEASE_CHECKLIST.md": {
+      "status": "complete specification",
+      "sha256": "cd9646295ebb38c9e21e541a06a838d35695ddaecda350084823ce6824bee06c"
+    },
+    "19_PROMPT_LIBRARY.md": {
+      "status": "complete specification",
+      "sha256": "e5a07d134db3c1cd4ffaa17825c309cd182cbbd8ce51be3b7448fd9cd45e623a"
+    },
+    "20_ACCEPTANCE_CRITERIA.md": {
+      "status": "complete specification",
+      "sha256": "2afc2c3dde1ecfe08d243ff481a8e9f1f3ed3ce88f7237c8a3dbca904d437231"
+    },
+    "21_RISKS_AND_OPEN_QUESTIONS.md": {
+      "status": "complete specification",
+      "sha256": "d7fc12e832601ffb83344f98ed88d88985be07138b0e8614f3927ff9fc77251f"
+    },
+    "22_DEPLOYMENT_AND_OPERATIONS.md": {
+      "status": "complete specification",
+      "sha256": "0abfab1a8ac853a44da8fbe049e658c8d75189146607db61c28ac5126676a121"
+    },
+    "README.md": {
+      "status": "complete specification",
+      "sha256": "674779dc828af55d64042cac25b4a12ba358cf4615f14648070e3b707ce99fff"
+    },
+    "SOURCES.md": {
+      "status": "complete specification",
+      "sha256": "f2d94eaf6cc8cec375e2bb163aef951d249ebdbc5ae1e5e519b02bb545cceb67"
+    },
+    "contracts/core_schema.sql": {
+      "status": "reference template/schema",
+      "sha256": "b8997d5f2664ac16cd35c7b6b0b9aa278905a2df511cbaff31769392cd2117c1"
+    },
+    "contracts/explanation.schema.json": {
+      "status": "reference template/schema",
+      "sha256": "5ba62c3015b13ccb33ab2cf0a5d2bf77b155dd5ced66ce1118b5aec8e8264054"
+    },
+    "contracts/task-envelope.schema.json": {
+      "status": "reference template/schema",
+      "sha256": "2b1ed8d350da8b3ff29914886c7af280e8aaf237f21aa4f859e45dcf4a3d58b6"
+    },
+    "deployment/.env.example": {
+      "status": "reference template/schema",
+      "sha256": "ee929a7bfe61e6c4a8eed07904b8527807122ed9658c565750bdc720ece3bcee"
+    },
+    "deployment/Dockerfile.backend": {
+      "status": "reference template/schema",
+      "sha256": "6d8c061f5f8da8e5649015a2539bf1c3c6b55133a285bc377ce0f68e92514c1d"
+    },
+    "deployment/Dockerfile.frontend": {
+      "status": "reference template/schema",
+      "sha256": "a8f96d4a19c51cf5d30e433ce8032388462acf5984440bcca79d184f7cb935ae"
+    },
+    "deployment/compose.yaml": {
+      "status": "reference template/schema",
+      "sha256": "b0749bc0897ae97404e17e57768efa14ebcb8650fa83f7556fe6007fdc673af2"
+    },
+    "deployment/init-db.sh": {
+      "status": "reference template/schema",
+      "sha256": "216307f282bba396058e40522001dcc1cba777e02e76be4531ad09e48440b45e"
+    },
+    "deployment/nginx.conf": {
+      "status": "reference template/schema",
+      "sha256": "e99d2d7deec32b4189db8c583383e38b22428dbff9fd3ea7a5de48f5b7385838"
+    },
+    "deployment/rabbitmq.conf": {
+      "status": "reference template/schema",
+      "sha256": "20af0633c01429672a92c3d6cfacfe152db840b131bd3b70bb499eda31c17079"
+    },
+    "VALIDATION_REPORT.md": {
+      "status": "package checks completed; implementation untested",
+      "sha256": "852c5641005f20d27d138198d646f8cb82eafa913e8900991287e8dafdceac6e"
+    }
+  },
+  "master_spec_sha256": "2b7b3b5a912719fdb02406cb927dbf425a430d86f875de06a9e8b7b78d8a8cf1"
+}
