@@ -1,0 +1,176 @@
+# M0 CI (build-package/22 "CI pipeline", 14 M0 exit criteria). Actions are pinned to commit SHAs;
+# the comment names the release each SHA corresponds to.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "24"
+
+jobs:
+  spec:
+    name: Spec package and versions
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install package tooling
+        run: python -m pip install --disable-pip-version-check "pyyaml==6.0.3" "jsonschema==4.25.1"
+      - name: Build package is consistent
+        run: python build-package/tools/assemble.py --check
+      - name: Application versions agree
+        run: python scripts/check_versions.py
+
+  spec-sql:
+    name: SQL contracts on PostgreSQL 18
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: codehover_ddl
+          POSTGRES_PASSWORD: ci-ddl-password
+          POSTGRES_DB: codehover
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U codehover_ddl -d codehover"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPASSWORD: ci-ddl-password
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bootstrap roles
+        run: POSTGRES_USER=codehover_ddl POSTGRES_DB=codehover APP_DB_PASSWORD=x APP_SYSTEM_DB_PASSWORD=y sh build-package/deployment/init-db.sh
+      - name: Core schema and tenancy checks
+        run: psql -U codehover_ddl -d codehover -v ON_ERROR_STOP=1 -f build-package/contracts/core_schema.sql -f build-package/contracts/core_schema_checks.sql
+
+  backend:
+    name: Backend lint, types, tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: codehover_ddl
+          POSTGRES_PASSWORD: ci-ddl-password
+          POSTGRES_DB: codehover
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U codehover_ddl -d codehover"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPASSWORD: ci-ddl-password
+      TEST_MIGRATION_DATABASE_URL: postgresql+psycopg://codehover_ddl:ci-ddl-password@localhost:5432/codehover
+      TEST_DATABASE_URL: postgresql+psycopg://app_runtime:ci-runtime-password@localhost:5432/codehover
+      TEST_SYSTEM_DATABASE_URL: postgresql+psycopg://app_system:ci-system-password@localhost:5432/codehover
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Install locked dependencies
+        run: |
+          uv venv --python "$PYTHON_VERSION" .venv
+          uv pip sync --require-hashes requirements-dev.lock
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Locks match pyproject (cutoff from [tool.uv] exclude-newer)
+        run: |
+          uv pip compile pyproject.toml --universal --python-version 3.13 --generate-hashes --no-header -q -o /tmp/requirements.lock
+          uv pip compile pyproject.toml --extra dev --universal --python-version 3.13 --generate-hashes --no-header -q -o /tmp/requirements-dev.lock
+          diff requirements.lock /tmp/requirements.lock
+          diff requirements-dev.lock /tmp/requirements-dev.lock
+      - run: ruff format --check .
+      - run: ruff check .
+      - run: mypy
+      - name: OpenAPI contract is current
+        run: python -m app.openapi_export --check
+      - name: Unit tests
+        run: pytest -m "not integration"
+      - name: Bootstrap database roles
+        run: POSTGRES_USER=codehover_ddl POSTGRES_DB=codehover APP_DB_PASSWORD=ci-runtime-password APP_SYSTEM_DB_PASSWORD=ci-system-password sh ../deployment/init-db.sh
+      - name: Integration tests (migrations, readiness, roles)
+        run: pytest -m integration
+
+  frontend:
+    name: Frontend lint, types, tests, build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build with canary secrets in the environment
+        env:
+          SESSION_SECRET: canary-session-${{ github.run_id }}
+          MODEL_API_KEY: canary-model-${{ github.run_id }}
+          VITE_UNUSED_SECRET: canary-vite-${{ github.run_id }}
+        run: npm run build
+      - name: No secret in frontend (allowlisted env keys, canaries absent from dist)
+        env:
+          CANARY_SECRETS: canary-session-${{ github.run_id }},canary-model-${{ github.run_id }},canary-vite-${{ github.run_id }}
+        run: npm run check:env
+
+  compose-smoke:
+    name: Images build and stack starts
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    defaults:
+      run:
+        working-directory: deployment
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Local configuration from the template
+        run: |
+          cp .env.example .env
+          mkdir -p secrets && touch secrets/github-app.pem
+      - name: Compose files are valid
+        run: |
+          docker compose --env-file .env -f compose.yaml config --quiet
+          docker compose --env-file .env -f compose.yaml --profile app config --quiet
+      - name: Build images
+        run: docker compose --env-file .env -f compose.yaml --profile app build --build-arg APP_VERSION="$(cat ../VERSION)"
+      - name: Start the stack
+        run: docker compose --env-file .env -f compose.yaml --profile app up -d
+      - name: Health through the gateway
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/api/v1/health/ready; then echo; break; fi
+            sleep 3
+          done
+          curl -fsS http://127.0.0.1:8080/api/v1/health/ready | grep -q '"status":"ready"'
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="root">'
+          curl -fsSI http://127.0.0.1:8080/ | grep -qi 'content-security-policy'
+      - name: Bootstrap and migration completed
+        run: |
+          test "$(docker compose --env-file .env -f compose.yaml --profile app ps -a --format '{{.Service}} {{.ExitCode}}' | grep -E '^(migrate|bootstrap) ' | awk '{print $2}' | sort -u)" = "0"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --env-file .env -f compose.yaml --profile app logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose --env-file .env -f compose.yaml --profile app down -v

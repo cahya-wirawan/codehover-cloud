@@ -16,7 +16,7 @@
 | Public withdrawal cannot erase external copies | High / certain after download | Explicit disclosure, no recall guarantee; product/legal review |
 | Provider region/retention unsuitable | High / medium | Approved catalog/procurement policy and consent; operator |
 | Compose mistaken for production HA | Medium / medium | Local templates labeled; managed infrastructure/restore gate; operations |
-| Local object store image unmaintained (MinIO community archived) | Medium / certain | Choose maintained S3-compatible image in M0; app depends on S3 API only; managed storage in production; operations |
+| Local object store image unmaintained (MinIO community archived) | Resolved in M0 | SeaweedFS pinned by digest for local/CI; app depends on S3 API only; managed storage in production; operations |
 | Installation linked by someone without access to it | Critical / medium | GitHub App user-token check against `GET /user/installations` plus linked-identity match; acceptance A03; security lead |
 
 ## Defaults selected for implementation
@@ -28,7 +28,7 @@ English standard output first; Python/TS/JS parser fixtures first; GitHub App re
 | Decision | Default / explicit uncertainty | Required before |
 |---|---|---|
 | Provider/model/preset and data region | Choose approved catalog via evals, not reference model name assumptions | M2 real private-source call |
-| Cloud/region/domain and S3 provider | EU region preferred hypothesis; local S3-compatible store for dev (MinIO replacement to choose) | M0 for local image; production deployment for provider |
+| Cloud/region/domain and S3 provider | EU region preferred hypothesis; local/CI store decided: SeaweedFS | Production deployment |
 | Reuse codehover engine vs independent modules | Independent implementation default; reuse only after license/API/security review | Engine implementation scope change |
 | Market plans/pricing/allowances | Proposed trial/Pro/Team; validate economics/customer need | Paid launch |
 | Private site retention after repo access loss | Suspend access immediately; owner reconnect/review; no silent deletion | Beta terms |

@@ -2,11 +2,15 @@
 # Reference image tags: pin reviewed digests in real release.
 # Build context is the repo root; Dockerfile.backend.dockerignore keeps .env, secrets and tests out of it.
 FROM python:3.13-slim AS runtime
+ARG APP_VERSION=0.0.0-dev
+LABEL org.opencontainers.image.title="codehover-cloud-backend" \
+      org.opencontainers.image.version="${APP_VERSION}"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home app
 COPY backend/requirements.lock /tmp/requirements.lock
-RUN pip install --no-cache-dir -r /tmp/requirements.lock
+# Hashes in the lock make pip verify every artifact (--require-hashes is implied).
+RUN pip install --no-cache-dir --no-deps -r /tmp/requirements.lock
 # Code stays root-owned and read-only for the app user (defense in depth beside read_only rootfs).
 COPY backend/ /app/
 USER 10001:10001

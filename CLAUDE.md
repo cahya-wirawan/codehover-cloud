@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-The repository holds only a planning package in `build-package/`. There is no application source and there are no lockfiles yet. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
+M0 (foundation) is implemented: `backend/`, `frontend/`, `deployment/`, `contracts/openapi.json` and CI in `.github/workflows/ci.yml`. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
 
 The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the explanation and task-envelope JSON Schemas. Prompts live in `19_PROMPT_LIBRARY.md`.
 
-Scope of the first implementation: **M0–M1 only** (`14_IMPLEMENTATION_ROADMAP.md`). That means the foundation plus a private vertical slice that uses the deterministic replay model adapter:
+Next scope: **M1** (`14_IMPLEMENTATION_ROADMAP.md`). M0 laid the foundation. M1 is a private vertical slice that uses the deterministic replay model adapter:
 
 - OAuth sign-in
 - workspace membership with RLS
@@ -22,11 +22,11 @@ Don't add paid model calls or billing until the cross-tenant tests and the worke
 ## Stack
 
 - **Backend:** Python 3.13, FastAPI, Pydantic 2, SQLAlchemy 2.x async, psycopg 3, Alembic, aio-pika (explicit consumers, no Celery), httpx, Authlib.
-- **Data:** PostgreSQL 18 with native `uuidv7()` PKs (no UUID extension). RabbitMQ 4. S3-compatible private storage (MinIO locally). No Redis.
+- **Data:** PostgreSQL 18 with native `uuidv7()` PKs (no UUID extension). RabbitMQ 4. S3-compatible private storage (SeaweedFS locally, pinned by digest). No Redis.
 - **Frontend:** React, TypeScript, Vite, Tailwind, shadcn/ui, TanStack Query, React Router, React Hook Form with Zod, and a read-only CodeMirror 6 viewer.
 - **Tests:** pytest and pytest-asyncio against real PG18 and RabbitMQ containers; Vitest with RTL; Playwright with axe.
 
-Planned layout (`16_REPO_STRUCTURE.md`): `backend/app/{core,modules/<domain>,workers,engine/<stage>,adapters/<integration>}`, `backend/alembic/`, `backend/tests/{unit,integration,security,fixtures}`, `frontend/src/{app,features,components,lib}`, `frontend/e2e/`, `deployment/`, `contracts/`.
+Layout (`16_REPO_STRUCTURE.md`; modules, engine and adapters arrive from M1): `backend/app/{core,modules/<domain>,workers,engine/<stage>,adapters/<integration>}`, `backend/alembic/`, `backend/tests/{unit,integration,security,fixtures}`, `frontend/src/{app,features,components,lib}`, `frontend/e2e/`, `deployment/`, `contracts/`.
 
 ## Commands
 
@@ -41,19 +41,27 @@ POSTGRES_USER=codehover_ddl POSTGRES_DB=codehover APP_DB_PASSWORD=x APP_SYSTEM_D
 psql -v ON_ERROR_STOP=1 -d codehover -f contracts/core_schema.sql -f contracts/core_schema_checks.sql
 ```
 
-These are the commands the container contract expects (`build-package/22_DEPLOYMENT_AND_OPERATIONS.md`). The application profile can't run until `backend/` and `frontend/` exist with `backend/requirements.lock` and `frontend/package-lock.json`.
+Application (details and single-test examples in `README.md`):
 
 ```bash
-# Infrastructure only (works today, from a copy of deployment/ at repo root)
-cp .env.example .env            # set unique secrets; never commit .env
-docker compose --env-file .env -f compose.yaml config
-docker compose --env-file .env -f compose.yaml up -d db rabbitmq objectstore
-# Create private bucket "codehover" via MinIO console at localhost:9001
-
-# Full app (after implementation)
-docker compose --env-file .env -f compose.yaml --profile app build
-docker compose --env-file .env -f compose.yaml --profile app up -d   # http://localhost:8080
+cd backend && uv venv --python 3.13 .venv && uv pip sync --require-hashes requirements-dev.lock
+.venv/bin/ruff format . && .venv/bin/ruff check . && .venv/bin/mypy && .venv/bin/pytest -m "not integration"
+.venv/bin/pytest -m integration          # needs TEST_MIGRATION_DATABASE_URL / TEST_DATABASE_URL on a PG18 DB bootstrapped by deployment/init-db.sh
+.venv/bin/python -m app.openapi_export   # regenerate contracts/openapi.json after API changes (CI checks drift)
+cd frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build && npm run check:env
+python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
+cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \
+  && docker compose --env-file .env -f compose.yaml --profile app up -d --build   # http://localhost:8080
 ```
+
+Conventions that span files:
+
+- **Dependencies.** Python locks are hash-pinned and resolved only from releases before `[tool.uv] exclude-newer` in `backend/pyproject.toml`; regenerate them with the `uv pip compile` commands in README, never by hand. CI fails if the locks differ from a fresh compile. npm uses exact versions with a `before` cutoff in `frontend/.npmrc`. Move either cutoff forward deliberately, not as a side effect.
+- **Application version.** It lives in the root `VERSION`, and `backend/pyproject.toml`, `backend/app/__init__.py`, `frontend/package.json` and the regenerated OpenAPI file must match it.
+- **Two copies of the deployment templates.** `deployment/` is the live copy; `build-package/deployment/` is the spec's reference copy. Change both together and record the change in the spec changelog.
+- **Migrations** run only as the `migrate` job with the DDL role (`MIGRATION_DATABASE_URL`), never at API startup. New revisions use sequential IDs: `alembic revision --rev-id 0002 -m "..."`.
+- **Errors** go through `app/core/errors.py` (`ApiError` → envelope). Never return exception text, input values or connection details to clients.
+- **Frontend environment.** Code may read only the `import.meta.env` keys allowlisted in `frontend/scripts/check-env-usage.mjs`.
 
 Backend process entry points:
 

@@ -1,0 +1,175 @@
+name: codehover-cloud
+x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-development}
+  DATABASE_URL: postgresql+psycopg://app_runtime:${APP_DB_PASSWORD:?set runtime secret}@db:5432/codehover
+  AMQP_URL: amqp://${RABBITMQ_USER:-codehover}:${RABBITMQ_PASSWORD:?set broker secret}@rabbitmq:5672/codehover
+  RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+  S3_ENDPOINT_URL: http://objectstore:8333
+  S3_ACCESS_KEY_ID: ${S3_ROOT_USER:?set local storage user}
+  S3_SECRET_ACCESS_KEY: ${S3_ROOT_PASSWORD:?set local storage secret}
+  S3_BUCKET: codehover
+  S3_REGION: us-east-1
+  PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+  SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+  SESSION_SECRET: ${SESSION_SECRET:?set random session secret}
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?set data encryption key}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+  GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+  GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+  GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+  GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
+  GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
+  GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_key
+  GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+  MODEL_PROVIDER: ${MODEL_PROVIDER:-replay}
+  MODEL_ID: ${MODEL_ID:-replay-v1}
+  MODEL_API_KEY: ${MODEL_API_KEY:-}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+x-backend: &backend
+  profiles: [app]
+  image: codehover-cloud-backend:local
+  build:
+    context: ..
+    dockerfile: deployment/Dockerfile.backend
+  environment: *app-env
+  init: true
+  read_only: true
+  tmpfs: ["/tmp:size=512m,mode=1777"]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  secrets: [github_app_key]
+  networks: [services]
+services:
+  db:
+    image: ${POSTGRES_IMAGE:-postgres:18}
+    environment:
+      POSTGRES_USER: codehover_ddl
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set DDL secret}
+      POSTGRES_DB: codehover
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set runtime secret}
+      APP_SYSTEM_DB_PASSWORD: ${APP_SYSTEM_DB_PASSWORD:?set system-loop secret}
+      PGDATA: /var/lib/postgresql/18/docker
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-runtime.sh:ro
+    ports: ["127.0.0.1:${DB_HOST_PORT:-5432}:5432"]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U codehover_ddl -d codehover"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [services]
+  rabbitmq:
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4-management}
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-codehover}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set broker secret}
+      RABBITMQ_DEFAULT_VHOST: codehover
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    ports: ["127.0.0.1:${AMQP_HOST_PORT:-5672}:5672", "127.0.0.1:${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"]
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [services]
+  objectstore:
+    # SeaweedFS single node (M0 decision replacing archived MinIO; 21/22). The image's default
+    # command is `weed mini -dir=/data`; env vars seed one admin S3 identity, which also turns
+    # off anonymous access. The app depends only on the S3 API (path-style addressing).
+    image: ${OBJECT_STORE_IMAGE:?choose reviewed S3 image}
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ROOT_USER:?set local storage user}
+      AWS_SECRET_ACCESS_KEY: ${S3_ROOT_PASSWORD:?set local storage secret}
+      S3_BUCKET: codehover
+    volumes: ["objects:/data"]
+    ports: ["127.0.0.1:${S3_HOST_PORT:-8333}:8333"]
+    networks: [services]
+  migrate:
+    <<: *backend
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql+psycopg://codehover_ddl:${POSTGRES_PASSWORD:?set DDL secret}@db:5432/codehover
+      MIGRATION_DATABASE_URL: postgresql+psycopg://codehover_ddl:${POSTGRES_PASSWORD:?set DDL secret}@db:5432/codehover
+    command: [alembic, upgrade, head]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: "no"
+  bootstrap:
+    # Idempotent: private bucket, broker dead-letter exchange and work-queue policy (22 step 5).
+    <<: *backend
+    command: [python, -m, app.ops.bootstrap]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+      objectstore: {condition: service_started}
+    restart: "no"
+  api:
+    <<: *backend
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      bootstrap: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  worker:
+    <<: *backend
+    command: [python, -m, app.workers.main]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+      objectstore: {condition: service_started}
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 128
+    restart: unless-stopped
+  dispatcher:
+    <<: *backend
+    # Cross-tenant control loop: app_system role, scheduling columns only (05, core_schema.sql).
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql+psycopg://app_system:${APP_SYSTEM_DB_PASSWORD:?set system-loop secret}@db:5432/codehover
+    command: [python, -m, app.workers.dispatcher]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+    restart: unless-stopped
+  scheduler:
+    <<: *backend
+    # Cross-tenant control loop: app_system role, scheduling columns only (05, core_schema.sql).
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql+psycopg://app_system:${APP_SYSTEM_DB_PASSWORD:?set system-loop secret}@db:5432/codehover
+    command: [python, -m, app.workers.scheduler]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+    restart: unless-stopped
+  web:
+    profiles: [app]
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.frontend
+    ports: ["127.0.0.1:${WEB_HOST_PORT:-8080}:8080"]
+    depends_on:
+      api: {condition: service_healthy}
+    networks: [services]
+    restart: unless-stopped
+secrets:
+  github_app_key:
+    file: ${GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}
+volumes:
+  pgdata:
+  rabbitdata:
+  objects:
+networks:
+  services:

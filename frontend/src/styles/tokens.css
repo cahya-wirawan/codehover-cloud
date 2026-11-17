@@ -1,0 +1,52 @@
+/* Semantic design tokens (build-package/17_DESIGN_SYSTEM.md). Light by default, dark via the
+   system preference; explicit data-theme overrides both. `border` is decorative only; control
+   boundaries use `input-border` (>= 3:1 on every surface). */
+:root {
+  --background: #f7f8fa;
+  --surface: #ffffff;
+  --surface-muted: #eef1f5;
+  --foreground: #172033;
+  --text-muted: #536176;
+  --border: #d9e0ea;
+  --input-border: #7c879a;
+  --primary: #4338ca;
+  --primary-foreground: #ffffff;
+  --success: #166534;
+  --warning: #854d0e;
+  --destructive: #b91c1c;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0d1117;
+    --surface: #151b24;
+    --surface-muted: #1d2633;
+    --foreground: #e8edf5;
+    --text-muted: #aab6c8;
+    --border: #354155;
+    --input-border: #6b7a90;
+    --primary: #a5b4fc;
+    --primary-foreground: #17143e;
+    --success: #86efac;
+    --warning: #fde68a;
+    --destructive: #fca5a5;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0d1117;
+  --surface: #151b24;
+  --surface-muted: #1d2633;
+  --foreground: #e8edf5;
+  --text-muted: #aab6c8;
+  --border: #354155;
+  --input-border: #6b7a90;
+  --primary: #a5b4fc;
+  --primary-foreground: #17143e;
+  --success: #86efac;
+  --warning: #fde68a;
+  --destructive: #fca5a5;
+  color-scheme: dark;
+}

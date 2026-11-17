@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.3.0",
+  "package_version": "0.3.2",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -40,8 +40,7 @@
     "hosting/domain",
     "pricing validation",
     "provider contracts",
-    "optional codehover engine reuse review",
-    "maintained local S3-compatible image (MinIO community archived)"
+    "optional codehover engine reuse review"
   ],
   "documents": {
     "00_REFERENCE_ANALYSIS.md": {
@@ -130,11 +129,11 @@
     },
     "21_RISKS_AND_OPEN_QUESTIONS.md": {
       "status": "complete specification",
-      "sha256": "f803496fe570bbe5e5b8e7b79d497ff4690987133a89121c1f7fd0b492587a64"
+      "sha256": "0935c546e4cd46a660cc3df62917e0e2abb2dcb4a17aa3938c200996e7225060"
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
-      "sha256": "4edad027dffe51ef00245eab4e02aa756c7e3e8cb0cd91c03a3f2ce94e0189e5"
+      "sha256": "202d9b2cbb71911258d3732185fb724b6ca789f54e0172692398393b73cc5306"
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
@@ -142,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "63b9af52b28dc50bd310b37c174421aefcb768d828d78da47c893f1011e0d516"
+      "sha256": "8848bb1dfe8435aba0f0c5dadfc86d79c265fff7a0d078251bfc20384959b74f"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "6c5f211ccc852368ad432deff0358b490dfb35624ed278c64ff7455193ccf427"
+      "sha256": "87c2de221b4f446d13ec259a37d0aaf179cdff7d0c08312c2453697d27f8c508"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -154,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "11947f293a502b4244a8095d3806cf50308d308a362f618100864a0a944f071f"
+      "sha256": "241b73e6f950453aca74246d4034eee33e0e12b45de21913a9974ffb9818e03b"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0"
+      "sha256": "511a100eedfb9ea66441e5d506392dba2d8aa290f98c4c544c70ae75ec3c3396"
     },
     "contracts/core_schema.sql": {
       "status": "reference template/schema",
@@ -178,11 +177,11 @@
     },
     "deployment/.env.example": {
       "status": "reference template/schema",
-      "sha256": "5a43d0c5f45c342121d9e41512d992b7bbc396886e62978ab123dc89c42fc5b7"
+      "sha256": "a602c28ce1f20a6e4329b8ff5f36c52c7918cb524913f8c5bfd06715e6870a6c"
     },
     "deployment/Dockerfile.backend": {
       "status": "reference template/schema",
-      "sha256": "01b34b5e53e2d3ea855b748f53e4f68c31502c2ecd50a5453df1c594734102d1"
+      "sha256": "96a8633f01b5fa2da39187ef862ea62265ea106db4923e6daa119f1edaa6d32c"
     },
     "deployment/Dockerfile.backend.dockerignore": {
       "status": "reference template/schema",
@@ -190,7 +189,7 @@
     },
     "deployment/Dockerfile.frontend": {
       "status": "reference template/schema",
-      "sha256": "a8f96d4a19c51cf5d30e433ce8032388462acf5984440bcca79d184f7cb935ae"
+      "sha256": "a8c5a6e4f7c2eb5d8fd06f9e6803ac24534f25a677042ca6425239049c9d5750"
     },
     "deployment/Dockerfile.frontend.dockerignore": {
       "status": "reference template/schema",
@@ -198,7 +197,7 @@
     },
     "deployment/compose.yaml": {
       "status": "reference template/schema",
-      "sha256": "8bd0ebba1cf40f86712e60ac1e1d2b3ee672947e922e2fbd53c9edf62b715526"
+      "sha256": "35e758e8bc4a66fa258b8f9493bb2f469356250e4ae4eb010e8070806d6ff027"
     },
     "deployment/init-db.sh": {
       "status": "reference template/schema",
@@ -217,5 +216,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "d64e436216591f57ef117126afdb5baf18afb6780aeaa6372161900d1649e1fe"
+  "master_spec_sha256": "c3fd6fa649e1a344f4befd6b562003357802ead28a1ddae8a151e688c44dbcfd"
 }

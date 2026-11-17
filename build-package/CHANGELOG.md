@@ -4,6 +4,29 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-17
+
+### Added
+
+- Host-port overrides in the Compose templates (`DB_HOST_PORT`, `AMQP_HOST_PORT`, `RABBITMQ_MANAGEMENT_HOST_PORT`, `S3_HOST_PORT`, `WEB_HOST_PORT`), with unchanged defaults, so the stack starts next to a local PostgreSQL or RabbitMQ.
+
+### Changed
+
+- `VALIDATION_REPORT.md` records the first real run of the container templates: image builds, Compose start-up, the gateway, SeaweedFS and RabbitMQ, using the M0 implementation.
+
+## [0.3.1] - 2026-11-17
+
+### Changed
+
+- The local object store is decided: SeaweedFS 4.52 (`weed mini`), pinned by digest. This replaces the archived MinIO image in the `deployment/` templates, 21 and 22.
+- Deployment templates gain:
+  - a `bootstrap` Compose service, with the dead-letter exchange `codehover.dlx` and the `codehover.work.*` queue policy;
+  - `APP_ENV` and `RABBITMQ_MANAGEMENT_URL` settings;
+  - OCI version labels on images;
+  - pip installs from the hash-pinned lock with `--no-deps`.
+
+  The templates now match the implemented repository copy from M0.
+
 ## [0.3.0] - 2026-11-17
 
 ### Added
