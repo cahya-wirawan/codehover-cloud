@@ -5,16 +5,20 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+import httpx
 import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+
+if TYPE_CHECKING:
+    from tests.integration.auth_support import FakeIdP
 
 MIGRATION_URL = os.environ.get("TEST_MIGRATION_DATABASE_URL")
 RUNTIME_URL = os.environ.get("TEST_DATABASE_URL")
@@ -183,3 +187,23 @@ def ddl() -> Iterator[Db]:
     with engine(MIGRATION_URL).connect() as conn, conn.begin() as tx:
         yield Db(conn)
         tx.rollback()
+
+
+# ---------------------------------------------------------------- sign-in fixtures (see auth_support.py)
+@pytest.fixture
+def idp() -> FakeIdP:
+    from tests.integration.auth_support import FakeIdP
+
+    return FakeIdP()
+
+
+@pytest.fixture
+async def client(idp: FakeIdP, migrated: None) -> AsyncIterator[httpx.AsyncClient]:
+    from tests.integration.auth_support import browser, make_app
+
+    app, mock_http = make_app(idp)
+    async with browser(app) as c:
+        c.app = app  # type: ignore[attr-defined]  # lets tests open more browsers on the same app
+        yield c
+    await mock_http.aclose()
+    await app.state.engine.dispose()

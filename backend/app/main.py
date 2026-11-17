@@ -21,6 +21,7 @@ from app.core.request_context import RequestIdMiddleware
 from app.core.security import Sealer
 from app.core.settings import Environment, Settings, get_settings
 from app.modules.identity import router as identity
+from app.modules.workspaces import router as workspaces
 
 API_PREFIX = "/api/v1"
 # Explicit timeouts on every outbound call (04); one shared client per process.
@@ -85,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(health.router)
     api.include_router(identity.router)
+    api.include_router(workspaces.router)
     app.include_router(api)
     return app
 

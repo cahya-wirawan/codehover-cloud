@@ -4,6 +4,17 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-11-18
+
+### Added
+
+- 05: `invitation_by_token`, and the database-enforced owner invariant (deferred, workspace-locking trigger `memberships_keep_owner`). Implemented by migration 0003 (T04).
+- 06: workspace, member and invitation contract details: ETag preconditions, invitation `accept_url` with the token in the fragment, role limits per action, and error codes.
+
+### Changed
+
+- 05: queries must filter by `workspace_id` explicitly even inside a workspace context, because user-scoped policies widen visibility. Found when an unfiltered member list leaked memberships across workspaces during T04.
+
 ## [0.3.6] - 2026-11-17
 
 ### Security

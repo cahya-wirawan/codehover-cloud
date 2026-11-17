@@ -6,7 +6,7 @@ Base `/api/v1`; the path carries the API MAJOR and OpenAPI `info.version` the fu
 
 Error response: `{ "error": { "code": "ESTIMATE_EXPIRED", "message": "Refresh this estimate before building.", "request_id": "...", "retryable": false, "details": {"estimate_id":"..."} } }`. Never return source, credentials, stack traces or provider bodies in errors. Authentication codes include `UNAUTHENTICATED` (401), `ORIGIN_REJECTED`, `CSRF_REJECTED` and `REAUTH_REQUIRED` (403), and `LAST_IDENTITY` (409). All API responses carry `Cache-Control: no-store`. 400 invalid syntax, 401 sign-in, 403 role/CSRF, 404 resource absent/unauthorized, 409 state/idempotency/ETag conflict, 410 expired export, 422 semantic invalid input, 429 throttled with Retry-After, 503 dependency unavailable. Pydantic validation errors are normalized to the envelope.
 
-Collection responses: `{items: [...], next_cursor: "opaque-or-null"}`; default limit 25, max 100. Cursor encodes sort key `(created_at,id)` and filter digest with integrity signature. Filters/sort are allowlisted. Path is always a query value/opaque file ID, never a filesystem join from a route. URI decoding happens once.
+Collection responses: `{items: [...], next_cursor: "opaque-or-null"}`; default limit 25, max 100. A forged cursor, or one replayed on another resource, → 400 `INVALID_CURSOR`. Cursor encodes sort key `(created_at,id)` and filter digest with integrity signature. Filters/sort are allowlisted. Path is always a query value/opaque file ID, never a filesystem join from a route. URI decoding happens once.
 
 Creation requests for builds, estimates, exports, checkout and publish require `Idempotency-Key` (16–128 chars). Key scoped by principal/workspace/route, body digest stored 24h. Same key/body returns original response; different body returns 409. Retrying transport error uses same key. Configuration writes/publication use `If-Match` ETag. `POST` create returns 201 or 202 asynchronous Location; DELETE generally 202 for purge and 204 for immediate revoke.
 
@@ -22,13 +22,13 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET/DELETE `/me/sessions[/{id}]` | cursor or session → list/204 | Self, revoke current/all supported explicitly |
 | POST `/me/identities/{provider}/link` | reauthentication → redirect URL | Self; link callback bound to same session |
 | DELETE `/me/identities/{id}` | reauthentication → 204 | Cannot remove final sign-in method |
-| GET/POST `/workspaces` | name, slug → workspace | Self; create owner membership |
-| GET/PATCH `/workspaces/{wid}` | name/version → workspace | Member read; admin write |
+| GET/POST `/workspaces` | name, slug → workspace (`{items}` with caller's role) | Self; create owner membership; taken slug → 409 `SLUG_TAKEN` |
+| GET/PATCH `/workspaces/{wid}` | name + `If-Match` ETag → workspace | Member read; admin write; missing If-Match → 428 `PRECONDITION_REQUIRED`, stale → 409 `VERSION_CONFLICT` |
 | GET `/workspaces/{wid}/members` | cursor → members | Member |
-| POST `/workspaces/{wid}/invitations` | email, role → invite | Admin; owner role requires owner |
+| GET/POST `/workspaces/{wid}/invitations` | email, role → invite with one-time `accept_url` (token in the URL fragment, never logged) | Admin; admins invite viewer/editor only, admin/owner invites require owner; duplicate live invite → 409 `INVITATION_EXISTS` |
 | DELETE `/workspaces/{wid}/invitations/{id}` | none → 204 | Admin |
-| POST `/invitations/accept` | token → membership | Signed-in verified invited email |
-| PATCH/DELETE `/workspaces/{wid}/members/{uid}` | role → member/204 | Admin bounded by own role; owner for owners |
+| POST `/invitations/accept` | token → membership | Signed-in verified invited email; unknown/used/revoked/expired → 404 `INVITATION_INVALID`, wrong email → 403 `INVITATION_EMAIL_MISMATCH` |
+| PATCH/DELETE `/workspaces/{wid}/members/{uid}` | role → 204 / 204 | Admin manages viewer/editor only; owner for admins/owners; any member may leave; last owner → 409 `LAST_OWNER` |
 | POST `/workspaces/{wid}/github/install` | none → install_url/state | Admin; associate verified GitHub user |
 | GET `/integrations/github/setup` | installation_id, state, code → redirect | Exchange code for a GitHub App user access token; require linked GitHub user ID match and installation in `GET /user/installations` (document 09); state alone never suffices |
 | GET/DELETE `/workspaces/{wid}/connections[/{id}]` | cursor/none → list/204 | Admin revoke; cancels/suspends affected operations |

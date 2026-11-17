@@ -1,6 +1,11 @@
 # Package validation
 
-Date: 2026-11-17 · Package version 0.3.6
+Date: 2026-11-18 · Package version 0.3.7
+
+0.3.7 records T04 workspace membership. The implementation (migration 0003) passes 10 workspace integration tests on PostgreSQL 18, part of 83 backend tests. They cover the role matrix, invitations with verified-email matching, single use, revocation and expiry, non-member 404s, ETag preconditions, a signed and scoped pagination cursor, and a true two-connection race on the last two owners, of which exactly one commits. Mutation checks:
+- The admin role bound, the invitation email check and the member-list workspace filter are each caught.
+- Dropping the owner trigger is caught by the race test.
+- Removing the application's last-owner check is equivalent, because the trigger still refuses with `LAST_OWNER`.
 
 0.3.6 binds OAuth flows to the starting browser (09). The login-CSRF integration test opens a callback in a browser without the flow cookie, then with a forged cookie, and confirms that both are refused and that the originating browser can still complete. A schema mutation that ignores the binding is caught by two tests. Removing the application's missing-cookie check is an equivalent change, because the database guard still refuses; the check stays as a second layer. 73 backend tests pass.
 
