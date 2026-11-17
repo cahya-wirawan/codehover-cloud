@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-11-18
+
+### Security
+
+- 09, 05, 06: a GitHub connection grants only repositories the connecting user can read, with a known re-verification limitation. Previously anyone able to read one repository of an installation could expose all of its repositories to their workspace. Found by automated security review of T05; implemented by migration 0004.
+
 ## [0.3.8] - 2026-11-18
 
 ### Changed

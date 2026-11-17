@@ -33,7 +33,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/integrations/github/setup` | installation_id (untrusted), state → 302 GitHub App user authorization (PKCE) | Install-phase state, browser- and session-bound |
 | GET `/integrations/github/callback` | code, state → 302 `/w/{wid}/connections?connected=1` or `?error=` | Exchange for a GitHub App user token; require the linked GitHub identity and the installation in `GET /user/installations` (09); re-check admin role; token discarded. Errors: `expired`, `github_identity_required`, `identity_mismatch`, `installation_not_accessible`, `forbidden`, `provider` |
 | GET/DELETE `/workspaces/{wid}/connections[/{id}]` | cursor/none → list/204 | Admin revoke; cancels/suspends affected operations |
-| GET `/workspaces/{wid}/repositories` | `connection_id` → repositories the installation can read (upserted, internal IDs) | Editor; inactive connection → 409 `CONNECTION_INACTIVE` |
+| GET `/workspaces/{wid}/repositories` | `connection_id` → granted repositories the installation can still read (internal IDs, names refreshed) | Editor; never wider than the connector's grant (09); inactive connection → 409 `CONNECTION_INACTIVE` |
 | GET `/workspaces/{wid}/repositories/{rid}/refs` | none → branches and tags with SHAs | Editor; repository addressed by numeric GitHub ID (rename-safe); outside the installation → 404 |
 | GET/POST `/workspaces/{wid}/projects` | repository_id,name,tracked_ref → project | Member list; editor create |
 | GET/PATCH `/projects/{pid}` | name/config/tracked_ref → project | Viewer read; editor write with ETag |

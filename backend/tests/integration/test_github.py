@@ -42,6 +42,13 @@ class FakeGitHub:
     repos: dict[int, list[dict[str, Any]]] = field(default_factory=dict)  # installation -> repositories
     challenges: dict[str, str] = field(default_factory=dict)
     codes: dict[str, tuple[str, int]] = field(default_factory=dict)  # code -> (state, github user)
+    user_access: dict[tuple[int, int], set[str]] = field(default_factory=dict)  # (user, inst) -> repo names
+
+    def share(self, installation_id: int, github_user: int, repo_names: set[str]) -> None:
+        """Give another GitHub user access to some repositories of an existing installation."""
+        entry = next(i for items in self.installations.values() for i in items if i["id"] == installation_id)
+        self.installations.setdefault(github_user, []).append(entry)
+        self.user_access[(github_user, installation_id)] = repo_names
 
     def add_installation(self, owner_github_id: int, login: str = "octo-org") -> int:
         installation_id = secrets.randbelow(10**9) + 1
@@ -56,7 +63,7 @@ class FakeGitHub:
                 "visibility": "private",
                 "default_branch": "main",
             }
-            for name in ("api", "web")
+            for name in ("api", "web", "secret")
         ]
         return installation_id
 
@@ -90,6 +97,13 @@ class FakeGitHub:
             if url == f"{gha.API}/user/installations":
                 items = self.installations.get(user, [])
                 return httpx.Response(200, json={"total_count": len(items), "installations": items})
+            if url.startswith(f"{gha.API}/user/installations/") and url.endswith("/repositories"):
+                installation = int(url.split("/")[-2])
+                if not any(i["id"] == installation for i in self.installations.get(user, [])):
+                    return httpx.Response(404)
+                allowed = self.user_access.get((user, installation))
+                repos = [r for r in self.repos[installation] if allowed is None or r["name"] in allowed]
+                return httpx.Response(200, json={"total_count": len(repos), "repositories": repos})
         if url.startswith(f"{gha.API}/app/installations/") and url.endswith("/access_tokens"):
             try:
                 token = jwt.decode(auth.removeprefix("Bearer "), APP_KEY, algorithms=["RS256"])
@@ -189,7 +203,7 @@ async def test_connect_then_list_repositories_and_refs(
     repos = (
         await owner.get(f"/api/v1/workspaces/{ws}/repositories", params={"connection_id": listed[0]["id"]})
     ).json()
-    assert sorted(r["name"] for r in repos["items"]) == ["api", "web"]
+    assert sorted(r["name"] for r in repos["items"]) == ["api", "secret", "web"]
     refs = (await owner.get(f"/api/v1/workspaces/{ws}/repositories/{repos['items'][0]['id']}/refs")).json()[
         "items"
     ]
@@ -384,3 +398,53 @@ async def test_flow_must_finish_in_the_session_that_started_it(
     assert "error=expired" in hijack.headers["location"] and connections(ws) == []
     await other.aclose()
     await owner.aclose()
+
+
+# ---------------------------------------------------------------- repository grants (security review)
+async def repo_names(person: httpx.AsyncClient, ws: str) -> dict[str, str]:
+    connection = (await person.get(f"/api/v1/workspaces/{ws}/connections")).json()["items"][0]["id"]
+    items = (
+        await person.get(f"/api/v1/workspaces/{ws}/repositories", params={"connection_id": connection})
+    ).json()
+    return {r["name"]: r["id"] for r in items["items"]}
+
+
+async def test_connection_grants_only_repositories_the_connector_can_read(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    # An org member who can read one repository sees the installation in /user/installations,
+    # but must not gain the installation's other repositories.
+    owner, _ = await github_user(client, idp)
+    org_admin = 31_337
+    installation = github.add_installation(org_admin)
+    member_gh: int
+    member, member_gh = await github_user(client, idp)
+    github.share(installation, member_gh, {"api"})
+    ws = await workspace(member)
+    assert await connect(member, github, ws, installation, member_gh) == f"/w/{ws}/connections?connected=1"
+    assert set(await repo_names(member, ws)) == {"api"}
+    stored = ddl("SELECT name FROM repositories WHERE workspace_id = :w AND access_revoked_at IS NULL", w=ws)
+    assert [r[0] for r in stored] == ["api"]
+    await owner.aclose()
+    await member.aclose()
+
+
+async def test_reconnecting_with_narrower_access_revokes_the_rest(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, owner_gh = await github_user(client, idp)
+    ws = await workspace(owner)
+    installation = github.add_installation(owner_gh)
+    await connect(owner, github, ws, installation, owner_gh)
+    before = await repo_names(owner, ws)
+    assert set(before) == {"api", "web", "secret"}
+    admin, admin_gh = await github_user(client, idp)
+    admin_id = (await admin.get("/api/v1/me")).json()["id"]
+    ddl("INSERT INTO memberships(workspace_id, user_id, role) VALUES (:w, :u, 'admin')", w=ws, u=admin_id)
+    github.share(installation, admin_gh, {"api"})
+    assert await connect(admin, github, ws, installation, admin_gh) == f"/w/{ws}/connections?connected=1"
+    assert set(await repo_names(owner, ws)) == {"api"}
+    refs = await owner.get(f"/api/v1/workspaces/{ws}/repositories/{before['secret']}/refs")
+    assert refs.status_code == 404  # revoked grant, even though the installation could still read it
+    await owner.aclose()
+    await admin.aclose()

@@ -170,6 +170,7 @@ class Repository(Base):
     default_branch: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+    access_revoked_at: Mapped[datetime | None] = ts(nullable=True)  # outside the connector's grant (0004)
 
 
 # ---------------------------------------------------------------- projects and snapshots

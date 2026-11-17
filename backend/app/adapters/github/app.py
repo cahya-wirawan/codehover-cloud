@@ -132,6 +132,21 @@ class GitHubApp:
                 break
         return found
 
+    async def user_installation_repositories(
+        self, user_token: str, installation_id: int
+    ) -> list[RepositoryInfo]:
+        """Repositories both this user and the installation can access (GitHub's intersection)."""
+        repos: list[RepositoryInfo] = []
+        for page in range(1, MAX_PAGES + 1):
+            body = await self._get_json(
+                f"{API}/user/installations/{installation_id}/repositories", user_token, page=page
+            )
+            items = body.get("repositories", []) if isinstance(body, dict) else []
+            repos += [_repository(item) for item in items]
+            if len(items) < PER_PAGE:
+                break
+        return repos
+
     # ---------------------------------------------------------------- installation token
     def _app_jwt(self) -> str:
         now = int(time.time())

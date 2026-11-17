@@ -17,7 +17,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.github.app import GitHubApp, GitHubError
+from app.adapters.github.app import GitHubApp, GitHubError, RepositoryInfo
 from app.core.errors import ApiError
 from app.core.security import Sealer, digest, new_token, pkce_pair
 from app.core.settings import Settings
@@ -185,6 +185,12 @@ async def finish_connection(
     installation = next((i for i in installations if i.id == installation_id), None)
     if installation is None:  # spoofed ID, or someone else's installation
         raise ConnectError("installation_not_accessible", workspace_id)
+    # /user/installations lists an installation if the user can read ANY of its repositories, so the
+    # connection grants only repositories this user can read (user ∩ installation), not the whole set.
+    try:
+        granted = await app.user_installation_repositories(user_token, installation.id)
+    except GitHubError as error:
+        raise ConnectError("provider", workspace_id) from error
 
     # Re-check authority now: the user must still be an admin of the workspace.
     await set_context(db, user_id=principal.user_id)  # context is transaction-local; the commit cleared it
@@ -218,6 +224,17 @@ async def finish_connection(
             },
         )
     ).scalar_one()
+    for repo in granted:
+        await _upsert_repository(db, workspace_id, connection_id, repo, granted_now=True)
+    # Repositories outside this user's grant (e.g. from an earlier, broader connector) lose access.
+    await db.execute(
+        text(
+            "UPDATE repositories SET access_revoked_at = now(), updated_at = now()"
+            " WHERE workspace_id = :w AND connection_id = :c AND access_revoked_at IS NULL"
+            " AND NOT (provider_repo_id = ANY(CAST(:ids AS bigint[])))"
+        ),
+        {"w": workspace_id, "c": connection_id, "ids": [r.id for r in granted]},
+    )
     member = Member(principal, workspace_id, role)
     await audit(
         db,
@@ -225,10 +242,40 @@ async def finish_connection(
         "connection.created",
         "repository_connection",
         connection_id,
-        {"installation_id": installation.id, "account": installation.account_login},
+        {"installation_id": installation.id, "account": installation.account_login, "granted": len(granted)},
     )
     await db.commit()
     return workspace_id
+
+
+async def _upsert_repository(
+    db: AsyncSession, workspace_id: UUID, connection_id: UUID, repo: RepositoryInfo, *, granted_now: bool
+) -> UUID:
+    row_id: UUID = (
+        await db.execute(
+            text(
+                "INSERT INTO repositories(workspace_id, connection_id, provider_repo_id, owner, name,"
+                " visibility, default_branch) VALUES (:w, :c, :rid, :o, :n, :v, :b)"
+                " ON CONFLICT (workspace_id, provider_repo_id) DO UPDATE"
+                " SET connection_id = EXCLUDED.connection_id,"
+                " owner = EXCLUDED.owner, name = EXCLUDED.name, visibility = EXCLUDED.visibility,"
+                " default_branch = EXCLUDED.default_branch, updated_at = now(),"
+                " access_revoked_at = CASE WHEN :granted THEN NULL ELSE repositories.access_revoked_at END"
+                " RETURNING id"
+            ),
+            {
+                "w": workspace_id,
+                "c": connection_id,
+                "rid": repo.id,
+                "o": repo.owner,
+                "n": repo.name,
+                "v": repo.visibility,
+                "b": repo.default_branch,
+                "granted": granted_now,
+            },
+        )
+    ).scalar_one()
+    return row_id
 
 
 # ---------------------------------------------------------------- connections
@@ -295,49 +342,39 @@ def _github_failure(error: GitHubError) -> ApiError:
 async def list_repositories(
     db: AsyncSession, app: GitHubApp, member: Member, connection_id: UUID
 ) -> list[dict[str, Any]]:
+    """Granted repositories that the installation can still read, with current names from GitHub."""
     connection = await _active_connection(db, member, connection_id)
+    granted = {
+        r.provider_repo_id: r.id
+        for r in await db.execute(
+            text(
+                "SELECT id, provider_repo_id FROM repositories"
+                " WHERE workspace_id = :w AND connection_id = :c AND access_revoked_at IS NULL"
+            ),
+            {"w": member.workspace_id, "c": connection.id},
+        )
+    }
     await db.commit()
     try:
-        repos = await app.installation_repositories(connection.installation_id)
+        current = await app.installation_repositories(connection.installation_id)
     except GitHubError as error:
         raise _github_failure(error) from error
+    visible = [repo for repo in current if repo.id in granted]  # never widen beyond the grant
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
-    results = []
-    for repo in repos:
-        row = (
-            await db.execute(
-                text(
-                    "INSERT INTO repositories(workspace_id, connection_id, provider_repo_id, owner, name,"
-                    " visibility, default_branch) VALUES (:w, :c, :rid, :o, :n, :v, :b)"
-                    " ON CONFLICT (workspace_id, provider_repo_id) DO UPDATE"
-                    " SET connection_id = EXCLUDED.connection_id,"
-                    " owner = EXCLUDED.owner, name = EXCLUDED.name, visibility = EXCLUDED.visibility,"
-                    " default_branch = EXCLUDED.default_branch, updated_at = now()"
-                    " RETURNING id"
-                ),
-                {
-                    "w": member.workspace_id,
-                    "c": connection.id,
-                    "rid": repo.id,
-                    "o": repo.owner,
-                    "n": repo.name,
-                    "v": repo.visibility,
-                    "b": repo.default_branch,
-                },
-            )
-        ).scalar_one()
-        results.append(
-            {
-                "id": row,
-                "provider_repo_id": repo.id,
-                "owner": repo.owner,
-                "name": repo.name,
-                "visibility": repo.visibility,
-                "default_branch": repo.default_branch,
-            }
-        )
+    for repo in visible:  # refresh names (renames, visibility changes)
+        await _upsert_repository(db, member.workspace_id, connection.id, repo, granted_now=False)
     await db.commit()
-    return results
+    return [
+        {
+            "id": granted[repo.id],
+            "provider_repo_id": repo.id,
+            "owner": repo.owner,
+            "name": repo.name,
+            "visibility": repo.visibility,
+            "default_branch": repo.default_branch,
+        }
+        for repo in visible
+    ]
 
 
 async def list_refs(
@@ -346,7 +383,8 @@ async def list_refs(
     row = (
         await db.execute(
             text(
-                "SELECT connection_id, provider_repo_id FROM repositories WHERE workspace_id = :w AND id = :r"
+                "SELECT connection_id, provider_repo_id FROM repositories"
+                " WHERE workspace_id = :w AND id = :r AND access_revoked_at IS NULL"
             ),
             {"w": member.workspace_id, "r": repository_id},
         )

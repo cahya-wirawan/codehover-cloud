@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.3.8
+Date: 2026-11-18 · Package version 0.3.9
+
+0.3.9 limits GitHub connections to the connector's repository grant (09). Two integration tests cover a member who can read one of three repositories, and a narrower reconnect revoking the rest. Two mutations, granting the whole installation at connect and listing without the grant, are each caught by both tests. 95 backend tests pass, and migration 0004 runs in the Compose `migrate` job.
 
 0.3.8 records the T05 GitHub App flow. The implementation passes 10 GitHub integration tests on PostgreSQL 18 against a fake GitHub. The fake checks PKCE, the App JWT signature and issuer, and per-installation repository access. The tests cover spoofed and other users' installations, a different GitHub account, a Google-only user, phase confusion, other-browser and other-session hijacking, mid-flow demotion, a repository removed from the installation, and a revoked connection. Five code mutations of the guards are each caught. 93 backend tests pass.
 
