@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-17
+
+### Added
+
+- 05 adds the `idempotency_keys` table: 06 required `Idempotency-Key` storage, but the data model had no table for it.
+- 05 adds the pre-authentication lookups `identity_user`, `create_user_with_identity`, `session_by_token` and `oauth_transaction_create/consume`, with their RLS rules. These were found while implementing migration 0002 (T02).
+
 ## [0.3.3] - 2026-11-17
 
 ### Added
