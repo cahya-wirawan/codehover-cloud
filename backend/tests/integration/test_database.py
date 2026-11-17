@@ -100,3 +100,36 @@ def test_system_role_connects_without_bypassrls() -> None:
             sa.text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
         ).one()
     assert tuple(flags) == (False, False)
+
+
+def test_repository_grants_migration_fails_closed(alembic_config: Config) -> None:
+    """Repositories that existed before 0004 (possibly over-broad grants) must not stay granted."""
+    command.downgrade(alembic_config, "0003")
+    suffix = os.urandom(4).hex()
+    with ddl_engine().begin() as conn:
+        user = conn.execute(sa.text("INSERT INTO users(display_name) VALUES ('m') RETURNING id")).scalar_one()
+        ws = conn.execute(
+            sa.text("INSERT INTO workspaces(name, slug) VALUES ('Migration', :s) RETURNING id"),
+            {"s": f"mig-{suffix}"},
+        ).scalar_one()
+        connection = conn.execute(
+            sa.text(
+                "INSERT INTO repository_connections(workspace_id, installation_id, github_account_id,"
+                " github_account_login, connected_by) VALUES (:w, 1, 1, 'o', :u) RETURNING id"
+            ),
+            {"w": ws, "u": user},
+        ).scalar_one()
+        conn.execute(
+            sa.text(
+                "INSERT INTO repositories(workspace_id, connection_id, provider_repo_id, owner, name,"
+                " visibility, default_branch) VALUES (:w, :c, 7, 'o', 'pre-existing', 'private', 'main')"
+            ),
+            {"w": ws, "c": connection},
+        )
+    command.upgrade(alembic_config, "head")
+    with ddl_engine().connect() as conn:
+        revoked = conn.execute(
+            sa.text("SELECT access_revoked_at IS NOT NULL FROM repositories WHERE workspace_id = :w"),
+            {"w": ws},
+        ).scalar_one()
+    assert revoked

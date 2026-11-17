@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-11-18
+
+### Security
+
+- 09: introducing repository grants fails closed. Rows that existed before migration 0004, possibly with over-broad grants, start revoked until a reconnect. Found by automated security review.
+
 ## [0.3.9] - 2026-11-18
 
 ### Security
