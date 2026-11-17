@@ -4,7 +4,21 @@
 
 All primary keys use PostgreSQL `uuid DEFAULT uuidv7()`, including events, attempts and ledgers. Provider IDs use text or bigint as appropriate and never replace internal UUIDs. UUIDv7 timestamps are not secrets or authorization. `created_at`, `updated_at` use `timestamptz`; UTC storage, locale formatting in UI. Money uses integer USD micro-units (`bigint`), never float; customer billing currency and minor units are stored separately. Prices and entitlements are versioned snapshots. Hashes use lowercase SHA-256 hex with length checks. JSONB is bounded configuration/metadata, not a substitute for core relational ownership.
 
-Every tenant-owned entity carries `workspace_id NOT NULL`. Composite foreign keys include workspace ID to prevent accidental cross-tenant joins. Add `UNIQUE(workspace_id,id)` to referenced parents. Application authorization checks membership; RLS with FORCE ROW LEVEL SECURITY is defense in depth. Runtime role is neither superuser nor BYPASSRLS nor owner. Set `SET LOCAL app.workspace_id` per transaction after deriving authorized workspace from session; never from unvalidated request data. Workers derive tenancy from claimed task metadata and verify all children match. Missing setting denies rows; connection-pool reuse cannot leak prior settings. Identity/billing webhook tables use narrowly scoped services because no request workspace is initially available.
+Every tenant-owned entity carries `workspace_id NOT NULL`. Composite foreign keys include workspace ID to prevent accidental cross-tenant joins. Add `UNIQUE(workspace_id,id)` to referenced parents. Application authorization checks membership; RLS with FORCE ROW LEVEL SECURITY is defense in depth. Runtime role is neither superuser nor BYPASSRLS nor owner. Set the tenant context per transaction with bound parameters, `SELECT set_config('app.workspace_id', $1, true)` (transaction-local, equivalent to `SET LOCAL`; `SET` cannot take bind parameters, so never string-format it), after deriving the authorized workspace from the session; never from unvalidated request data. Missing setting denies rows; connection-pool reuse cannot leak prior settings. Identity/billing webhook tables use narrowly scoped services because no request workspace is initially available.
+
+## Tenant context resolution and database roles
+
+FORCE RLS on every tenant table means a query without a valid context sees nothing. Four access paths need an explicit design rather than an ad hoc bypass; `contracts/core_schema.sql` implements each and `contracts/core_schema_checks.sql` asserts them under the real roles.
+
+| Path | Mechanism |
+|---|---|
+| Flat routes (`/projects/{pid}`, `/builds/{bid}`, `/exports/{eid}`) | `app_private.resource_workspace(kind, id)` returns only the owning workspace ID (NULL for unknown kind/id). The API then checks membership and role, sets `app.workspace_id`, and loads the resource under RLS. Not a member → generic 404. |
+| User-scoped lists (`GET /workspaces`, workspace switcher, `/me`) | `app.user_id` is set from the session; SELECT-only policies expose the user's own membership rows and their workspaces. Writes still require the workspace context. |
+| Workspace creation | `app_private.create_workspace(name, slug)` inserts the workspace and owner membership atomically using `app.user_id`; the new ID does not exist before the call, so a context cannot be set first. |
+| Published sites (`/published/{slug}`) | `app_private.resolve_publication(slug)` returns workspace/project/build/visibility for an unsuspended publication; delivery then reads under that workspace context. |
+| Cross-tenant control loops (dispatcher, scheduler, lease reconciler, GC) | Separate login role `app_system` with role-scoped `USING (true)` policies and column-level grants on `outbox` and the scheduling columns of `build_tasks` only. It cannot read source, prose, outputs, ledgers or any other tenant table. |
+
+Lookup functions are `SECURITY DEFINER` with a fixed `search_path`, owned by the NOLOGIN role `app_resolver`, which can read only `id`/`workspace_id`/lifecycle columns through its own policies. No role has BYPASSRLS. EXECUTE is revoked from PUBLIC and granted to `app_runtime`. Task workers stay on `app_runtime`: they set `app.workspace_id` from the message, then claim the task by ID; a mismatched workspace makes the row invisible, so the claim fails closed. Purge and audited reconciliation use the separate maintenance role. Role bootstrap lives in `deployment/init-db.sh`; migrations grant privileges but never create login roles.
 
 ## Entities
 
@@ -23,11 +37,11 @@ Every tenant-owned entity carries `workspace_id NOT NULL`. Composite foreign key
 | snapshots | workspace_id, project_id, commit_sha text, archive_key, digest, observed_ref, status, source_bytes | UNIQUE(project_id,commit_sha); immutable |
 | source_files | workspace_id, snapshot_id, path text, language, sha256, blob_key, line_count int, byte_count bigint, scan_status/reason | UNIQUE(snapshot_id,path); binary/excluded metadata contains no contents |
 | estimates | workspace_id, project_id, snapshot_id, config_digest, price_version, low/high_micro_usd, token_estimate jsonb, expires_at | Immutable; 30-minute validity; 30-day metadata retention |
-| builds | workspace_id, project_id, snapshot_id, estimate_id, retry_of_id nullable, status, config jsonb, config_digest, engine_version, prompt_version, cap_micro_usd, cancel_requested_at, manifest_key | Status index(project,status); one active project build partial unique index |
+| builds | workspace_id, project_id, snapshot_id, estimate_id, retry_of_id nullable, status, config jsonb, config_digest, engine_version, prompt_version (SemVer, document 23), cap_micro_usd, cancel_requested_at, manifest_key | Status index(project,status); one active project build partial unique index |
 | build_tasks | workspace_id, build_id, stage, variant, work_key, state, attempt_count, lease_generation int, lease_until, heartbeat_at, next_attempt_at, output_key, error_code | UNIQUE(build_id,stage,variant,work_key); state/next_attempt index |
 | provider_attempts | workspace_id, task_id, attempt_number, request_digest, provider_request_id, state, input/output/cache_tokens bigint, price_snapshot jsonb, max_reserved_micro_usd, settled_micro_usd nullable | UNIQUE(task_id,attempt_number); unknown cost explicitly nullable |
 | build_events | workspace_id, build_id, sequence bigint, event_type, payload jsonb | UNIQUE(build_id,sequence); cursor indexed, 30 days |
-| symbols | workspace_id, build_id, source_file_id, symbol_key text, name, kind, parent_key, start/end_line, start/end_column, signature, card jsonb | UNIQUE(build_id,symbol_key); build/name and build/path indexes |
+| symbols | workspace_id, build_id, source_file_id, symbol_key text, name, kind, parent_key, start/end_line (1-based inclusive), start/end_column (0-based, end-exclusive, Unicode scalar offsets), signature, card jsonb | UNIQUE(build_id,symbol_key); build/name and build/path indexes |
 | reference_edges | workspace_id, build_id, from_symbol_id nullable, to_symbol_id, source_file_id, line, column, resolution enum-like text, ambiguity_group nullable | Indexed(build_id,to_symbol_id); resolved index/name/unresolved distinct |
 | guide_pages | workspace_id, build_id, slug, title, ordinal int, markdown_key, check_status | UNIQUE(build_id,slug); source citations separate |
 | claim_checks | workspace_id, build_id, guide_page_id, claim_key, path, start/end_line, source_hash, status, reason, checker_model, waived_by/reason nullable | UNIQUE(guide_page_id,claim_key,path,start_line,end_line); status index |
@@ -46,7 +60,7 @@ Search documents are tenant/build-scoped derived rows for definition/file/guide 
 
 ## Core SQL design reference
 
-See `contracts/core_schema.sql` for executable DDL illustrating projects/builds/tasks/outbox/usage constraints and RLS. It is a design reference, not a complete migration for all tables. Alembic revisions must implement the complete table inventory, creation order, constraints, policies and indexes. Never use ORM `create_all` as deployment migration.
+See `contracts/core_schema.sql` for executable DDL illustrating workspace/membership/project/build/task/publication/outbox/usage constraints, RLS, role-scoped policies and the resolver functions, and `contracts/core_schema_checks.sql` for the matching assertions (both executed on PostgreSQL 18.0). It is a design reference, not a complete migration for all tables. Alembic revisions must implement the complete table inventory, creation order, constraints, policies and indexes. Never use ORM `create_all` as deployment migration.
 
 SQLAlchemy mapping convention:
 

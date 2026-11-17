@@ -10,13 +10,14 @@ Visual direction: a precise technical workspace with generous spacing, quiet neu
 | foreground | #172033 | #E8EDF5 |
 | text-muted | #536176 | #AAB6C8 |
 | border | #D9E0EA | #354155 |
+| input-border | #7C879A | #6B7A90 |
 | primary | #4338CA | #A5B4FC |
 | primary foreground | #FFFFFF | #17143E |
 | success | #166534 | #86EFAC |
 | warning | #854D0E | #FDE68A |
 | destructive | #B91C1C | #FCA5A5 |
 
-Use semantic CSS custom properties mapped through Tailwind; verify contrast per component/state rather than assuming palette compliance. Self-host Inter or an equivalent readable sans for UI and JetBrains Mono for code, with system fallbacks. UI text 14px/20px default; content prose 16px/26px; code 13px/21px scalable; headings 24–32px app, 48–64px desktop marketing. Medium weight for controls/headings, no thin text. Spacing 4/8/12/16/24/32/48; radius controls 8px, panels 12px; 1px border; shadows only for floating layers.
+Use semantic CSS custom properties mapped through Tailwind; verify contrast per component/state rather than assuming palette compliance. Text tokens meet 4.5:1 on background, surface and surface-muted in both themes. `border` (about 1.3:1 light, 1.7:1 dark) is for decorative separators only; form fields, checkboxes and other controls whose boundary identifies them use `input-border` (at least 3:1 on every surface, WCAG 1.4.11). Self-host Inter or an equivalent readable sans for UI and JetBrains Mono for code, with system fallbacks. UI text 14px/20px default; content prose 16px/26px; code 13px/21px scalable; headings 24–32px app, 48–64px desktop marketing. Medium weight for controls/headings, no thin text. Spacing 4/8/12/16/24/32/48; radius controls 8px, panels 12px; 1px border; shadows only for floating layers.
 
 Desktop shell: sidebar 232px, top bar 64px, max-width content 1440px with 24–32px gutters. Project list is a compact table with repository, build, age, visibility and next action. Primary action “Create project” or “Build documentation” appears once per context. Build overview groups timeline, spend/coverage and safe diagnostics. Viewer is resizable tree/code/details; at <1024px detail pane becomes sheet, at <768px tree is drawer. Mobile hovers open a bottom sheet via tap. Source code keeps LTR regardless of prose locale.
 

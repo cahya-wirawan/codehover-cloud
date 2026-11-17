@@ -1,0 +1,7 @@
+# BuildKit Dockerfile-specific ignore file (context = repository root).
+**
+!frontend/
+!deployment/nginx.conf
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
