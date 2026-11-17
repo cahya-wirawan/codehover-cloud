@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-17 · Package version 0.3.2
+Date: 2026-11-17 · Package version 0.3.3
+
+0.3.3 adds the `SPEC_VERSION` conformance link (23). Both images were rebuilt with the new `SPEC_VERSION` build argument; both carry `codehover.spec.version=0.3.3` next to `org.opencontainers.image.version=0.1.0`, and the stack restarted ready. `scripts/check_versions.py` rejects an unknown, non-SemVer or newer-than-package `SPEC_VERSION`, and reports, without failing, an implementation behind the spec. Everything below was executed for 0.3.2 and is unaffected.
 
 0.3.2 is the first version whose container templates (`deployment/`) were executed. They ran against the M0 implementation in the repository root. The steps were:
 1. Built both images.

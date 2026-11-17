@@ -5,6 +5,7 @@ Repository name: `codehover-cloud`. This package does not create or modify a Git
 | Path | Responsibility |
 |---|---|
 | `VERSION` | Application SemVer for the release commit (document 23); backend `pyproject.toml`, frontend `package.json` and image tags are derived from it in CI |
+| `SPEC_VERSION` | Build-package release this code conforms to (document 23); checked by `scripts/check_versions.py`, recorded as image label `codehover.spec.version` |
 | `backend/pyproject.toml`, `requirements.lock` | Exact Python dependencies and installation contract |
 | `backend/app/main.py` | FastAPI factory, middleware and routers |
 | `backend/app/core/` | Settings, DB transaction scope, policy, crypto, error envelope |

@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-17
+
+### Added
+
+- Implementations record the package version they conform to in a root `SPEC_VERSION` file. CI validates it against the package changelog, and images carry it as the label `codehover.spec.version`. This is defined in 23 and reflected in 16 and 18; the `Dockerfile.*` templates gain the `SPEC_VERSION` build argument and label.
+
 ## [0.3.2] - 2026-11-17
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.3.2",
+  "package_version": "0.3.3",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -109,7 +109,7 @@
     },
     "16_REPO_STRUCTURE.md": {
       "status": "complete specification",
-      "sha256": "6754bf5f4bf931b2827d301a9cdcaf3d0853c542467b19c2e5998946c2c4beaf"
+      "sha256": "75b1b1ad7d9e2a36d4443d03225c777e919fddb542b1e4a20ecb9adb3f4d3dd7"
     },
     "17_DESIGN_SYSTEM.md": {
       "status": "complete specification",
@@ -117,7 +117,7 @@
     },
     "18_RELEASE_CHECKLIST.md": {
       "status": "complete specification",
-      "sha256": "4044f2ad9f989bb175ee8702852a9b17791d33cde813a1c71d36a56ecdd4d594"
+      "sha256": "50d1ee618cb5511b4be2d2c934887efcd542d73eee3f178602e4bb82aab99d6c"
     },
     "19_PROMPT_LIBRARY.md": {
       "status": "complete specification",
@@ -137,15 +137,15 @@
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
-      "sha256": "802b4f78a2e15391265c4394a78b9d66882cc3163beb82cb86b197271a74db02"
+      "sha256": "3fe72adcd4163eed275b20a179cdc802722406510305a38555def7c0faa86bce"
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "8848bb1dfe8435aba0f0c5dadfc86d79c265fff7a0d078251bfc20384959b74f"
+      "sha256": "c72c6b735f74998ead907d9569731a8b4e66b72bedbdb8cbd7dfa604e23068ca"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "87c2de221b4f446d13ec259a37d0aaf179cdff7d0c08312c2453697d27f8c508"
+      "sha256": "35352cd3ffb85cbab1fceeee897d0384023a6305da3dbf8d582c39065a75fdc8"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "241b73e6f950453aca74246d4034eee33e0e12b45de21913a9974ffb9818e03b"
+      "sha256": "a1d57b9b1e049d3d6f69744343be6185396bcfd712d713818a32af2b33aa3925"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "511a100eedfb9ea66441e5d506392dba2d8aa290f98c4c544c70ae75ec3c3396"
+      "sha256": "a0dc8325e2fbe558e09bf7d61260ca378151b0a3f875dd8b46ecd3693e34c10b"
     },
     "contracts/core_schema.sql": {
       "status": "reference template/schema",
@@ -181,7 +181,7 @@
     },
     "deployment/Dockerfile.backend": {
       "status": "reference template/schema",
-      "sha256": "96a8633f01b5fa2da39187ef862ea62265ea106db4923e6daa119f1edaa6d32c"
+      "sha256": "f724f3822946d07df3fcf8102415a2307fce82185202ed769e9c0e19349f5317"
     },
     "deployment/Dockerfile.backend.dockerignore": {
       "status": "reference template/schema",
@@ -189,7 +189,7 @@
     },
     "deployment/Dockerfile.frontend": {
       "status": "reference template/schema",
-      "sha256": "a8c5a6e4f7c2eb5d8fd06f9e6803ac24534f25a677042ca6425239049c9d5750"
+      "sha256": "452a5b0197797e07454a6dcea5f5556dfe3924fc595b97e78738ab89d6b64062"
     },
     "deployment/Dockerfile.frontend.dockerignore": {
       "status": "reference template/schema",
@@ -216,5 +216,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "c3fd6fa649e1a344f4befd6b562003357802ead28a1ddae8a151e688c44dbcfd"
+  "master_spec_sha256": "a9669367bfbed3a1bd2d846b824478b82dfca2083c26b69053da8e0e2fcaa38f"
 }

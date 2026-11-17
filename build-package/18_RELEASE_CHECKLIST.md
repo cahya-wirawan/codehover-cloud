@@ -30,7 +30,7 @@
 - [ ] Terms, billing/tax/cancellation/support and incident procedures reviewed.
 - [ ] Production TLS/secret manager/storage IAM/egress controls configured; management ports private.
 - [ ] Release tagged `vX.Y.Z`; the bump is at least the change class CI computed from the OpenAPI diff, schema compatibility and replay fixtures (document 23).
-- [ ] Release metadata records app, OpenAPI, engine, prompt-set and parser versions, contract `$id`s, model presets, price catalog, Alembic head and known limits.
+- [ ] Release metadata records app version and conformed spec version (`SPEC_VERSION`), OpenAPI, engine, prompt-set and parser versions, contract `$id`s, model presets, price catalog, Alembic head and known limits.
 - [ ] No artifact-schema reader is removed while a retained or published build still references that MAJOR.
 
 Block release for any known critical cross-tenant access, secret leak, source-origin script execution, unbounded spend or unsafe public publication. A planning-package validation result does not satisfy these implementation gates.
