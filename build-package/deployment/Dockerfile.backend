@@ -3,8 +3,10 @@
 # Build context is the repo root; Dockerfile.backend.dockerignore keeps .env, secrets and tests out of it.
 FROM python:3.13-slim AS runtime
 ARG APP_VERSION=0.0.0-dev
+ARG SPEC_VERSION=unknown
 LABEL org.opencontainers.image.title="codehover-cloud-backend" \
-      org.opencontainers.image.version="${APP_VERSION}"
+      org.opencontainers.image.version="${APP_VERSION}" \
+      codehover.spec.version="${SPEC_VERSION}"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home app

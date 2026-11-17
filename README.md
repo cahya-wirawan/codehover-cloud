@@ -91,4 +91,9 @@ Start-up order:
 
 ## Versioning
 
-`VERSION` holds the application version. `python3 scripts/check_versions.py` verifies that the backend, frontend, lockfile and OpenAPI contract agree with it. The specification package is versioned separately in `build-package/VERSION`.
+There are two independent version lines (`build-package/23_VERSIONING_AND_RELEASES.md`):
+
+- `VERSION` is the application version (0.x until the paid launch).
+- `build-package/VERSION` is the specification version.
+
+`SPEC_VERSION` links them by naming the spec release this code conforms to. When the spec moves ahead, update `SPEC_VERSION` once the code catches up. `python3 scripts/check_versions.py` verifies that the backend, frontend, lockfile and OpenAPI contract agree with `VERSION`, and that `SPEC_VERSION` is a real spec release no newer than the spec. Images carry both versions as labels.

@@ -57,7 +57,7 @@ cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/githu
 Conventions that span files:
 
 - **Dependencies.** Python locks are hash-pinned and resolved only from releases before `[tool.uv] exclude-newer` in `backend/pyproject.toml`; regenerate them with the `uv pip compile` commands in README, never by hand. CI fails if the locks differ from a fresh compile. npm uses exact versions with a `before` cutoff in `frontend/.npmrc`. Move either cutoff forward deliberately, not as a side effect.
-- **Application version.** It lives in the root `VERSION`, and `backend/pyproject.toml`, `backend/app/__init__.py`, `frontend/package.json` and the regenerated OpenAPI file must match it.
+- **Versions.** The application version lives in the root `VERSION`, and `backend/pyproject.toml`, `backend/app/__init__.py`, `frontend/package.json` and the regenerated OpenAPI file must match it. The spec has its own line in `build-package/VERSION`. Root `SPEC_VERSION` names the spec release the code conforms to. Bump it only when the code actually implements that release, never just because the spec moved.
 - **Two copies of the deployment templates.** `deployment/` is the live copy; `build-package/deployment/` is the spec's reference copy. Change both together and record the change in the spec changelog.
 - **Migrations** run only as the `migrate` job with the DDL role (`MIGRATION_DATABASE_URL`), never at API startup. New revisions use sequential IDs: `alembic revision --rev-id 0002 -m "..."`.
 - **Errors** go through `app/core/errors.py` (`ApiError` → envelope). Never return exception text, input values or connection details to clients.
