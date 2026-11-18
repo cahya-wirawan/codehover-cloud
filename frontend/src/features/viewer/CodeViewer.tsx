@@ -2,13 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
-import { api, type Related, type SymbolView, type TreeEntry } from "../../lib/api/resources";
+import type { Related, SymbolView, TreeEntry, ViewerSource } from "../../lib/api/resources";
 
 const WINDOW = 500; // the API returns at most 500 lines per request (06)
 const HOVER_DELAY_MS = 200; // 02 "Component contracts"
 
-function Tree({ buildId, path, onOpen, current }: { buildId: string; path: string; onOpen: (entry: TreeEntry) => void; current: string | null }) {
-  const { data } = useQuery({ queryKey: ["tree", buildId, path], queryFn: () => api.tree(buildId, path) });
+function Tree({ source, path, onOpen, current }: { source: ViewerSource; path: string; onOpen: (entry: TreeEntry) => void; current: string | null }) {
+  const { data } = useQuery({ queryKey: ["tree", source.key, path], queryFn: () => source.tree(path) });
   const [open, setOpen] = useState<Record<string, boolean>>({});
   return (
     <ul className="pl-3">
@@ -19,7 +19,7 @@ function Tree({ buildId, path, onOpen, current }: { buildId: string; path: strin
               onClick={() => setOpen((o) => ({ ...o, [entry.path]: !o[entry.path] }))}>
               <span aria-hidden="true">{open[entry.path] ? "▾" : "▸"}</span> {entry.name}
             </button>
-            {open[entry.path] ? <Tree buildId={buildId} path={entry.path} onOpen={onOpen} current={current} /> : null}
+            {open[entry.path] ? <Tree source={source} path={entry.path} onOpen={onOpen} current={current} /> : null}
           </li>
         ) : (
           <li key={entry.path}>
@@ -65,9 +65,9 @@ function Relations({ title, items, onFollow }: { title: string; items: Related[]
 }
 
 function SymbolCard({
-  buildId, symbolId, pinned, onClose, onFollow,
-}: { buildId: string; symbolId: string; pinned: boolean; onClose: () => void; onFollow: (r: Related) => void }) {
-  const { data } = useQuery({ queryKey: ["symbol", buildId, symbolId], queryFn: () => api.symbol(buildId, symbolId) });
+  source, symbolId, pinned, onClose, onFollow,
+}: { source: ViewerSource; symbolId: string; pinned: boolean; onClose: () => void; onFollow: (r: Related) => void }) {
+  const { data } = useQuery({ queryKey: ["symbol", source.key, symbolId], queryFn: () => source.symbol(symbolId) });
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (pinned && data) heading.current?.focus();
@@ -111,7 +111,7 @@ function SymbolCard({
 }
 
 /** Three panes: tree, source, details (02 S11). File, line range and pinned symbol live in the URL. */
-export function CodeViewer({ buildId }: { buildId: string }) {
+export function CodeViewer({ source }: { source: ViewerSource }) {
   const [params, setParams] = useSearchParams();
   const fileId = params.get("file");
   const line = Number(params.get("line") ?? "0") || null;
@@ -124,8 +124,8 @@ export function CodeViewer({ buildId }: { buildId: string }) {
   const [windowStart, setWindowStart] = useState<number | null>(null);
   const from = windowStart ?? start;
   const view = useQuery({
-    queryKey: ["file", buildId, fileId, from],
-    queryFn: () => api.fileWindow(buildId, fileId ?? "", from),
+    queryKey: ["file", source.key, fileId, from],
+    queryFn: () => source.file(fileId ?? "", from),
     enabled: fileId !== null,
   });
 
@@ -159,7 +159,7 @@ export function CodeViewer({ buildId }: { buildId: string }) {
   return (
     <div className="mt-4 grid gap-4 lg:grid-cols-[248px_1fr_280px]">
       <nav aria-label="Files" className="max-h-[70vh] overflow-auto rounded-lg border border-border bg-surface py-2">
-        <Tree buildId={buildId} path="" current={fileId}
+        <Tree source={source} path="" current={fileId}
           onOpen={(entry) => { setWindowStart(null); update({ file: entry.file_id, line: null, end: null, symbol: null }); }} />
       </nav>
       <section aria-label="Source" className="min-w-0 overflow-x-auto rounded-lg border border-border bg-surface">
@@ -215,7 +215,7 @@ export function CodeViewer({ buildId }: { buildId: string }) {
       </section>
       <aside aria-label="Definition details">
         {shown ? (
-          <SymbolCard buildId={buildId} symbolId={shown} pinned={pinned === shown} onClose={unpin} onFollow={follow} />
+          <SymbolCard source={source} symbolId={shown} pinned={pinned === shown} onClose={unpin} onFollow={follow} />
         ) : (
           <p className="text-muted">Hover or select a definition.</p>
         )}

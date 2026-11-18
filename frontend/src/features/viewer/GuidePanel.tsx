@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { api, type CheckStatus, type GuidePage } from "../../lib/api/resources";
+import type { CheckStatus, GuidePage, ViewerSource } from "../../lib/api/resources";
 
 const BADGE: Record<CheckStatus, { label: string; className: string }> = {
   supported: { label: "Supported", className: "border-border" },
@@ -56,14 +56,18 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
 }
 
 /** Guide index and page (02 S12); the open page is part of the URL. */
-export function GuidePanel({ buildId, base }: { buildId: string; base: string }) {
+export function GuidePanel({ source, base }: { source: ViewerSource; base: string }) {
   const { slug = null } = useParams();
   const navigate = useNavigate();
-  const guide = useQuery({ queryKey: ["guide", buildId], queryFn: () => api.guide(buildId) });
-  const quality = useQuery({ queryKey: ["quality", buildId], queryFn: () => api.quality(buildId) });
+  const guide = useQuery({ queryKey: ["guide", source.key], queryFn: () => source.guide() });
+  const quality = useQuery({
+    queryKey: ["quality", source.key],
+    queryFn: () => (source.quality ? source.quality() : Promise.resolve(null)),
+    enabled: source.quality !== null,
+  });
   const page = useQuery({
-    queryKey: ["guide-page", buildId, slug],
-    queryFn: () => api.guidePage(buildId, slug ?? ""),
+    queryKey: ["guide-page", source.key, slug],
+    queryFn: () => source.guidePage(slug ?? ""),
     enabled: slug !== null,
   });
   if (!guide.data || guide.data.pages.length === 0) return null;

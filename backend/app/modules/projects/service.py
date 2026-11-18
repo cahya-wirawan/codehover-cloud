@@ -26,7 +26,7 @@ from app.engine.generate import CITATION
 from app.jobs import store as jobs
 from app.modules.projects import estimates, quality
 from app.modules.usage import ledger
-from app.modules.workspaces.access import Member
+from app.modules.workspaces.access import Member, Reader
 from app.modules.workspaces.service import audit
 
 MAX_LINES_PER_REQUEST = 500
@@ -366,7 +366,7 @@ async def list_builds(db: AsyncSession, member: Member, project_id: UUID) -> lis
 
 
 # ---------------------------------------------------------------- viewer
-async def _ready_build(db: AsyncSession, member: Member, build_id: UUID) -> Any:
+async def _ready_build(db: AsyncSession, member: Reader, build_id: UUID) -> Any:
     row = (
         await db.execute(
             text("SELECT id, snapshot_id, status FROM builds WHERE workspace_id = :w AND id = :b"),
@@ -380,7 +380,7 @@ async def _ready_build(db: AsyncSession, member: Member, build_id: UUID) -> Any:
     return row
 
 
-async def tree(db: AsyncSession, member: Member, build_id: UUID, path: str) -> list[dict[str, Any]]:
+async def tree(db: AsyncSession, member: Reader, build_id: UUID, path: str) -> list[dict[str, Any]]:
     build = await _ready_build(db, member, build_id)
     prefix = path.strip("/")
     rows = await db.execute(
@@ -419,7 +419,7 @@ async def tree(db: AsyncSession, member: Member, build_id: UUID, path: str) -> l
 async def file_view(
     db: AsyncSession,
     objects: ObjectStore,
-    member: Member,
+    member: Reader,
     build_id: UUID,
     file_id: UUID,
     start_line: int,
@@ -489,7 +489,7 @@ async def file_view(
     }
 
 
-async def symbol_view(db: AsyncSession, member: Member, build_id: UUID, symbol_id: UUID) -> dict[str, Any]:
+async def symbol_view(db: AsyncSession, member: Reader, build_id: UUID, symbol_id: UUID) -> dict[str, Any]:
     await _ready_build(db, member, build_id)
     s = (
         await db.execute(
@@ -527,7 +527,7 @@ async def symbol_view(db: AsyncSession, member: Member, build_id: UUID, symbol_i
 
 # ---------------------------------------------------------------- guide
 async def guide_index(
-    db: AsyncSession, objects: ObjectStore, member: Member, build_id: UUID
+    db: AsyncSession, objects: ObjectStore, member: Reader, build_id: UUID
 ) -> dict[str, Any]:
     await _ready_build(db, member, build_id)
     pages = await db.execute(
@@ -552,7 +552,7 @@ async def guide_index(
 
 
 async def guide_page(
-    db: AsyncSession, objects: ObjectStore, member: Member, build_id: UUID, slug: str
+    db: AsyncSession, objects: ObjectStore, member: Reader, build_id: UUID, slug: str
 ) -> dict[str, Any]:
     build = await _ready_build(db, member, build_id)
     page = (
@@ -699,7 +699,7 @@ async def build_events(
 
 # ---------------------------------------------------------------- search
 async def search_build(
-    db: AsyncSession, member: Member, build_id: UUID, query: str, kind: str | None, limit: int
+    db: AsyncSession, member: Reader, build_id: UUID, query: str, kind: str | None, limit: int
 ) -> list[dict[str, Any]]:
     """Build-scoped search (06): exact name, then name prefix, then weighted full text. The workspace and
     build filter come first; query text is sanitized into a prefix tsquery and never logged."""

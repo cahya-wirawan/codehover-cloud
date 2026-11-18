@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 
+import { buildSource } from "../../lib/api/resources";
 import { ReviewPanel } from "./ReviewPanel";
 import { SearchPanel } from "./SearchPanel";
 
@@ -40,7 +41,7 @@ test("search results link to the definition, its line and the guide", async () =
       next_cursor: null,
     },
   });
-  wrap(<SearchPanel buildId="b1" base="/p/p1/builds/b1" />, "/?q=help");
+  wrap(<SearchPanel source={buildSource("b1")} base="/p/p1/builds/b1" />, "/?q=help");
   const definition = await screen.findByRole("link", { name: "helper" });
   expect(definition).toHaveAttribute("href", "/p/p1/builds/b1/code?symbol=s1&line=4");
   expect(screen.getByText(/src\/util.py:4 · name prefix/)).toBeInTheDocument();

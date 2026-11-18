@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.7
+Date: 2026-11-18 · Package version 0.5.8
+
+0.5.8 records T15, part of the M3 exit criterion (public opt-in and revocation). Integration tests cover:
+- private-by-default publication (A15), public only with an address and the typed project name, and anonymous reading of tree, source, guide, claims and search without the build ID ever appearing;
+- ETag preconditions (428, 409), rollback to an older build, and unpublishing that stops delivery at once;
+- the review gate (unchecked claims block), the acknowledgment for partly supported claims, admin-only publishing, a foreign build refused, and a stranger's 404;
+- a revoked connection or repository that suspends delivery at once and blocks republishing (A17, FR-027);
+- a members-only private site address.
+
+Mutations are caught for: the confirmation check, the gate, the ETag comparison, the private-site membership check, the access check and the suspension trigger. Frontend tests cover the publish form's confirmation and acknowledgment rules, the admin-only controls and a withdrawn site. 279 backend and 15 frontend tests pass.
 
 0.5.7 records T14. Search integration tests cover:
 - exact-name, prefix and docstring-text hits in that order;

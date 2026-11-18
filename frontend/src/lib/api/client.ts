@@ -69,6 +69,17 @@ export async function apiGet<T>(
   return parse(await response.json());
 }
 
+/** GET that also returns the ETag, for resources written with If-Match (06). */
+export async function apiGetWithEtag<T>(path: string): Promise<{ body: T; etag: string | null }> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw await parseError(response);
+  return { body: (await response.json()) as T, etag: response.headers.get("etag") };
+}
+
 let csrfToken: string | null = null;
 
 /** Forget the session-bound CSRF token (after sign-out or a 403 from a stale token). */

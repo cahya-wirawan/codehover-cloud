@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router";
 
 import { ApiError } from "../../lib/api/client";
-import { api, type Build, formatUsd, TERMINAL } from "../../lib/api/resources";
+import { api, type Build, buildSource, formatUsd, TERMINAL } from "../../lib/api/resources";
 import { CodeViewer } from "./CodeViewer";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
@@ -150,17 +150,17 @@ export function BuildOverview() {
 
 export function BuildCode() {
   const { build } = useBuild();
-  return <CodeViewer buildId={build.id} />;
+  return <CodeViewer source={buildSource(build.id)} />;
 }
 
 export function BuildGuide() {
   const { build, base } = useBuild();
-  return <GuidePanel buildId={build.id} base={base} />;
+  return <GuidePanel source={buildSource(build.id)} base={base} />;
 }
 
 export function BuildSearch() {
   const { build, base } = useBuild();
-  return <SearchPanel buildId={build.id} base={base} />;
+  return <SearchPanel source={buildSource(build.id)} base={base} />;
 }
 
 export function BuildReview() {

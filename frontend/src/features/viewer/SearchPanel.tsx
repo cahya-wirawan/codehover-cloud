@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { api, type SearchHit } from "../../lib/api/resources";
+import type { SearchHit, ViewerSource } from "../../lib/api/resources";
 
 const BASIS: Record<SearchHit["basis"], string> = {
   exact_name: "exact name",
@@ -21,15 +21,15 @@ function target(hit: SearchHit, base: string): string {
 }
 
 /** Build-scoped search (02 S13): `/` focuses the query; nothing is kept in history beyond the URL. */
-export function SearchPanel({ buildId, base }: { buildId: string; base: string }) {
+export function SearchPanel({ source, base }: { source: ViewerSource; base: string }) {
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState(params.get("q") ?? "");
   const query = params.get("q") ?? "";
   const kind = params.get("kind");
   const input = useRef<HTMLInputElement>(null);
   const results = useQuery({
-    queryKey: ["search", buildId, query, kind],
-    queryFn: () => api.search(buildId, query, kind),
+    queryKey: ["search", source.key, query, kind],
+    queryFn: () => source.search(query, kind),
     enabled: query.trim().length > 0,
   });
 

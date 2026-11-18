@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router";
 
 import { LoginPage } from "../features/auth/LoginPage";
+import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
 import {
   BuildCode,
@@ -42,6 +43,17 @@ export const routes: RouteObject[] = [
         ],
       },
       { path: "invitations/accept", element: <AcceptInvitationPage /> },
+      {
+        path: "sites/:site",
+        element: <SitePage />,
+        children: [
+          { index: true, element: <SiteGuide /> },
+          { path: "guide", element: <SiteGuide /> },
+          { path: "guide/:slug", element: <SiteGuide /> },
+          { path: "code", element: <SiteCode /> },
+          { path: "search", element: <SiteSearch /> },
+        ],
+      },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

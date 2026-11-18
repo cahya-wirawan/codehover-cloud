@@ -21,7 +21,7 @@ from app.core.errors import ApiError
 from app.core.pagination import Position
 from app.core.tenancy import set_context
 from app.engine import claims as claim_engine
-from app.modules.workspaces.access import Member
+from app.modules.workspaces.access import Member, Reader
 from app.modules.workspaces.service import audit
 
 PER_CLAIM = (
@@ -156,7 +156,7 @@ async def waive(
     return {"waived": sorted(claim_keys)}
 
 
-async def page_claims(db: AsyncSession, member: Member, page_id: UUID) -> list[dict[str, Any]]:
+async def page_claims(db: AsyncSession, member: Reader, page_id: UUID) -> list[dict[str, Any]]:
     rows = await db.execute(
         text(
             "SELECT claim_key, min(claim_text) AS text, min(ordinal) AS ordinal,"

@@ -4,6 +4,17 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-11-18
+
+### Added
+
+- 05, 06, 09: publication as implemented in T15:
+  - the pointer, with the review gate, partial acknowledgment, ETag concurrency, typed public confirmation and rollback;
+  - members-only private site addresses;
+  - suspension triggers on revoked connections and repositories;
+  - published-site delivery through the resolver on every request;
+  - the error codes `PUBLICATION_BLOCKED`, `ACKNOWLEDGMENT_REQUIRED`, `CONFIRMATION_REQUIRED` and `SLUG_INVALID`.
+
 ## [0.5.7] - 2026-11-18
 
 ### Added

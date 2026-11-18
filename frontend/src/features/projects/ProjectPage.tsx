@@ -4,12 +4,15 @@ import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 import { GenerationPanel } from "./GenerationPanel";
+import { PublicationPanel } from "./PublicationPanel";
 
 export function ProjectPage() {
   const { pid = "" } = useParams();
   const navigate = useNavigate();
   const project = useQuery({ queryKey: ["project", pid], queryFn: () => api.project(pid) });
   const builds = useQuery({ queryKey: ["builds", pid], queryFn: () => api.builds(pid) });
+  const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
+  const role = workspaces.data?.items.find((w) => w.id === project.data?.workspace_id)?.role;
   const start = useMutation({
     mutationFn: () => api.startBuild(pid),
     onSuccess: (build) => navigate(`/p/${pid}/builds/${build.id}`),
@@ -34,6 +37,7 @@ export function ProjectPage() {
         </p>
       ) : null}
       {project.data ? <GenerationPanel projectId={pid} workspaceId={project.data.workspace_id} /> : null}
+      {project.data ? <PublicationPanel project={project.data} canPublish={role === "admin" || role === "owner"} /> : null}
       <h2 className="mt-8 text-lg font-medium">Builds</h2>
       <ul className="mt-3 divide-y divide-border rounded-lg border border-border bg-surface">
         {builds.data?.items.map((b) => (

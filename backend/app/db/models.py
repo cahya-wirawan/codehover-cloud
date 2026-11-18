@@ -563,3 +563,22 @@ class SearchDocument(Base):
     terms: Mapped[str] = mapped_column(Text, server_default=text("''"))
     body: Mapped[str] = mapped_column(Text, server_default=text("''"))
     document: Mapped[Any] = mapped_column(TSVECTOR, Computed("document"), nullable=True)
+
+
+class Publication(Base):
+    """The mutable pointer from a project to one ready build (0010)."""
+
+    __tablename__ = "publications"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    project_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    visibility: Mapped[str] = mapped_column(Text)
+    public_slug: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    acknowledged_partial: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    suspended_at: Mapped[datetime | None] = ts(nullable=True)
+    suspended_reason: Mapped[str | None] = mapped_column(Text)
+    published_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    updated_at: Mapped[datetime] = ts(default_now=True)
