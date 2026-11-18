@@ -44,15 +44,15 @@ async function anonymousPage(browser: Browser, baseURL: string): Promise<Page> {
   return context.newPage();
 }
 
-test("sign in, build, read, review, publish to members then the public, withdraw, export and read offline", async ({ page, browser, baseURL }) => {
+test("sign in, build, read, review, publish to members then the public, withdraw, export, read offline and delete", async ({ page, browser, baseURL }) => {
   const base = baseURL ?? "";
   const run = Math.random().toString(36).slice(2, 8);
   await signIn(page, base);
 
   // Workspace, GitHub connection (seeded: the connect flow has its own API tests), project.
   await page.goto("/w");
-  await page.getByLabel("Name").fill("E2E Team");
-  await page.getByLabel("Address").fill(`e2e-${run}`);
+  await page.getByLabel("Name", { exact: true }).fill("E2E Team");
+  await page.getByLabel("Address", { exact: true }).fill(`e2e-${run}`);
   await page.getByRole("button", { name: "Create workspace" }).click();
   await expect(page.getByRole("link", { name: /E2E Team/ })).toBeVisible();
   const workspaces = (await (await page.request.get("/api/v1/workspaces")).json()) as { items: { id: string; slug: string }[] };
@@ -62,8 +62,8 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   await page.goto(`/w/${wid}`);
   await page.getByLabel("Connection").selectOption({ label: "octo-org" });
   await page.getByLabel("Repository").selectOption({ label: "octo-org/api" });
-  await page.getByLabel("Name").fill("API");
-  await page.getByLabel("Address").fill("api");
+  await page.getByLabel("Name", { exact: true }).fill("API");
+  await page.getByLabel("Address", { exact: true }).fill("api");
   await page.getByRole("button", { name: "Create project" }).click();
   await accessible(page, "workspace");
   await page.getByRole("link", { name: "API", exact: true }).click();
@@ -142,7 +142,7 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   // Opt in to public with the typed confirmation; the anonymous reader now sees it.
   await page.getByRole("radio", { name: /public/ }).check();
   await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
-  await page.getByRole("textbox", { name: /Type the project name/ }).fill("API");
+  await page.getByRole("region", { name: "Publication" }).getByRole("textbox", { name: /Type the project name/ }).fill("API");
   await page.getByRole("button", { name: "Update publication" }).click();
   await expect(page.getByRole("link", { name: `/sites/${slug}` })).toBeVisible();
   await expect(page.getByText("public", { exact: true })).toBeVisible();
@@ -193,4 +193,22 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   await expect(reader.getByRole("complementary", { name: "Definition details" })).toContainText("Entry point.");
   expect(blocked).toEqual([]); // the export loads nothing from the network
   await accessible(reader, "offline export");
+
+  // Delete the project: delivery stops at once for members, and the project is gone (A22).
+  await page.goto(projectUrl);
+  await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
+  await page.getByRole("button", { name: "Publish" }).click();
+  await expect(page.getByText(/private to this workspace/)).toBeVisible();
+  await member.goto(`/sites/${slug}`);
+  await expect(member.getByRole("heading", { name: "API" })).toBeVisible();
+  await page.getByRole("region", { name: "Delete project" }).getByRole("textbox").fill("API");
+  await accessible(page, "project deletion");
+  await page.getByRole("button", { name: "Delete API" }).click();
+  await expect(page).toHaveURL(new RegExp(`/w/${wid}$`));
+  await expect(page.getByRole("link", { name: "API", exact: true })).toHaveCount(0);
+  await member.reload();
+  await expect(member.getByRole("heading", { name: "Site not found" })).toBeVisible();
+  const projectId = projectUrl.split("/p/")[1] ?? "";
+  expect((await page.request.get(`/api/v1/projects/${projectId}`)).status()).toBe(404);
+  expect((await page.request.get(`/api/v1/builds/${buildUrl.split("/builds/")[1]}`)).status()).toBe(404);
 });

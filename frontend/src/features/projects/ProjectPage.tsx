@@ -1,6 +1,7 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
 
+import { ConfirmDeletion } from "../../components/ConfirmDeletion";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 import { GenerationPanel } from "./GenerationPanel";
@@ -24,6 +25,16 @@ export function ProjectPage() {
   const start = useMutation({
     mutationFn: () => api.startBuild(pid),
     onSuccess: (build) => navigate(`/p/${pid}/builds/${build.id}`),
+  });
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => api.deleteProject(pid, project.data?.name ?? ""),
+    onSuccess: async () => {
+      const wid = project.data?.workspace_id;
+      queryClient.removeQueries({ queryKey: ["project", pid] });
+      await queryClient.invalidateQueries({ queryKey: ["projects", wid] });
+      await navigate(`/w/${wid}`, { replace: true });
+    },
   });
 
   return (
@@ -67,6 +78,22 @@ export function ProjectPage() {
         ))}
         {builds.data && builds.data.items.length === 0 ? <li className="p-3 text-muted">No builds yet.</li> : null}
       </ul>
+      {project.data && (role === "admin" || role === "owner") ? (
+        <ConfirmDeletion
+          title="Delete project"
+          expected={project.data.name}
+          expectedLabel="the project name"
+          actionLabel={`Delete ${project.data.name}`}
+          pending={remove.isPending}
+          error={remove.error}
+          onConfirm={() => remove.mutate()}
+        >
+          <p>
+            Deleting stops its site immediately, cancels running builds and removes its source, explanations, guide
+            and exports within 24 hours. Downloaded exports cannot be recalled.
+          </p>
+        </ConfirmDeletion>
+      ) : null}
     </section>
   );
 }

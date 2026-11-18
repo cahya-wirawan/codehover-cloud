@@ -456,3 +456,59 @@ async def fail(
         )
     await db.commit()
     return "retry_wait" if retry else "failed"
+
+
+async def fence_project(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> int:
+    """Deletion (A22): stop every live build and task of a project in the caller's transaction.
+
+    Live builds end as cancelled and release their unspent envelope (unknown provider outcomes keep their
+    holds). Every unfinished task, snapshot acquisitions included, becomes cancelled, which also ends any
+    lease: the holder's next heartbeat or completion fails its fencing check, so it stops and commits
+    nothing. Pending exports fail. Returns the number of tasks fenced."""
+    builds = (
+        await db.execute(
+            text(
+                "SELECT id FROM builds WHERE workspace_id = :w AND project_id = :p"
+                " AND status IN ('queued', 'running') ORDER BY id FOR UPDATE"
+            ),
+            {"w": workspace_id, "p": project_id},
+        )
+    ).scalars()
+    for build_id in list(builds):
+        await db.execute(
+            text(
+                "UPDATE builds SET cancel_requested_at = COALESCE(cancel_requested_at, now())"
+                " WHERE workspace_id = :w AND id = :b"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+        await finish_build(db, workspace_id, build_id, "cancelled", "build.cancelled", {"reason": "deleted"})
+    fenced = (
+        await db.execute(
+            text(
+                "UPDATE build_tasks t SET state = 'cancelled', lease_until = NULL, next_attempt_at = NULL,"
+                " error_code = 'deleted', updated_at = now()"
+                " WHERE t.workspace_id = :w AND t.state IN ('pending', 'leased', 'retry_wait')"
+                "   AND (t.build_id IN (SELECT id FROM builds WHERE workspace_id = :w AND project_id = :p)"
+                "        OR t.snapshot_id IN (SELECT id FROM snapshots WHERE workspace_id = :w AND project_id = :p))"
+                " RETURNING t.id"
+            ),
+            {"w": workspace_id, "p": project_id},
+        )
+    ).all()
+    await db.execute(
+        text(
+            "UPDATE exports SET status = 'failed', error_code = 'deleted', completed_at = now()"
+            " WHERE workspace_id = :w AND status = 'pending'"
+            "   AND build_id IN (SELECT id FROM builds WHERE workspace_id = :w AND project_id = :p)"
+        ),
+        {"w": workspace_id, "p": project_id},
+    )
+    await db.execute(
+        text(
+            "UPDATE snapshots SET status = 'failed', rejection_code = COALESCE(rejection_code, 'deleted'),"
+            " updated_at = now() WHERE workspace_id = :w AND project_id = :p AND status IN ('pending', 'acquiring')"
+        ),
+        {"w": workspace_id, "p": project_id},
+    )
+    return len(fenced)

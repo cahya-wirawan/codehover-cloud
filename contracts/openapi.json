@@ -30,6 +30,50 @@
         "title": "Accepted",
         "type": "object"
       },
+      "AccountDeletionIn": {
+        "properties": {
+          "confirmation": {
+            "maxLength": 200,
+            "title": "Confirmation",
+            "type": "string"
+          },
+          "delete_workspaces": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Delete Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confirmation"
+        ],
+        "title": "AccountDeletionIn",
+        "type": "object"
+      },
+      "AccountDeletionOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/DeletionOut"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/DeletionOut"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account",
+          "workspaces"
+        ],
+        "title": "AccountDeletionOut",
+        "type": "object"
+      },
       "AuditEntry": {
         "properties": {
           "action": {
@@ -686,6 +730,20 @@
         "title": "ClaimCitation",
         "type": "object"
       },
+      "Confirmation": {
+        "properties": {
+          "confirmation": {
+            "maxLength": 200,
+            "title": "Confirmation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation"
+        ],
+        "title": "Confirmation",
+        "type": "object"
+      },
       "ConnectionList": {
         "properties": {
           "items": {
@@ -781,6 +839,48 @@
           "csrf_token"
         ],
         "title": "CsrfResponse",
+        "type": "object"
+      },
+      "DeletionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "purge_after": {
+            "format": "date-time",
+            "title": "Purge After",
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "project",
+              "workspace",
+              "account"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "state": {
+            "const": "pending",
+            "default": "pending",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scope",
+          "requested_at",
+          "purge_after"
+        ],
+        "title": "DeletionOut",
         "type": "object"
       },
       "EntryList": {
@@ -4843,6 +4943,66 @@
         ]
       }
     },
+    "/api/v1/me/deletion": {
+      "post": {
+        "operationId": "delete_account_api_v1_me_deletion_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeletionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Account",
+        "tags": [
+          "deletion"
+        ]
+      }
+    },
+    "/api/v1/me/export": {
+      "post": {
+        "operationId": "export_account_api_v1_me_export_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "The account data as a download"
+          }
+        },
+        "summary": "Export Account",
+        "tags": [
+          "deletion"
+        ]
+      }
+    },
     "/api/v1/me/identities/{identity_id}": {
       "delete": {
         "operationId": "unlink_api_v1_me_identities__identity_id__delete",
@@ -5132,6 +5292,59 @@
         "summary": "Start Build",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/deletion": {
+      "post": {
+        "operationId": "delete_project_api_v1_projects__project_id__deletion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project",
+        "tags": [
+          "deletion"
         ]
       }
     },
@@ -6471,6 +6684,59 @@
         "summary": "Revoke Connection",
         "tags": [
           "github"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/deletion": {
+      "post": {
+        "operationId": "delete_workspace_api_v1_workspaces__workspace_id__deletion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Workspace",
+        "tags": [
+          "deletion"
         ]
       }
     },

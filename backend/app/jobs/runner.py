@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Awaitable
 
 from app.jobs import store
 from app.jobs.envelope import TaskEnvelope
@@ -27,6 +28,23 @@ async def _heartbeat(rt: Runtime, claimed: store.Claim, lost: asyncio.Event) -> 
                 return
 
 
+async def _until_lost[T](work: Awaitable[T], lost: asyncio.Event) -> T:
+    """Run the stage until it finishes or its lease is lost. A lost lease (expired, cancelled, or fenced
+    by a deletion) stops the stage at once, so it neither stores more objects nor calls providers (A22)."""
+    task = asyncio.ensure_future(work)
+    watch = asyncio.ensure_future(lost.wait())
+    try:
+        await asyncio.wait({task, watch}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        watch.cancel()
+    if not task.done():
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+        raise store.LeaseLost("heartbeat")
+    return task.result()
+
+
 async def process(rt: Runtime, envelope: TaskEnvelope) -> str:
     """Returns an outcome label for logs and tests."""
     async with rt.sessions() as db:
@@ -42,7 +60,7 @@ async def process(rt: Runtime, envelope: TaskEnvelope) -> str:
     beat = asyncio.create_task(_heartbeat(rt, claimed, lost))
     try:
         try:
-            apply = await HANDLERS[claimed.stage](rt, claimed)
+            apply = await _until_lost(HANDLERS[claimed.stage](rt, claimed), lost)
         except StageError as error:
             async with rt.sessions() as db:
                 outcome = await store.fail(

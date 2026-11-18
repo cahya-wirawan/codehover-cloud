@@ -1,6 +1,17 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.13
+Date: 2026-11-18 · Package version 0.5.14
+
+0.5.14 records T17, part of the M4 exit criterion. Integration tests (`test_deletion.py`) check:
+- a project deletion: serving stops in the same transaction, with the project, build, export download and public site all 404;
+- the running build ends cancelled with nothing reserved; the worker holding its lease fails its heartbeat and completion (LeaseLost), and a unit test shows that a lost lease cancels the running stage;
+- the purge waits for `not_before`, then removes every content row and object while keeping the ledger's build rows, and frees the slug;
+- a failed purge records its error and is retried after its lease;
+- tombstone replay after a simulated restore (request and mark removed) deletes the project again with the same request ID and purges it, and re-purges a completed request when late objects reappear;
+- workspace deletion (owner only, typed address) and account deletion (sign-in within 10 minutes, the sole-owner rule, a member who simply leaves, sessions and sign-in methods removed);
+- tenancy: requests are visible only in their workspace or to their user, and the purger's claim returns identifiers only.
+
+Removing the fencing call or the tombstone re-mark makes a test fail. The E2E journey gains the delete step: a member's private site becomes "Site not found" and the project and build APIs return 404.
 
 0.5.13 records the M3 exit criterion "accessible full E2E". One Playwright journey runs in the installed Chrome against the real API with fake Google and GitHub, and aborts any request outside the app:
 - sign-in, workspace, project, snapshot with the exclusion summary, estimate and a replay build followed over SSE;

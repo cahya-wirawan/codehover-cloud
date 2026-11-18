@@ -4,6 +4,20 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.14] - 2026-11-18
+
+### Added
+
+- 05, 06, 08: project, workspace and account deletion as implemented in T17 (migration 0015). This adds `deletion_requests` tombstones, with a copy in object storage, and fencing of running work. A purge removes content and objects once fenced leases have expired. The account data export is added too.
+- 06: `POST /workspaces/{wid}/deletion` (owner) and the `/me/export` and `/me/deletion` contracts, including the sole-owner rule.
+- 22: `python -m app.ops.tombstones reapply` in the restore procedure.
+- 13: the journey's delete step.
+
+### Changed
+
+- 05: project and workspace slugs are unique among live rows only, so a deleted address can be reused.
+- 02: S18 starts at `/account` with export and deletion.
+
 ## [0.5.13] - 2026-11-18
 
 ### Added

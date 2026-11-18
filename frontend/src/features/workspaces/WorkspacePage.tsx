@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
+
+import { ConfirmDeletion } from "../../components/ConfirmDeletion";
 
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
@@ -20,6 +22,16 @@ export function WorkspacePage() {
   const [repositoryId, setRepositoryId] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const navigate = useNavigate();
+  const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
+  const workspace = workspaces.data?.items.find((w) => w.id === wid);
+  const remove = useMutation({
+    mutationFn: () => api.deleteWorkspace(wid, workspace?.slug ?? ""),
+    onSuccess: async () => {
+      queryClient.clear();
+      await navigate("/w", { replace: true });
+    },
+  });
   const create = useMutation({
     mutationFn: () => api.createProject(wid, { repository_id: repositoryId, name: name.trim(), slug: slug.trim() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects", wid] }),
@@ -87,6 +99,22 @@ export function WorkspacePage() {
           ) : null}
         </form>
       )}
+      {workspace?.role === "owner" ? (
+        <ConfirmDeletion
+          title="Delete workspace"
+          expected={workspace.slug}
+          expectedLabel="the workspace address"
+          actionLabel={`Delete ${workspace.name}`}
+          pending={remove.isPending}
+          error={remove.error}
+          onConfirm={() => remove.mutate()}
+        >
+          <p>
+            Deleting removes every project, site and member access immediately; source and explanations are purged
+            within 24 hours. Downloaded exports cannot be recalled.
+          </p>
+        </ConfirmDeletion>
+      ) : null}
     </section>
   );
 }

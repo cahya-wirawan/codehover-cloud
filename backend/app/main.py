@@ -24,6 +24,7 @@ from app.core.request_context import RequestIdMiddleware
 from app.core.security import Sealer
 from app.core.settings import Environment, Settings, get_settings
 from app.engine import catalog
+from app.modules.deletion import router as deletion
 from app.modules.github import router as github
 from app.modules.identity import router as identity
 from app.modules.projects import router as projects
@@ -142,6 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(published.router)
     api.include_router(usage.router)
     api.include_router(webhooks.router)
+    api.include_router(deletion.router)
     app.include_router(api)
     return app
 

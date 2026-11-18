@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 import sqlalchemy as sa
 
-from tests.integration.conftest import Db, World, digest, needs_db, needs_system
+from tests.integration.conftest import RUNTIME_URL, Db, World, digest, engine, needs_db, needs_system
 
 pytestmark = [pytest.mark.integration, needs_db]
 
@@ -319,6 +319,61 @@ def test_system_role_sees_due_work_across_tenants_but_no_content(world: World, s
     expect(system, DENIED, "SELECT count(*) FROM usage_entries")
     expect(system, DENIED, "SELECT count(*) FROM provider_attempts")
     expect(system, DENIED, "SELECT count(*) FROM estimates")
+
+
+def test_deletion_requests_are_scoped_and_claimed_without_content(world: World, runtime: Db) -> None:
+    from tests.integration.auth_support import ddl as committed
+
+    for side in (world.a, world.b):
+        committed(
+            "INSERT INTO deletion_requests(scope, workspace_id, project_id, not_before)"
+            " VALUES ('project', :w, :p, now() - interval '1 minute')",
+            w=side.workspace,
+            p=side.project,
+        )
+    committed("INSERT INTO deletion_requests(scope, user_id) VALUES ('account', :u)", u=world.b.user)
+    try:
+        runtime.context(workspace=world.a.workspace, user=world.a.user)
+        assert {r[0] for r in runtime.rows("SELECT project_id FROM deletion_requests")} == {world.a.project}
+        expect(
+            runtime,
+            DENIED,
+            "INSERT INTO deletion_requests(scope, workspace_id, project_id) VALUES ('project', :w, :p)",
+            w=world.b.workspace,
+            p=world.b.project,
+        )
+        expect(
+            runtime,
+            DENIED,
+            "INSERT INTO deletion_requests(scope, user_id) VALUES ('account', :u)",
+            u=world.b.user,
+        )
+        runtime.context(user=world.b.user)
+        assert runtime.one("SELECT count(*) FROM deletion_requests") == 1  # own account request only
+        assert runtime.one("SELECT count(*) FROM deletion_requests WHERE user_id IS NULL") == 0
+        # The purger's claim crosses tenants but returns identifiers only (its own, rolled back connection).
+        with engine(RUNTIME_URL).connect() as conn, conn.begin() as tx:
+            claimed = []
+            while rows := list(conn.execute(sa.text("SELECT * FROM app_private.claim_deletion(60)"))):
+                claimed.extend(rows)
+            tx.rollback()
+        assert {world.a.project, world.b.project} <= {r.project_id for r in claimed}
+        assert set(claimed[0]._fields) == {
+            "id",
+            "scope",
+            "workspace_id",
+            "project_id",
+            "user_id",
+            "attempts",
+            "requested_at",
+        }
+    finally:
+        committed(
+            "DELETE FROM deletion_requests WHERE workspace_id IN (:a, :b) OR user_id = :u",
+            a=world.a.workspace,
+            b=world.b.workspace,
+            u=world.b.user,
+        )
 
 
 @needs_system

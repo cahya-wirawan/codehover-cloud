@@ -604,3 +604,24 @@ class Export(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
     expires_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class DeletionRequest(Base):
+    """A deletion tombstone: identifiers only; drives the purge (0015)."""
+
+    __tablename__ = "deletion_requests"
+    id: Mapped[UUID] = pk()
+    scope: Mapped[str] = mapped_column(Text)
+    workspace_id: Mapped[UUID | None] = ref(nullable=True)
+    project_id: Mapped[UUID | None] = ref(nullable=True)
+    user_id: Mapped[UUID | None] = ref(nullable=True)
+    requested_by: Mapped[UUID | None] = ref(nullable=True)
+    state: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    not_before: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now() + '00:05:00'::interval")
+    )
+    lease_until: Mapped[datetime | None] = ts(nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime] = ts(default_now=True)
+    completed_at: Mapped[datetime | None] = ts(nullable=True)

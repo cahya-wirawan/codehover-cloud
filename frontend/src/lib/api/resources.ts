@@ -321,11 +321,31 @@ export interface SymbolView {
   used_by: Related[];
 }
 
+export interface DeletionRequest {
+  id: string;
+  scope: "project" | "workspace" | "account";
+  state: "pending";
+  requested_at: string;
+  purge_after: string;
+}
+export interface AccountDeletion {
+  account: DeletionRequest;
+  workspaces: DeletionRequest[];
+}
+export const ACCOUNT_CONFIRMATION = "delete my account";
+
 const json = async <T>(response: Response) => (await response.json()) as T;
 export const TERMINAL = new Set(["ready", "failed", "cancelled", "budget_exhausted"]);
 
 export const api = {
   workspaces: () => apiJson<Page<Workspace>>("/workspaces"),
+  deleteProject: async (pid: string, confirmation: string) =>
+    json<DeletionRequest>(await apiSend("POST", `/projects/${pid}/deletion`, { confirmation })),
+  deleteWorkspace: async (wid: string, confirmation: string) =>
+    json<DeletionRequest>(await apiSend("POST", `/workspaces/${wid}/deletion`, { confirmation })),
+  deleteAccount: async (confirmation: string, deleteWorkspaces: string[]) =>
+    json<AccountDeletion>(await apiSend("POST", "/me/deletion", { confirmation, delete_workspaces: deleteWorkspaces })),
+  exportAccount: async () => (await apiSend("POST", "/me/export")).blob(),
   createWorkspace: async (name: string, slug: string) => json<Workspace>(await apiSend("POST", "/workspaces", { name, slug })),
   connections: (wid: string) => apiJson<Page<Connection>>(`/workspaces/${wid}/connections`),
   startInstall: async (wid: string) =>

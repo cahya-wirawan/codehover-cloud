@@ -68,8 +68,10 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/workspaces/{wid}/billing/checkout` | plan_key → checkout_url | Owner; provider-configured price mapping |
 | POST `/workspaces/{wid}/billing/portal` | none → portal_url | Owner; fixed allowed return origin |
 | GET `/workspaces/{wid}/audit` | action prefix (for example `publication.`), cursor, limit → entries newest first with actor name, resource, metadata and request ID | Admin; cursor bound to the filter |
-| POST `/projects/{pid}/deletion` | confirmation → request | Admin; disables delivery immediately |
-| POST `/me/export` / `/me/deletion` | reauthentication, confirmation → request | Self; ownership transfer rule |
+| POST `/projects/{pid}/deletion` | confirmation (the project name) → 202 deletion request (id, scope, state, requested_at, purge_after) | Admin; mismatch 422 `CONFIRMATION_MISMATCH`; in one transaction: delivery stops (project, builds, exports and site all 404), live builds end cancelled with their envelope released, unfinished tasks are fenced; audited `project.deleted`; purge after `purge_after` |
+| POST `/workspaces/{wid}/deletion` | confirmation (the workspace address) → 202 deletion request | Owner; every project is deleted as above, members lose access at once; audited `workspace.deleted` |
+| POST `/me/export` | none → JSON attachment (profile, sign-in methods, workspaces, projects, own builds) | Self; sign-in within 10 minutes (403 `REAUTH_REQUIRED`); no other member's account data; `no-store`; audited `account.exported` |
+| POST `/me/deletion` | confirmation `delete my account`, delete_workspaces → 202 {account, workspaces} | Self; sign-in within 10 minutes; every workspace owned alone must be listed (409 `OWNERSHIP_TRANSFER_REQUIRED` with the list), others 422 `NOT_SOLE_OWNER`; leaves other workspaces, revokes every session, removes sign-in methods (signing in again starts a new account), scrubs the profile; audited `account.deleted` |
 | POST `/webhooks/github` | raw signed body → 202 | HMAC verified; delivery deduplicated |
 | POST `/webhooks/stripe` | raw signed body → 200/202 | Signature/timestamp verified; durable receipt then async processing |
 | GET `/health/live` / `/health/ready` | none → status, application `version` | Live process only; readiness DB/schema, essential dependencies |

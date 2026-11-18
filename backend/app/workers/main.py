@@ -1,4 +1,7 @@
-"""`python -m app.workers.main`: task consumer (04). Refuses to start without network isolation on Linux."""
+"""`python -m app.workers.main`: task consumer (04). Refuses to start without network isolation on Linux.
+
+Beside the consumer, a maintenance loop purges due deletions (app.jobs.purge) with the same runtime role,
+object store and tenant context rules as every stage."""
 
 from __future__ import annotations
 
@@ -14,12 +17,15 @@ from pydantic import ValidationError
 from app.core.settings import get_settings
 from app.engine import sandbox
 from app.jobs.envelope import TaskEnvelope
+from app.jobs.purge import purge_due
 from app.jobs.queue import topology
 from app.jobs.runner import process
 from app.jobs.runtime import build_runtime
+from app.jobs.stages import Runtime
 from app.workers._shell import run
 
 logger = logging.getLogger("app.workers.main")
+MAINTENANCE_SECONDS = 30.0
 
 
 def _not_dumpable() -> None:
@@ -29,6 +35,16 @@ def _not_dumpable() -> None:
         libc = ctypes.CDLL(None, use_errno=True)
         if libc.prctl(4, 0, 0, 0, 0) != 0:  # PR_SET_DUMPABLE
             raise OSError(ctypes.get_errno(), "PR_SET_DUMPABLE failed")
+
+
+async def maintenance(runtime: Runtime, stop: asyncio.Event) -> None:
+    while not stop.is_set():
+        try:
+            await purge_due(runtime.sessions, runtime.store)
+        except Exception:
+            logger.exception("maintenance cycle failed")
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=MAINTENANCE_SECONDS)
 
 
 async def body(stop: asyncio.Event) -> None:
@@ -56,8 +72,10 @@ async def body(stop: asyncio.Event) -> None:
             await message.ack()  # after the SQL outcome is durable; never requeue
 
         tag = await queue.consume(on_message)
+        housekeeping = asyncio.create_task(maintenance(runtime, stop))
         logger.info("process ready", extra={"role": "worker"})
         await stop.wait()
+        await housekeeping
         with contextlib.suppress(Exception):
             await queue.cancel(tag)
     await http.aclose()

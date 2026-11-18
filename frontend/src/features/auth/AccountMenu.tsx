@@ -29,7 +29,7 @@ export function AccountMenu() {
   }
   return (
     <div className="flex items-center gap-3">
-      <span className="text-muted">{user.display_name}</span>
+      <Link to="/account" className="text-muted underline">{user.display_name}</Link>
       <button
         type="button"
         onClick={() => logout.mutate()}

@@ -1,5 +1,6 @@
 import type { RouteObject } from "react-router";
 
+import { AccountPage } from "../features/account/AccountPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
@@ -27,6 +28,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <HomePage /> },
       { path: "login", element: <LoginPage /> },
+      { path: "account", element: <AccountPage /> },
       { path: "w", element: <WorkspacesPage /> },
       { path: "w/:wid", element: <WorkspacePage /> },
       { path: "w/:wid/connections", element: <ConnectionsPage /> },
