@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Double,
     ForeignKey,
@@ -237,6 +238,7 @@ class Estimate(Base):
     token_estimate: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
     created_at: Mapped[datetime] = ts(default_now=True)
     expires_at: Mapped[datetime] = ts()
+    created_by: Mapped[UUID | None] = ref("users.id", nullable=True)  # 0006
 
 
 class Build(Base):
@@ -261,13 +263,16 @@ class Build(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
+    usage_account_id: Mapped[UUID | None] = ref(nullable=True)  # reservation account (0006)
 
 
 class BuildTask(Base):
+    """Owned by exactly one build or one snapshot (snapshot acquisition, 0006)."""
+
     __tablename__ = "build_tasks"
     id: Mapped[UUID] = pk()
     workspace_id: Mapped[UUID] = ref()
-    build_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID | None] = ref(nullable=True)
     stage: Mapped[str] = mapped_column(Text)
     variant: Mapped[str] = mapped_column(Text, server_default=text("'en-standard'"))
     work_key: Mapped[str] = mapped_column(Text)
@@ -282,6 +287,7 @@ class BuildTask(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     notified_at: Mapped[datetime | None] = ts(nullable=True)  # last queue notification (0005)
+    snapshot_id: Mapped[UUID | None] = ref(nullable=True)  # 0006
 
 
 class BuildEvent(Base):
@@ -349,6 +355,36 @@ class UsageEntry(Base):
     amount_micro_usd: Mapped[int] = mapped_column(BigInteger)
     idempotency_key: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = ts(default_now=True)
+    attempt_id: Mapped[UUID | None] = ref(nullable=True)  # 0006
+
+
+class ProviderAttempt(Base):
+    """One outbound model request: earmark before, settle once after (0006)."""
+
+    __tablename__ = "provider_attempts"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    task_id: Mapped[UUID] = ref()
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    lease_generation: Mapped[int] = mapped_column(Integer)
+    role: Mapped[str] = mapped_column(Text)
+    purpose: Mapped[str] = mapped_column(Text)
+    model_id: Mapped[str] = mapped_column(Text)
+    request_digest: Mapped[str] = mapped_column(Text)
+    provider_request_id: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default=text("'started'"))
+    input_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    output_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    cache_read_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    cache_write_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    price_snapshot: Mapped[dict[str, Any]] = jsonb()
+    max_reserved_micro_usd: Mapped[int] = mapped_column(BigInteger)
+    settled_micro_usd: Mapped[int | None] = mapped_column(BigInteger)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    output_digest: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    completed_at: Mapped[datetime | None] = ts(nullable=True)
 
 
 # ---------------------------------------------------------------- audit and idempotency
@@ -427,3 +463,82 @@ class WebhookReceipt(Base):
     state: Mapped[str] = mapped_column(Text, server_default=text("'received'"))
     received_at: Mapped[datetime] = ts(default_now=True)
     processed_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+# ---------------------------------------------------------------- generation (0007)
+class GenerationCache(Base):
+    """Tenant-local validated model output; also the fenced checkpoint of generation stages."""
+
+    __tablename__ = "generation_cache"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    cache_key: Mapped[str] = mapped_column(Text)
+    purpose: Mapped[str] = mapped_column(Text)
+    output: Mapped[dict[str, Any]] = jsonb()
+    output_digest: Mapped[str] = mapped_column(Text)
+    model_id: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    attempt_id: Mapped[UUID | None] = ref(nullable=True)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts(default_now=False)
+
+
+class FileExplanation(Base):
+    __tablename__ = "file_explanations"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    source_file_id: Mapped[UUID] = ref()
+    status: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    chunks: Mapped[list[Any]] = jsonb(default="'[]'::jsonb")
+    provenance: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
+
+
+class GuidePage(Base):
+    __tablename__ = "guide_pages"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    slug: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    purpose: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    source_ranges: Mapped[list[Any]] = jsonb()
+    status: Mapped[str] = mapped_column(Text, server_default=text("'planned'"))
+    markdown_key: Mapped[str | None] = mapped_column(Text)
+    provenance: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
+    original_markdown_key: Mapped[str | None] = mapped_column(Text)  # 0008
+    check_status: Mapped[str] = mapped_column(Text, server_default=text("'unchecked'"))
+    created_at: Mapped[datetime] = ts(default_now=True)
+
+
+class ClaimCheck(Base):
+    """One extracted claim and cited range with its deterministic and checker results (0008)."""
+
+    __tablename__ = "claim_checks"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    guide_page_id: Mapped[UUID] = ref()
+    claim_key: Mapped[str] = mapped_column(Text)
+    claim_text: Mapped[str] = mapped_column(Text)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    current: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    citation: Mapped[str] = mapped_column(Text)
+    source_file_id: Mapped[UUID | None] = ref(nullable=True)
+    path: Mapped[str | None] = mapped_column(Text)
+    start_line: Mapped[int] = mapped_column(Integer)
+    end_line: Mapped[int] = mapped_column(Integer)
+    source_hash: Mapped[str | None] = mapped_column(Text)
+    deterministic: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    evidence_lines: Mapped[list[Any]] = jsonb(default="'[]'::jsonb")
+    checker_model: Mapped[str | None] = mapped_column(Text)
+    waived_by: Mapped[UUID | None] = ref("users.id", nullable=True)
+    waived_reason: Mapped[str | None] = mapped_column(Text)
+    waived_at: Mapped[datetime | None] = ts(nullable=True)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    checked_at: Mapped[datetime | None] = ts(nullable=True)

@@ -23,9 +23,11 @@ from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
 from app.core.security import Sealer
 from app.core.settings import Environment, Settings, get_settings
+from app.engine import catalog
 from app.modules.github import router as github
 from app.modules.identity import router as identity
 from app.modules.projects import router as projects
+from app.modules.usage import router as usage
 from app.modules.webhooks import router as webhooks
 from app.modules.workspaces import router as workspaces
 
@@ -124,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.oauth_providers = oauth_providers(settings, http)
     app.state.github_app = github_app(settings, http)
     app.state.objects = object_store(settings)
+    app.state.catalog = catalog.load(settings.model_catalog_file)
 
     install_error_handlers(app)
     app.middleware("http")(no_store)
@@ -135,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(workspaces.router)
     api.include_router(github.router)
     api.include_router(projects.router)
+    api.include_router(usage.router)
     api.include_router(webhooks.router)
     app.include_router(api)
     return app

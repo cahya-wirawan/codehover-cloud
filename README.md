@@ -58,6 +58,17 @@ To run the API locally:
 
 After changing API routes or models, regenerate the contract with `.venv/bin/python -m app.openapi_export`.
 
+**Generation.** Without configuration only the free `replay-v2` preset is offered. It runs the whole pipeline deterministically.
+
+To offer a paid preset:
+1. Copy `deployment/model-catalog.example.json`.
+2. Confirm every price, region and retention entry.
+3. Give the catalog its own revision.
+4. Set `MODEL_CATALOG_FILE` and `ANTHROPIC_API_KEY` for the API and the worker.
+5. Set `GENERATION_ALLOWANCE_MICRO_USD` (per workspace and month).
+
+**Evaluation.** `.venv/bin/python -m evals.harness --out evals/reports/baseline-replay.json` runs the labeled corpus in `evals/`. It is free and deterministic, and CI diffs the report. See `evals/README.md` for the maintainer labeling step and the billed `--provider anthropic --allow-spend` run.
+
 **Dependency locks.** `requirements.lock` (runtime, used by the image) and `requirements-dev.lock` are hash-pinned. They are resolved from `pyproject.toml`, accepting only releases published before `[tool.uv] exclude-newer`. To refresh them:
 1. Move that date forward deliberately.
 2. Run `uv pip compile pyproject.toml --universal --python-version 3.13 --generate-hashes --no-header -o requirements.lock`, and the same command with `--extra dev -o requirements-dev.lock`.

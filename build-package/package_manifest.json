@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.3.12",
+  "package_version": "0.5.4",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -65,15 +65,15 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "4783776d08d3f17aa3dd09829b17c2d6fc52daba6879677ac48734abc93c3024"
+      "sha256": "bf9e5d3230b109fdd433c5a4b108e0841a4e03b2086b88e587090d362ffc72a9"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "396099b5f2a061d424dbbb31d5b6282133e0ea852f9deebbe3d8afa2c5faa0aa"
+      "sha256": "b410158e40d75f9f431c20291047052dc3de31e8d030b552dba27d9fa696515e"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
-      "sha256": "e93bbfbbdd93c02f6b36bab4c299409317b0b819b0f9d2688d84f11365a5f924"
+      "sha256": "120593ea3a9f280737fdeb8add408e0a545cc9f3dd9bc260f48e95b9cdf4898d"
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
@@ -89,7 +89,7 @@
     },
     "11_MONETIZATION_AND_BILLING.md": {
       "status": "complete specification",
-      "sha256": "9083174a600b3bd42120e95da76cdd4c578ed71514c9d71fe0d89a7e1b573d81"
+      "sha256": "3a3ef98a2f6bf3c74376ff38bc6e004a4f6f376a1aed6b102c82d3564aa320c1"
     },
     "12_ANALYTICS_AND_OBSERVABILITY.md": {
       "status": "complete specification",
@@ -121,7 +121,7 @@
     },
     "19_PROMPT_LIBRARY.md": {
       "status": "complete specification",
-      "sha256": "c88ca8e424f634999c444dad8c34c4d8fa37b21e864656a7459d8e1b1f883fe4"
+      "sha256": "a5e32d4cb6fdfb5a88f65b9c44f8934a3f65752546b4ca2e6c3734b95ea06194"
     },
     "20_ACCEPTANCE_CRITERIA.md": {
       "status": "complete specification",
@@ -133,19 +133,19 @@
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
-      "sha256": "c187ded0d2819fedee6126485e9d1e087946ce8fa89ab63b95e10d789ea58fa3"
+      "sha256": "bf3d9a76f8badeee88e305333d40caf16d93445f87c360b9af497c4d11bdf554"
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
-      "sha256": "3fe72adcd4163eed275b20a179cdc802722406510305a38555def7c0faa86bce"
+      "sha256": "2bfaf68fcd1ab2842c4a3ee58749f99c662e41265eb9e10f96434326845c6b96"
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "5d0efabab37bfc2d2dd81e68196a3cad26af4781c83da9db0fb11a0e204903b3"
+      "sha256": "4764eec327c5885a6e06e43fc42ddd2dfdd6f5d850b9cb97cb5eed6f10297316"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "c69188cd4546077b27780e33ef8d2da0a49ed25a9213fa154cb653d74ea46698"
+      "sha256": "5ecac333b2b3debe488f74820273c0a08fb169889fd091db29ce8ac464164769"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,19 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "6cc795aa3dccd8c984c45a9a2653a5586d3ade54e85291aadd402d89da559287"
+      "sha256": "ce8db17c19023bb3cddffd8ec620d8e11c02eb0be68c5eda9029b6e5aa9ebc73"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "986489ec745f6b45b3e46d0c11e947631c79c6703097e1a5d25624b11a8bec60"
+      "sha256": "a7711142bc1fc55c16b9147a1503a4f2c4717be5c1e4437772a047f52ef81db2"
+    },
+    "contracts/claim-check.schema.json": {
+      "status": "reference template/schema",
+      "sha256": "c6c770584181597d5015a75bd3ab0bb6839c737df20f10123523c23b7be838aa"
+    },
+    "contracts/claim-repair.schema.json": {
+      "status": "reference template/schema",
+      "sha256": "a6eb27c4615ba044c51621ffd49c0f31c60f5cc8008b4541223c22ad685193ca"
     },
     "contracts/core_schema.sql": {
       "status": "reference template/schema",
@@ -171,13 +179,25 @@
       "status": "reference template/schema",
       "sha256": "d6484a51710c8c546620f4d0f09f1c00ac56aff214e099cec3e50b22a33817a7"
     },
+    "contracts/guide-page.schema.json": {
+      "status": "reference template/schema",
+      "sha256": "00f80f1890fe03d7d1c4bbf214a3cc0880729106fc99b03de241407636fa250d"
+    },
+    "contracts/guide-plan.schema.json": {
+      "status": "reference template/schema",
+      "sha256": "705332773dbb0f0fd96f94464540b224278b166edccb70a8a4d09f275092423c"
+    },
+    "contracts/overview.schema.json": {
+      "status": "reference template/schema",
+      "sha256": "d0dfa9fd033b1b66ff6320d97301f7be7eb7845557945e04aac1a9abf988ed57"
+    },
     "contracts/task-envelope.schema.json": {
       "status": "reference template/schema",
-      "sha256": "b4f60441acd0385088b5d6d38c599c43171bd8bd652ea064814055fce81bb530"
+      "sha256": "71b9d9394d49b99a3bb928a70fd676371099a94fbcc342d755d8533a5033e451"
     },
     "deployment/.env.example": {
       "status": "reference template/schema",
-      "sha256": "a602c28ce1f20a6e4329b8ff5f36c52c7918cb524913f8c5bfd06715e6870a6c"
+      "sha256": "c877a845d480752bd1f11bd3dd5cee78761e03e2ce6914ad7318be53b433dc12"
     },
     "deployment/Dockerfile.backend": {
       "status": "reference template/schema",
@@ -197,11 +217,15 @@
     },
     "deployment/compose.yaml": {
       "status": "reference template/schema",
-      "sha256": "35e758e8bc4a66fa258b8f9493bb2f469356250e4ae4eb010e8070806d6ff027"
+      "sha256": "6d90b9b038cf500547259f3496715660c90701d66a5bc93f4c3277b5d97809c3"
     },
     "deployment/init-db.sh": {
       "status": "reference template/schema",
       "sha256": "ea1a9abe7c8106a0276204a521074d2074a49b001bc93d126c60a84e02ae3391"
+    },
+    "deployment/model-catalog.example.json": {
+      "status": "reference template/schema",
+      "sha256": "d55d718e376bf02e93b8a655d7236b6286c4aef38a21de8de72ee6bb2e5c37ec"
     },
     "deployment/nginx.conf": {
       "status": "reference template/schema",
@@ -216,5 +240,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "67924b6d4b7e57f3c543ea665a9b3443b24cfcbb74fb9cb889fd0e29c9b0bb86"
+  "master_spec_sha256": "b7bc6a986cde1adbf99ce8bc700c7640e334aa751d73e2c578e1325f3e7a867b"
 }

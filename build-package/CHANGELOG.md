@@ -4,6 +4,83 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-18
+
+### Added
+
+- 07: the evaluation corpus, labels, harness and committed replay baseline as implemented in M2, with their hard gates and their provisional status until two maintainers label them.
+
+### Changed
+
+- 07, 23: a preset may not pair a model writer with the replay checker, because the replay checker only matches identifiers and the baseline shows it labels unsupported claims as supported.
+
+## [0.5.3] - 2026-11-18
+
+### Changed
+
+- 06: cancellation, retry and build-event polling as implemented in M2: immediate stop when nothing runs, no new earmark after a cancel request, cancellation at the next stage boundary, `retry_of_id`, `ESTIMATE_MISMATCH`, and `{items,next_after}` polling ahead of the SSE stream.
+
+## [0.5.2] - 2026-11-18
+
+### Added
+
+- `contracts/claim-check.schema.json` and `claim-repair.schema.json` 1.0.0, the outputs of P05 and P06 (the files first shipped in 0.5.1 ahead of their implementation).
+- 05: the full `claim_checks` row and `guide_pages.original_markdown_key`.
+- 06: the quality summary and check list, waiver rules (`WAIVER_NOT_ALLOWED`), and claims on guide pages.
+
+### Changed
+
+- 07: verification as implemented in T12: the verify and check stages, checker batching and isolation, `unchecked` on any checker failure, the bounded repair cycle with results carried over for unchanged claims, and the `uncited_pages` blocker.
+- 19: prompt set 0.3.0 adds P05 and P06.
+
+## [0.5.1] - 2026-11-18
+
+### Security
+
+- 07: related context for explanations included definitions (name, kind, signature, path) from files outside the approved scope, which would be sent to the provider. It is now limited to references whose both ends are in scope; an integration test captures every prompt. Found by automated security review of T11.
+- 19: the guide Markdown allowlist used regular expressions, which can disagree with a renderer (for example reference-style `javascript:` links). It now checks CommonMark tokens. Found by automated security review of T11.
+
+## [0.5.0] - 2026-11-18
+
+### Added
+
+- `contracts/overview.schema.json`, `guide-plan.schema.json` and `guide-page.schema.json` 1.0.0: the structured outputs of P03, P01 and P04.
+- `deployment/model-catalog.example.json`: an operator catalog template with one Anthropic preset, whose region and retention entries must be confirmed before use.
+- 05: `generation_cache` (tenant-local cache and stage checkpoint), `file_explanations`, and the full `guide_pages` columns.
+- 06: the guide index and page responses, file explanations in the file view, and 422 `PRESET_UNAVAILABLE`.
+
+### Changed
+
+- 07: the provider gateway as implemented in T11: the adapters, error classes, earmark bound, stage list, at most four units in flight, cache checkpoints, labeled fallbacks, and unknown outcomes on re-claim.
+- 19: prompt set 0.2.0, its data-boundary markers and the repair template.
+
+### Removed
+
+- 22: the `MODEL_PROVIDER`, `MODEL_ID` and `MODEL_API_KEY` settings, replaced by `MODEL_CATALOG_FILE` and per-provider credentials (`ANTHROPIC_API_KEY`).
+
+## [0.4.2] - 2026-11-18
+
+### Security
+
+- 07, 06: the bounded glob matcher of 0.4.1 was still polynomial in tenant-controlled paths and globs; a probe of the committed code took 61 s for one selection. Selection now has a fixed work budget (422 `SCOPE_TOO_COMPLEX`), segments match literal pieces with `str.find` and are memoized, `?` is no longer accepted, globs are limited to 20 per list with at most 8 `*` and 16 segments, and the estimate runs off the API event loop. Found by automated security review of 0.4.1.
+
+## [0.4.1] - 2026-11-18
+
+### Security
+
+- 07: scope globs are matched by a bounded segment matcher instead of `PurePath.full_match`, whose regular-expression translation took exponential time on globs such as `*a*a*a*a*b`; a single estimate request could pin an API worker. Character classes are no longer accepted. Found by automated security review of T10.
+- 06: snapshot acquisitions are admitted under the usage-account lock, at most `MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE` at once (409 `ACQUISITION_LIMIT`). The build limit did not cover them, so a workspace could start unbounded archive downloads and scans. Found by automated security review of T10.
+
+## [0.4.0] - 2026-11-18
+
+### Changed
+
+- `contracts/task-envelope.schema.json` 2.0.0 (incompatible): a task names exactly one build or one snapshot, because a snapshot is now acquired and scanned before any build exists. Consumers still accept v1 messages while they drain (23).
+- 05: `build_tasks` may belong to a snapshot; `builds` record the usage account their envelope was reserved against; `provider_attempts` gain the build, fencing generation, role, purpose, model and output digest; `usage_entries` amounts are non-negative, with the direction carried by the kind.
+- 06: the snapshot, estimate, build start, usage and catalog-preset contracts as implemented in T10, with the error codes `SNAPSHOT_NOT_READY`, `PRESET_UNKNOWN`, `SCOPE_EMPTY`, `ESTIMATE_STALE`, `ALLOWANCE_EXCEEDED` and `WORKSPACE_BUILD_LIMIT`.
+- 07: the estimate runs before parsing, so scope selection is one deterministic file-level function shared by the estimate and the build.
+- 11: until entitlements exist, the monthly allowance is the operator setting `GENERATION_ALLOWANCE_MICRO_USD` (default 0).
+
 ## [0.3.12] - 2026-11-18
 
 ### Security

@@ -1,0 +1,17 @@
+Explain SOURCE_CHUNK with numbered lines, known SYMBOLS and RELATED_CONTEXT. Preserve supplied symbol keys exactly. For every included symbol, summarize behavior, important implementation details, parameters, returns and caveats supported by source. Return Explanation JSON. Add line notes only for non-obvious behavior, with valid inclusive ranges. Empty fields are preferable to guesses. Context not supplied is unknown.
+
+Rules:
+- Include exactly the symbols listed in SYMBOLS, using their symbol_key values unchanged.
+- Parameter names must be exact identifiers from the source; describe only parameters the symbol has.
+- Line note ranges must lie within lines $START_LINE to $END_LINE of this chunk.
+- `summary` (top level) describes what this chunk of `$PATH` does. Limits: symbol summary 600 characters, details 3000, each note 1000, at most 50 notes.
+- Do not state that code is safe, fast or correct unless the source shows it.
+$INCOMPLETE
+
+$SOURCE_CHUNK
+
+$SYMBOLS
+
+$RELATED_CONTEXT
+
+$REPO_MAP

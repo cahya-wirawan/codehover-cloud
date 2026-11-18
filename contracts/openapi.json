@@ -52,6 +52,18 @@
       },
       "BuildOut": {
         "properties": {
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
           "commit_sha": {
             "title": "Commit Sha",
             "type": "string"
@@ -84,6 +96,18 @@
             "title": "Engine Version",
             "type": "string"
           },
+          "estimate_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Id"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -109,6 +133,23 @@
             ],
             "title": "Rejection Code"
           },
+          "retry_of_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of Id"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
           "snapshot_status": {
             "title": "Snapshot Status",
             "type": "string"
@@ -123,11 +164,18 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/BuildUsage"
           }
         },
         "required": [
           "id",
           "project_id",
+          "snapshot_id",
+          "estimate_id",
+          "retry_of_id",
+          "cancel_requested_at",
           "status",
           "commit_sha",
           "snapshot_status",
@@ -137,13 +185,40 @@
           "created_at",
           "completed_at",
           "stages",
-          "counts"
+          "counts",
+          "usage"
         ],
         "title": "BuildOut",
         "type": "object"
       },
       "BuildStart": {
+        "description": "Either `estimate_id` (generation build, optional cap) or `ref` (M1 replay build, zero cap).",
         "properties": {
+          "cap_micro_usd": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Micro Usd"
+          },
+          "estimate_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Id"
+          },
           "ref": {
             "anyOf": [
               {
@@ -201,6 +276,300 @@
           "completed_at"
         ],
         "title": "BuildSummary",
+        "type": "object"
+      },
+      "BuildUsage": {
+        "properties": {
+          "cap_micro_usd": {
+            "title": "Cap Micro Usd",
+            "type": "integer"
+          },
+          "reserved_micro_usd": {
+            "title": "Reserved Micro Usd",
+            "type": "integer"
+          },
+          "settled_micro_usd": {
+            "title": "Settled Micro Usd",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cap_micro_usd",
+          "reserved_micro_usd",
+          "settled_micro_usd"
+        ],
+        "title": "BuildUsage",
+        "type": "object"
+      },
+      "CancelIn": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "CancelIn",
+        "type": "object"
+      },
+      "CheckList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CheckList",
+        "type": "object"
+      },
+      "CheckOut": {
+        "properties": {
+          "checker_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker Model"
+          },
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "claim_key": {
+            "title": "Claim Key",
+            "type": "string"
+          },
+          "claim_text": {
+            "title": "Claim Text",
+            "type": "string"
+          },
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "string"
+          },
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "evidence_lines": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Evidence Lines",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "waived": {
+            "title": "Waived",
+            "type": "boolean"
+          },
+          "waived_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waived Reason"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "claim_key",
+          "claim_text",
+          "citation",
+          "path",
+          "start_line",
+          "end_line",
+          "deterministic",
+          "status",
+          "reason",
+          "evidence_lines",
+          "checker_model",
+          "waived",
+          "waived_reason"
+        ],
+        "title": "CheckOut",
+        "type": "object"
+      },
+      "ChunkExplanation": {
+        "properties": {
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "boolean"
+          },
+          "notes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_line",
+          "end_line",
+          "incomplete",
+          "summary",
+          "notes",
+          "status"
+        ],
+        "title": "ChunkExplanation",
+        "type": "object"
+      },
+      "Citation": {
+        "properties": {
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_id",
+          "path",
+          "start_line",
+          "end_line"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
+      "ClaimCitation": {
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "string"
+          },
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "citation",
+          "path",
+          "start_line",
+          "end_line",
+          "deterministic"
+        ],
+        "title": "ClaimCitation",
         "type": "object"
       },
       "ConnectionList": {
@@ -269,6 +638,24 @@
         "title": "ConnectionOut",
         "type": "object"
       },
+      "CostRange": {
+        "properties": {
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "low",
+          "high"
+        ],
+        "title": "CostRange",
+        "type": "object"
+      },
       "CsrfResponse": {
         "properties": {
           "csrf_token": {
@@ -282,11 +669,291 @@
         "title": "CsrfResponse",
         "type": "object"
       },
+      "EntryList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "EntryList",
+        "type": "object"
+      },
+      "EntryOut": {
+        "properties": {
+          "amount_micro_usd": {
+            "title": "Amount Micro Usd",
+            "type": "integer"
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
+          "build_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "build_id",
+          "attempt_id",
+          "kind",
+          "amount_micro_usd",
+          "created_at"
+        ],
+        "title": "EntryOut",
+        "type": "object"
+      },
+      "EstimateOut": {
+        "properties": {
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "config_digest": {
+            "title": "Config Digest",
+            "type": "string"
+          },
+          "cost_micro_usd": {
+            "$ref": "#/components/schemas/CostRange"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "estimated_tokens": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TokenRange"
+            },
+            "title": "Estimated Tokens",
+            "type": "object"
+          },
+          "excluded_files": {
+            "title": "Excluded Files",
+            "type": "integer"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "price_version": {
+            "title": "Price Version",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "selected_files": {
+            "title": "Selected Files",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "snapshot_id",
+          "commit_sha",
+          "config",
+          "config_digest",
+          "price_version",
+          "selected_files",
+          "excluded_files",
+          "estimated_tokens",
+          "cost_micro_usd",
+          "created_at",
+          "expires_at",
+          "expired",
+          "disclaimer"
+        ],
+        "title": "EstimateOut",
+        "type": "object"
+      },
+      "EstimateRequest": {
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/GenerationConfig"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "config"
+        ],
+        "title": "EstimateRequest",
+        "type": "object"
+      },
+      "EventList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "title": "Next After",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_after"
+        ],
+        "title": "EventList",
+        "type": "object"
+      },
+      "EventOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "event_type",
+          "payload",
+          "created_at"
+        ],
+        "title": "EventOut",
+        "type": "object"
+      },
+      "FileExplanationOut": {
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkExplanation"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "chunks"
+        ],
+        "title": "FileExplanationOut",
+        "type": "object"
+      },
       "FileOut": {
         "properties": {
           "end_line": {
             "title": "End Line",
             "type": "integer"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileExplanationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "format": "uuid",
@@ -422,6 +1089,225 @@
           "summary"
         ],
         "title": "FileSymbol",
+        "type": "object"
+      },
+      "GenerationConfig": {
+        "additionalProperties": false,
+        "description": "Build configuration (06 \"Create estimate request\"). Normalized before hashing.",
+        "properties": {
+          "exclude": {
+            "default": [],
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]?]+$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Exclude",
+            "type": "array"
+          },
+          "guide_pages": {
+            "default": 5,
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Guide Pages",
+            "type": "integer"
+          },
+          "include": {
+            "default": [
+              "**"
+            ],
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]?]+$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Include",
+            "type": "array"
+          },
+          "languages": {
+            "default": [
+              "en"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1,
+            "minItems": 1,
+            "title": "Languages",
+            "type": "array"
+          },
+          "levels": {
+            "default": [
+              "standard"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1,
+            "minItems": 1,
+            "title": "Levels",
+            "type": "array"
+          },
+          "max_files": {
+            "default": 100,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Max Files",
+            "type": "integer"
+          },
+          "model_preset": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Model Preset",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_preset"
+        ],
+        "title": "GenerationConfig",
+        "type": "object"
+      },
+      "GuideIndexOut": {
+        "properties": {
+          "overview": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overview"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/GuidePageSummary"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "overview",
+          "pages"
+        ],
+        "title": "GuideIndexOut",
+        "type": "object"
+      },
+      "GuidePageOut": {
+        "properties": {
+          "check_status": {
+            "title": "Check Status",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/PageClaim"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "ordinal",
+          "purpose",
+          "status",
+          "check_status",
+          "provenance",
+          "markdown",
+          "citations",
+          "claims"
+        ],
+        "title": "GuidePageOut",
+        "type": "object"
+      },
+      "GuidePageSummary": {
+        "properties": {
+          "check_status": {
+            "title": "Check Status",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "ordinal",
+          "purpose",
+          "status",
+          "check_status",
+          "provenance"
+        ],
+        "title": "GuidePageSummary",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -745,6 +1631,128 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "PageClaim": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimCitation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "claim_key": {
+            "title": "Claim Key",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "waived": {
+            "title": "Waived",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "claim_key",
+          "text",
+          "ordinal",
+          "status",
+          "reason",
+          "waived",
+          "citations"
+        ],
+        "title": "PageClaim",
+        "type": "object"
+      },
+      "PresetList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PresetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          },
+          "price_version": {
+            "title": "Price Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "price_version",
+          "items"
+        ],
+        "title": "PresetList",
+        "type": "object"
+      },
+      "PresetOut": {
+        "properties": {
+          "checker_model": {
+            "title": "Checker Model",
+            "type": "string"
+          },
+          "data_regions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Data Regions",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "writer_model": {
+            "title": "Writer Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "writer_model",
+          "checker_model",
+          "providers",
+          "data_regions"
+        ],
+        "title": "PresetOut",
+        "type": "object"
+      },
       "ProjectCreate": {
         "properties": {
           "name": {
@@ -841,6 +1849,78 @@
           "repository"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "QualityOut": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "claims": {
+            "title": "Claims",
+            "type": "integer"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "pages": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Pages",
+            "type": "object"
+          },
+          "publishable": {
+            "title": "Publishable",
+            "type": "boolean"
+          },
+          "requires_acknowledgment": {
+            "title": "Requires Acknowledgment",
+            "type": "boolean"
+          },
+          "supported_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supported Fraction"
+          },
+          "uncited_sentences": {
+            "title": "Uncited Sentences",
+            "type": "integer"
+          },
+          "waived": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Waived",
+            "type": "object"
+          }
+        },
+        "required": [
+          "claims",
+          "counts",
+          "waived",
+          "supported_fraction",
+          "uncited_sentences",
+          "pages",
+          "publishable",
+          "blockers",
+          "requires_acknowledgment"
+        ],
+        "title": "QualityOut",
         "type": "object"
       },
       "ReadyResponse": {
@@ -1016,6 +2096,37 @@
         "title": "RepositoryOut",
         "type": "object"
       },
+      "RetryIn": {
+        "properties": {
+          "cap_micro_usd": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Micro Usd"
+          },
+          "estimate_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Id"
+          }
+        },
+        "title": "RetryIn",
+        "type": "object"
+      },
       "RoleChange": {
         "properties": {
           "role": {
@@ -1090,6 +2201,202 @@
           "current"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SnapshotFile": {
+        "properties": {
+          "byte_count": {
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "line_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Count"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "language",
+          "status",
+          "reason",
+          "byte_count",
+          "line_count"
+        ],
+        "title": "SnapshotFile",
+        "type": "object"
+      },
+      "SnapshotFileList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotFile"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SnapshotFileList",
+        "type": "object"
+      },
+      "SnapshotOut": {
+        "properties": {
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "file_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Count"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "observed_ref": {
+            "title": "Observed Ref",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rejection_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Code"
+          },
+          "scan_summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Scan Summary",
+            "type": "object"
+          },
+          "source_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Bytes"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "commit_sha",
+          "observed_ref",
+          "status",
+          "rejection_code",
+          "file_count",
+          "source_bytes",
+          "scan_summary",
+          "created_at"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
+      "SnapshotRequest": {
+        "properties": {
+          "ref": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          }
+        },
+        "title": "SnapshotRequest",
         "type": "object"
       },
       "StageOut": {
@@ -1216,6 +2523,24 @@
         "title": "SymbolOut",
         "type": "object"
       },
+      "TokenRange": {
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "integer"
+          },
+          "output": {
+            "title": "Output",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ],
+        "title": "TokenRange",
+        "type": "object"
+      },
       "TreeEntry": {
         "properties": {
           "file_id": {
@@ -1304,6 +2629,46 @@
         "title": "TreeOut",
         "type": "object"
       },
+      "UsageOut": {
+        "properties": {
+          "allowance_micro_usd": {
+            "title": "Allowance Micro Usd",
+            "type": "integer"
+          },
+          "available_micro_usd": {
+            "title": "Available Micro Usd",
+            "type": "integer"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "reserved_micro_usd": {
+            "title": "Reserved Micro Usd",
+            "type": "integer"
+          },
+          "settled_micro_usd": {
+            "title": "Settled Micro Usd",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "allowance_micro_usd",
+          "reserved_micro_usd",
+          "settled_micro_usd",
+          "available_micro_usd"
+        ],
+        "title": "UsageOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1342,6 +2707,48 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WaiverIn": {
+        "properties": {
+          "claim_keys": {
+            "items": {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Claim Keys",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_keys",
+          "reason"
+        ],
+        "title": "WaiverIn",
+        "type": "object"
+      },
+      "WaiverOut": {
+        "properties": {
+          "waived": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Waived",
+            "type": "array"
+          }
+        },
+        "required": [
+          "waived"
+        ],
+        "title": "WaiverOut",
         "type": "object"
       },
       "WorkspaceCreate": {
@@ -1667,6 +3074,125 @@
         ]
       }
     },
+    "/api/v1/builds/{build_id}/cancel": {
+      "post": {
+        "operationId": "cancel_build_api_v1_builds__build_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Build",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/events": {
+      "get": {
+        "operationId": "build_events_api_v1_builds__build_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Events",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/builds/{build_id}/files/{file_id}": {
       "get": {
         "operationId": "file_view_api_v1_builds__build_id__files__file_id__get",
@@ -1743,6 +3269,362 @@
           }
         },
         "summary": "File View",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/guide": {
+      "get": {
+        "operationId": "guide_index_api_v1_builds__build_id__guide_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideIndexOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guide Index",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/guide/{slug}": {
+      "get": {
+        "operationId": "guide_page_api_v1_builds__build_id__guide__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$",
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuidePageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guide Page",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/quality": {
+      "get": {
+        "operationId": "quality_summary_api_v1_builds__build_id__quality_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Summary",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/quality/checks": {
+      "get": {
+        "operationId": "quality_checks_api_v1_builds__build_id__quality_checks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(supported|partial|unsupported|unchecked|invalid)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Checks",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/quality/waivers": {
+      "post": {
+        "operationId": "waive_claims_api_v1_builds__build_id__quality_waivers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WaiverIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaiverOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Waive Claims",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/retry": {
+      "post": {
+        "operationId": "retry_build_api_v1_builds__build_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Build",
         "tags": [
           "projects"
         ]
@@ -1852,6 +3734,27 @@
         "summary": "Tree",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/catalog/presets": {
+      "get": {
+        "operationId": "presets_api_v1_catalog_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Presets",
+        "tags": [
+          "usage"
         ]
       }
     },
@@ -2386,6 +4289,339 @@
           }
         },
         "summary": "Start Build",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/estimates": {
+      "post": {
+        "operationId": "create_estimate_api_v1_projects__project_id__estimates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Estimate",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/estimates/{estimate_id}": {
+      "get": {
+        "operationId": "get_estimate_api_v1_projects__project_id__estimates__estimate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "estimate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Estimate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Estimate",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/snapshots": {
+      "post": {
+        "operationId": "request_snapshot_api_v1_projects__project_id__snapshots_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Snapshot",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/snapshots/{snapshot_id}": {
+      "get": {
+        "operationId": "get_snapshot_api_v1_projects__project_id__snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Snapshot",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/snapshots/{snapshot_id}/files": {
+      "get": {
+        "operationId": "list_snapshot_files_api_v1_projects__project_id__snapshots__snapshot_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(selected|excluded|binary|oversize|unsupported|blocked)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotFileList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Snapshot Files",
         "tags": [
           "projects"
         ]
@@ -3227,6 +5463,127 @@
         "summary": "List Refs",
         "tags": [
           "github"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/usage": {
+      "get": {
+        "operationId": "usage_api_v1_workspaces__workspace_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Usage",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/usage/entries": {
+      "get": {
+        "operationId": "usage_entries_api_v1_workspaces__workspace_id__usage_entries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Usage Entries",
+        "tags": [
+          "usage"
         ]
       }
     }

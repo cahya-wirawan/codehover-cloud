@@ -6,14 +6,25 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
+from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
 from app.adapters.storage import ObjectStore
 from app.core.idempotency import run_once
+from app.core.pagination import (
+    Position,
+    clamp_limit,
+    decode_cursor,
+    decode_path_cursor,
+    encode_cursor,
+    encode_path_cursor,
+)
+from app.core.settings import Settings
+from app.engine.catalog import Catalog
+from app.engine.estimate import GenerationConfig
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
-from app.modules.projects import service
+from app.modules.projects import estimates, quality, service
 from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
 
 router = APIRouter(tags=["projects"])
@@ -31,7 +42,12 @@ async def build_reader(build_id: UUID, db: Db, principal: CurrentPrincipal) -> M
     return await resource_member("build", build_id, db, principal)
 
 
+async def build_writer(build_id: UUID, db: Db, principal: CsrfPrincipal) -> Member:
+    return await resource_member("build", build_id, db, principal)
+
+
 ProjectReader = Annotated[Member, Depends(project_reader)]
+BuildWriter = Annotated[Member, Depends(build_writer)]
 ProjectWriter = Annotated[Member, Depends(project_writer)]
 BuildReader = Annotated[Member, Depends(build_reader)]
 
@@ -59,7 +75,105 @@ class ProjectList(BaseModel):
 
 
 class BuildStart(BaseModel):
+    """Either `estimate_id` (generation build, optional cap) or `ref` (M1 replay build, zero cap)."""
+
     ref: Annotated[str | None, Field(max_length=255)] = None
+    estimate_id: UUID | None = None
+    cap_micro_usd: Annotated[int | None, Field(ge=0, le=10**12)] = None
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> BuildStart:
+        if self.estimate_id is not None and self.ref is not None:
+            raise ValueError("send either estimate_id or ref, not both")
+        if self.estimate_id is None and self.cap_micro_usd is not None:
+            raise ValueError("cap_micro_usd requires estimate_id")
+        return self
+
+
+class CancelIn(BaseModel):
+    reason: Annotated[str | None, Field(max_length=200)] = None
+
+
+class RetryIn(BaseModel):
+    estimate_id: UUID | None = None
+    cap_micro_usd: Annotated[int | None, Field(ge=0, le=10**12)] = None
+
+
+class EventOut(BaseModel):
+    sequence: int
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
+
+
+class EventList(BaseModel):
+    items: list[EventOut]
+    next_after: int
+
+
+class SnapshotRequest(BaseModel):
+    ref: Annotated[str | None, Field(max_length=255)] = None
+
+
+class SnapshotOut(BaseModel):
+    id: UUID
+    project_id: UUID
+    commit_sha: str
+    observed_ref: str
+    status: str
+    rejection_code: str | None
+    file_count: int | None
+    source_bytes: int | None
+    scan_summary: dict[str, int]
+    created_at: datetime
+
+
+class SnapshotFile(BaseModel):
+    id: UUID
+    path: str
+    language: str | None
+    status: str
+    reason: str | None
+    byte_count: int
+    line_count: int | None
+
+
+class SnapshotFileList(BaseModel):
+    items: list[SnapshotFile]
+    next_cursor: str | None
+
+
+class EstimateRequest(BaseModel):
+    snapshot_id: UUID
+    config: GenerationConfig
+
+
+class TokenRange(BaseModel):
+    input: int
+    output: int
+
+
+class CostRange(BaseModel):
+    low: int
+    high: int
+
+
+class EstimateOut(BaseModel):
+    id: UUID
+    project_id: UUID
+    snapshot_id: UUID
+    commit_sha: str
+    config: dict[str, Any]
+    config_digest: str
+    price_version: str
+    selected_files: int
+    excluded_files: int
+    estimated_tokens: dict[str, TokenRange]
+    cost_micro_usd: CostRange
+    created_at: datetime
+    expires_at: datetime
+    expired: bool
+    disclaimer: str
 
 
 class StageOut(BaseModel):
@@ -68,9 +182,19 @@ class StageOut(BaseModel):
     error_code: str | None
 
 
+class BuildUsage(BaseModel):
+    cap_micro_usd: int
+    reserved_micro_usd: int
+    settled_micro_usd: int
+
+
 class BuildOut(BaseModel):
     id: UUID
     project_id: UUID
+    snapshot_id: UUID
+    estimate_id: UUID | None
+    retry_of_id: UUID | None
+    cancel_requested_at: datetime | None
     status: str
     commit_sha: str
     snapshot_status: str
@@ -81,6 +205,7 @@ class BuildOut(BaseModel):
     completed_at: datetime | None
     stages: list[StageOut]
     counts: dict[str, int]
+    usage: BuildUsage
 
 
 class BuildSummary(BaseModel):
@@ -123,6 +248,113 @@ class FileSymbol(BaseModel):
     summary: str | None
 
 
+class ChunkExplanation(BaseModel):
+    start_line: int
+    end_line: int
+    incomplete: bool
+    summary: str
+    notes: list[dict[str, Any]]
+    status: str
+
+
+class FileExplanationOut(BaseModel):
+    status: str
+    summary: str
+    chunks: list[ChunkExplanation]
+
+
+class GuidePageSummary(BaseModel):
+    slug: str
+    title: str
+    ordinal: int
+    purpose: str
+    status: str
+    check_status: str
+    provenance: dict[str, Any]
+
+
+class GuideIndexOut(BaseModel):
+    overview: dict[str, Any] | None
+    pages: list[GuidePageSummary]
+
+
+class Citation(BaseModel):
+    file_id: str
+    path: str | None
+    start_line: int
+    end_line: int
+
+
+class ClaimCitation(BaseModel):
+    citation: str
+    path: str | None
+    start_line: int
+    end_line: int
+    deterministic: str
+
+
+class PageClaim(BaseModel):
+    claim_key: str
+    text: str
+    ordinal: int
+    status: str
+    reason: str | None
+    waived: bool
+    citations: list[ClaimCitation]
+
+
+class GuidePageOut(GuidePageSummary):
+    markdown: str
+    citations: list[Citation]
+    claims: list[PageClaim]
+
+
+class QualityOut(BaseModel):
+    claims: int
+    counts: dict[str, int]
+    waived: dict[str, int]
+    supported_fraction: float | None
+    uncited_sentences: int
+    pages: dict[str, int]
+    publishable: bool
+    blockers: list[str]
+    requires_acknowledgment: bool
+
+
+class CheckOut(BaseModel):
+    id: UUID
+    slug: str
+    claim_key: str
+    claim_text: str
+    citation: str
+    path: str | None
+    start_line: int
+    end_line: int
+    deterministic: str
+    status: str
+    reason: str
+    evidence_lines: list[int]
+    checker_model: str | None
+    waived: bool
+    waived_reason: str | None
+
+
+class CheckList(BaseModel):
+    items: list[CheckOut]
+    next_cursor: str | None
+
+
+class WaiverIn(BaseModel):
+    claim_keys: Annotated[
+        list[Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]], Field(min_length=1, max_length=100)
+    ]
+    reason: Annotated[str, Field(min_length=10, max_length=1000)]
+
+
+class WaiverOut(BaseModel):
+    waived: list[str]
+
+
 class FileOut(BaseModel):
     id: UUID
     path: str
@@ -133,6 +365,7 @@ class FileOut(BaseModel):
     end_line: int
     lines: list[str]
     symbols: list[FileSymbol]
+    explanation: FileExplanationOut | None = None
 
 
 class Related(BaseModel):
@@ -164,6 +397,16 @@ class SymbolOut(BaseModel):
 def _github(request: Request) -> GitHubApp | None:
     app: GitHubApp | None = request.app.state.github_app
     return app
+
+
+def _settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
+
+
+def _catalog(request: Request) -> Catalog:
+    catalog: Catalog = request.app.state.catalog
+    return catalog
 
 
 def _objects(request: Request) -> ObjectStore:
@@ -211,7 +454,20 @@ async def start_build(
     require_role(member, "editor")
 
     async def produce() -> tuple[int, dict[str, Any]]:
-        build = await service.start_build(db, _github(request), member, project_id, body.ref)
+        if body.estimate_id is not None:
+            build = await service.start_generation_build(
+                db,
+                _catalog(request),
+                _settings(request),
+                member,
+                project_id,
+                body.estimate_id,
+                body.cap_micro_usd,
+            )
+        else:
+            build = await service.start_build(
+                db, _github(request), _settings(request), member, project_id, body.ref
+            )
         return 202, BuildOut(**build).model_dump(mode="json")
 
     status, payload = await run_once(
@@ -259,3 +515,203 @@ async def file_view(
 @router.get("/builds/{build_id}/symbols/{symbol_id}", response_model=SymbolOut)
 async def symbol_view(build_id: UUID, symbol_id: UUID, db: Db, member: BuildReader) -> SymbolOut:
     return SymbolOut(**await service.symbol_view(db, member, build_id, symbol_id))
+
+
+# ---------------------------------------------------------------- snapshots and estimates
+@router.post("/projects/{project_id}/snapshots", response_model=SnapshotOut, status_code=202)
+async def request_snapshot(
+    project_id: UUID,
+    body: SnapshotRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    member: ProjectWriter,
+) -> SnapshotOut:
+    require_role(member, "editor")
+    snapshot = await estimates.request_snapshot(
+        db, _github(request), _settings(request), member, project_id, body.ref
+    )
+    response.headers["Location"] = f"/api/v1/projects/{project_id}/snapshots/{snapshot['id']}"
+    return SnapshotOut(**snapshot)
+
+
+@router.get("/projects/{project_id}/snapshots/{snapshot_id}", response_model=SnapshotOut)
+async def get_snapshot(project_id: UUID, snapshot_id: UUID, db: Db, member: ProjectReader) -> SnapshotOut:
+    return SnapshotOut(**await estimates.get_snapshot(db, member, project_id, snapshot_id))
+
+
+@router.get("/projects/{project_id}/snapshots/{snapshot_id}/files", response_model=SnapshotFileList)
+async def list_snapshot_files(
+    project_id: UUID,
+    snapshot_id: UUID,
+    request: Request,
+    db: Db,
+    member: ProjectReader,
+    status: Annotated[
+        str | None, Query(pattern=r"^(selected|excluded|binary|oversize|unsupported|blocked)$")
+    ] = None,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> SnapshotFileList:
+    scope = f"snapshot-files:{snapshot_id}:{status or ''}"
+    secret = _settings(request).session_secret.get_secret_value()
+    after = decode_path_cursor(secret, scope, cursor)
+    n = clamp_limit(limit)
+    rows = await estimates.list_snapshot_files(db, member, project_id, snapshot_id, status, after, n + 1)
+    more = len(rows) > n
+    rows = rows[:n]
+    return SnapshotFileList(
+        items=[SnapshotFile(**r) for r in rows],
+        next_cursor=encode_path_cursor(secret, scope, rows[-1]["path"]) if more else None,
+    )
+
+
+@router.post("/projects/{project_id}/estimates", response_model=EstimateOut, status_code=201)
+async def create_estimate(
+    project_id: UUID,
+    body: EstimateRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    member: ProjectWriter,
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> EstimateOut:
+    require_role(member, "editor")
+
+    async def produce() -> tuple[int, dict[str, Any]]:
+        created = await estimates.create_estimate(
+            db, _catalog(request), _settings(request), member, project_id, body.snapshot_id, body.config
+        )
+        return 201, EstimateOut(**created).model_dump(mode="json")
+
+    status, payload = await run_once(
+        db,
+        user_id=member.user_id,
+        workspace_id=member.workspace_id,
+        route=f"POST /projects/{project_id}/estimates",
+        key=idempotency_key,
+        body=body.model_dump(mode="json"),
+        produce=produce,
+    )
+    response.status_code = status
+    response.headers["Location"] = f"/api/v1/projects/{project_id}/estimates/{payload['id']}"
+    return EstimateOut(**payload)
+
+
+@router.get("/projects/{project_id}/estimates/{estimate_id}", response_model=EstimateOut)
+async def get_estimate(project_id: UUID, estimate_id: UUID, db: Db, member: ProjectReader) -> EstimateOut:
+    return EstimateOut(**await estimates.get_estimate(db, member, project_id, estimate_id))
+
+
+# ---------------------------------------------------------------- guide
+@router.get("/builds/{build_id}/guide", response_model=GuideIndexOut)
+async def guide_index(build_id: UUID, request: Request, db: Db, member: BuildReader) -> GuideIndexOut:
+    return GuideIndexOut(**await service.guide_index(db, _objects(request), member, build_id))
+
+
+@router.get("/builds/{build_id}/guide/{slug}", response_model=GuidePageOut)
+async def guide_page(
+    build_id: UUID,
+    request: Request,
+    db: Db,
+    member: BuildReader,
+    slug: Annotated[str, Path(pattern=r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$")],
+) -> GuidePageOut:
+    return GuidePageOut(**await service.guide_page(db, _objects(request), member, build_id, slug))
+
+
+# ---------------------------------------------------------------- quality
+@router.get("/builds/{build_id}/quality", response_model=QualityOut)
+async def quality_summary(build_id: UUID, request: Request, db: Db, member: BuildReader) -> QualityOut:
+    return QualityOut(**await quality.summary(db, _objects(request), member, build_id))
+
+
+@router.get("/builds/{build_id}/quality/checks", response_model=CheckList)
+async def quality_checks(
+    build_id: UUID,
+    request: Request,
+    db: Db,
+    member: BuildReader,
+    status: Annotated[
+        str | None, Query(pattern=r"^(supported|partial|unsupported|unchecked|invalid)$")
+    ] = None,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> CheckList:
+    secret = _settings(request).session_secret.get_secret_value()
+    scope = f"quality:{build_id}:{status or ''}"
+    n = clamp_limit(limit)
+    rows = await quality.checks(db, member, build_id, status, decode_cursor(secret, scope, cursor), n + 1)
+    more = len(rows) > n
+    rows = rows[:n]
+    return CheckList(
+        items=[CheckOut(**r) for r in rows],
+        next_cursor=encode_cursor(secret, scope, Position(rows[-1]["created_at"], rows[-1]["id"]))
+        if more
+        else None,
+    )
+
+
+@router.post("/builds/{build_id}/quality/waivers", response_model=WaiverOut)
+async def waive_claims(build_id: UUID, body: WaiverIn, db: Db, member: BuildWriter) -> WaiverOut:
+    require_role(member, "admin")
+    return WaiverOut(
+        **await quality.waive(db, member, build_id, sorted(set(body.claim_keys)), body.reason.strip())
+    )
+
+
+# ---------------------------------------------------------------- cancel, retry, events
+@router.post("/builds/{build_id}/cancel", response_model=BuildOut)
+async def cancel_build(build_id: UUID, body: CancelIn, db: Db, member: BuildWriter) -> BuildOut:
+    require_role(member, "editor")
+    return BuildOut(**await service.request_cancel(db, member, build_id, body.reason))
+
+
+@router.post("/builds/{build_id}/retry", response_model=BuildOut, status_code=202)
+async def retry_build(
+    build_id: UUID,
+    body: RetryIn,
+    request: Request,
+    response: Response,
+    db: Db,
+    member: BuildWriter,
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> BuildOut:
+    require_role(member, "editor")
+
+    async def produce() -> tuple[int, dict[str, Any]]:
+        build = await service.retry_build(
+            db,
+            _github(request),
+            _catalog(request),
+            _settings(request),
+            member,
+            build_id,
+            body.estimate_id,
+            body.cap_micro_usd,
+        )
+        return 202, BuildOut(**build).model_dump(mode="json")
+
+    status, payload = await run_once(
+        db,
+        user_id=member.user_id,
+        workspace_id=member.workspace_id,
+        route=f"POST /builds/{build_id}/retry",
+        key=idempotency_key,
+        body=body.model_dump(mode="json"),
+        produce=produce,
+    )
+    response.status_code = status
+    response.headers["Location"] = f"/api/v1/builds/{payload['id']}"
+    return BuildOut(**payload)
+
+
+@router.get("/builds/{build_id}/events", response_model=EventList)
+async def build_events(
+    build_id: UUID,
+    db: Db,
+    member: BuildReader,
+    after: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+) -> EventList:
+    return EventList(**await service.build_events(db, member, build_id, after, limit))

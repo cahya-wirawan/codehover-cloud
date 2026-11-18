@@ -1,6 +1,64 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.3.12
+Date: 2026-11-18 · Package version 0.5.4
+
+0.5.4 adds the M2 evaluation baseline. On the corpus, the replay run passes every hard gate:
+- scan as labeled;
+- 50 of 50 labeled definitions matched (precision and recall 1.0) and 100% span validity;
+- the malformed file reported as a parse error;
+- 9 of 9 explanation answers valid, none containing injected text, and every prompt with intact data blocks;
+- 4 of 4 invalid citations rejected with the labeled reason.
+
+On 34 labeled claims, the replay checker's supported-label precision is 0.54 (Wilson 95% 0.35–0.71), and recall 0.67 (0.45–0.83). That measures a heuristic and is the reason a preset may no longer pair a model writer with it. The labels are drafts by the implementing assistant, and the report marks the baseline provisional until two maintainers label it; no accuracy claim follows from it. A model-checker baseline needs an operator catalog, an API key and approval to spend. CI pins the baseline report and checks that it reproduces byte for byte. 263 backend tests pass.
+
+0.5.3 records cancellation, retry and event polling. Integration tests cover:
+- a queued build cancelled at once with its full envelope released;
+- a cancel during a call: in-flight calls settle, no later stage runs, and the ledger balances (A10);
+- with one call in flight, the next unit refused at its earmark, so exactly one call happens;
+- a retry after a checker outage that pays only for checks and becomes publishable (A13);
+- retry rules: not while running, not with another snapshot's estimate, and 404 for strangers;
+- ordered, resumable events.
+
+Removing the cancel check at the earmark, or the cancel at the stage boundary, is caught. The frontend adds the estimate flow (snapshot, scope, preset, cost range, price revision, expiry, cap), cancel and retry, usage, and the guide with claim badges. Guide text renders as text, and a test confirms that an HTML-looking model output creates no element. 259 backend and 10 frontend tests pass.
+
+0.5.2 records T12. Integration tests cover:
+- a replay guide whose claims are all supported, so the build is publishable;
+- a checker outage that leaves every claim unchecked on a ready draft and blocks publication (A13);
+- a repair cycle that removes unsupported claims, keeps the original page and rows, and re-checks only changed claims;
+- unsupported claims that block until an admin waives them with an audited reason, then stay counted;
+- a citation by path instead of file ID that is invalid, never sent to the checker, and refused for waiver by the API and by a database CHECK (A14);
+- quality endpoints that are private to the workspace.
+
+Unit tests cover extraction (trailing citations, list items, code fences, slug-bound keys), each deterministic rejection reason, checker and repair validation, and the gate. Seven mutations are caught: citing excluded files, skipping range bounds, treating an outage as supported, waiving anything, letting unchecked claims through, sending invalid claims to the checker, and keeping superseded rows current. 253 backend tests pass.
+
+0.5.1 fixes two findings of the automated review of T11. With the scope narrowed to `src/app.py`, no captured prompt contains `src/util.py`, its `helper` definition, or the excluded secrets; removing the new filter makes that test fail. New allowlist cases reject reference-style and autolink `javascript:` targets and raw HTML in list items and blocks. 232 backend tests pass.
+
+0.5.0 records T11, the provider gateway and generation stages. Integration tests run the real pipeline with the deterministic replay gateway, and a scripted fake stands in for a priced provider; no real provider is called. They cover:
+- a free replay-preset build through explain, overview, plan, guide and render, with labeled cards, file explanations, cited guide pages, a manifest listing the guide, and the guide endpoints private to the workspace;
+- priced calls whose actual cost never exceeds the earmark, with a ledger that balances (reserve, settle, release) and provider request IDs kept;
+- budget exhaustion before any request;
+- a rate-limited call retried without charge, and an invalid answer billed and then repaired;
+- a refusal falling back to a labeled source-only card;
+- an unknown outcome keeping its hold after the build ends;
+- a crash after paid output resuming from the checkpoint without paying again (A09);
+- a fenced-out worker settling and checkpointing nothing;
+- a killed worker's attempts becoming `unknown` on re-claim, with their holds kept.
+
+Unit tests cover chunking, data-boundary markers, validators, the Markdown allowlist, the schema projection, and the Anthropic adapter against a mock transport, including error normalization and a request with no sampling parameters or tools. Mutation checks catch removing the earmark budget check, the settlement fence, unknown-on-re-claim, cache reuse, the repair call, symbol-key validation and the raw-HTML check. Cancellation has no test until T13. 224 backend tests pass (one Linux-only test skipped on macOS).
+
+0.4.2 bounds scope selection. Against 2000 files with 29 segments of 200 characters each and 40 hostile but valid globs, every selection finishes or stops at the budget within 1.6 s (previously 61 s); ordinary globs take 0.2 s on those paths and 37 ms on a realistic repository. 183 backend tests pass.
+
+0.4.1 fixes two findings of the automated review of T10. A probe of `PurePath.full_match` with `*a*a*a*a*a*a*a*a*a*a*b` against a 960-character path did not finish in two minutes; the new matcher agrees with it on ordinary globs and handles the hostile ones in milliseconds (unit tests). An integration test shows a second project's acquisition refused while the first is pending, and admitted after it finishes. 180 backend tests pass (one Linux-only test skipped on macOS).
+
+0.4.0 records T10 (M2): snapshots before builds, estimates and single-envelope reservations. Integration tests on PostgreSQL 18 cover:
+- a snapshot acquired and scanned before any build, with signed, filter-bound file cursors;
+- an immutable estimate that expires, goes stale when the catalog changes, and fixes the approved commit even after the branch moves (A05);
+- a cap reserved once and released at the end, with ledger entries balancing the account counters;
+- a cap above the remaining allowance refused, and the workspace active-build limit;
+- a two-session race in which the second reservation waits for the account lock (A08);
+- other tenants seeing 404 for estimates, snapshots and usage.
+
+Mutation checks catch removing the account row lock, the allowance check, the expiry check and the terminal release. An API-level race alone did not catch the missing lock, because the two requests ran one after the other; the direct two-session test does. 176 backend tests pass.
 
 0.3.12 hardens the sandbox. The Linux probe ran with a world-readable `/run/secrets/github_app_key` present. Inside the sandbox it could not read the parent's environ, `/etc` or the secret, and could not exec or open any socket; the parser still works under Landlock. On the Compose stack, the hardened worker passed the stricter self-check, and its own environ is unreadable to same-UID processes (`PR_SET_DUMPABLE=0`). 146 backend tests pass.
 

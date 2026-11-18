@@ -1,25 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:codehover-cloud:schema:task-envelope:1.0.0",
-  "title": "Task notification v1",
+  "$id": "urn:codehover-cloud:schema:task-envelope:2.0.0",
+  "title": "Task notification v2",
+  "description": "Identifiers only, never code or tokens. A task belongs to exactly one build or one snapshot (snapshot acquisition runs before any build). Consumers treat the message as a hint and re-read the task from SQL; during the rollover they also accept v1 messages, which always name a build.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "task_id",
-    "build_id",
     "workspace_id",
+    "build_id",
+    "snapshot_id",
     "trace_id"
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "task_id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "build_id": {
       "type": "string",
       "format": "uuid"
     },
@@ -27,9 +25,25 @@
       "type": "string",
       "format": "uuid"
     },
+    "build_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "snapshot_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
     "trace_id": {
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
     }
-  }
+  },
+  "oneOf": [
+    {
+      "properties": {"build_id": {"type": "string"}, "snapshot_id": {"type": "null"}}
+    },
+    {
+      "properties": {"build_id": {"type": "null"}, "snapshot_id": {"type": "string"}}
+    }
+  ]
 }

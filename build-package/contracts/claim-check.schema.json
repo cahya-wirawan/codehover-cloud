@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:codehover-cloud:schema:claim-check:1.0.0",
+  "title": "codehover-cloud claim support checks v1 (19 P05)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["checks"],
+  "properties": {
+    "checks": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "status", "reason", "evidence_line_numbers"],
+        "properties": {
+          "claim_id": {"type": "string", "maxLength": 64},
+          "status": {"enum": ["supported", "partial", "unsupported"]},
+          "reason": {"type": "string", "maxLength": 500},
+          "evidence_line_numbers": {"type": "array", "maxItems": 200, "items": {"type": "integer", "minimum": 1}}
+        }
+      }
+    }
+  }
+}

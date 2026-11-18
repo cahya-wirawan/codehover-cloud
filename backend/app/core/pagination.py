@@ -64,3 +64,36 @@ def clamp_limit(limit: int | None) -> int:
     if limit is None:
         return DEFAULT_LIMIT
     return max(1, min(limit, MAX_LIMIT))
+
+
+def _sign(secret: str, data: dict[str, str]) -> str:
+    body = json.dumps(data, separators=(",", ":")).encode()
+    mac = hmac.new(_key(secret), body, hashlib.sha256).digest()[:16]
+    return base64.urlsafe_b64encode(body + mac).rstrip(b"=").decode()
+
+
+def _verify(secret: str, cursor: str) -> dict[str, str]:
+    raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+    body, mac = raw[:-16], raw[-16:]
+    if not hmac.compare_digest(mac, hmac.new(_key(secret), body, hashlib.sha256).digest()[:16]):
+        raise ValueError("signature")
+    data: dict[str, str] = json.loads(body)
+    return data
+
+
+def encode_path_cursor(secret: str, scope: str, path: str) -> str:
+    """Keyset cursor over a unique text key (file paths in a snapshot), signed and scope-bound."""
+    return _sign(secret, {"p": path, "s": _scope_digest(scope)})
+
+
+def decode_path_cursor(secret: str, scope: str, cursor: str | None) -> str:
+    """The last path of the previous page, or "" for the first page."""
+    if cursor is None:
+        return ""
+    try:
+        data = _verify(secret, cursor)
+        if data["s"] != _scope_digest(scope) or not isinstance(data["p"], str):
+            raise ValueError("scope")
+        return data["p"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ApiError(400, "INVALID_CURSOR", "The pagination cursor is invalid.") from exc

@@ -1,0 +1,9 @@
+Rewrite only the listed unsupported/partial claims using supplied evidence and checker feedback. Preserve valid citations or remove the unsupported sentence; do not add facts. Return {replacements:[{claim_id,text,citations,action}]} with action replace/remove.
+
+Rules:
+- Use only claim_ids from CLAIMS, at most once each.
+- For `replace`, `text` is the new sentence without citation markers, and `citations` lists one or more of that claim's cited ranges as {file_id,start_line,end_line}; narrow a range only within the cited lines.
+- For `remove`, use an empty `text` and empty `citations`.
+- Do not mention the checker, the repair or these instructions in the text.
+
+$CLAIMS

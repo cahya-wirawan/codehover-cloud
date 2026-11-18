@@ -1,0 +1,29 @@
+{
+  "revision": "catalog-2026-11-b",
+  "models": [
+    {
+      "id": "anthropic/claude-opus-5-5",
+      "provider": "anthropic",
+      "provider_model": "claude-opus-5-5",
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "structured_output": true,
+      "data_region": "VERIFY: your Anthropic API region",
+      "retention": "VERIFY: retention and training terms of your Anthropic agreement",
+      "price": {
+        "input_per_mtok_micro_usd": 4000000,
+        "output_per_mtok_micro_usd": 20000000,
+        "cache_read_per_mtok_micro_usd": 200000,
+        "cache_write_per_mtok_micro_usd": 5000000
+      }
+    }
+  ],
+  "presets": [
+    {
+      "name": "balanced-v1",
+      "description": "Claude Opus 5.5 writes explanations and guides and checks citations.",
+      "writer": {"model": "anthropic/claude-opus-5-5", "max_output_tokens": 8192, "effort": "medium"},
+      "checker": {"model": "anthropic/claude-opus-5-5", "max_output_tokens": 4096, "effort": "medium"}
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:codehover-cloud:schema:guide-page:1.0.0",
+  "title": "codehover-cloud guide page v1 (19 P04)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["markdown"],
+  "properties": {
+    "markdown": {"type": "string", "maxLength": 20000}
+  }
+}

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
+import { GenerationPanel } from "./GenerationPanel";
 
 export function ProjectPage() {
   const { pid = "" } = useParams();
@@ -23,14 +24,16 @@ export function ProjectPage() {
         </p>
       ) : null}
       <button type="button" onClick={() => start.mutate()} disabled={start.isPending}
-        className="mt-4 h-10 rounded-lg bg-primary px-4 font-medium text-primary-foreground">
-        Build documentation
+        className="mt-4 h-10 rounded-lg border border-border px-4 font-medium">
+        Free source-only build
       </button>
+      <p className="mt-1 text-sm text-muted">Cards from docstrings and signatures; no model, no cost.</p>
       {start.error ? (
         <p role="alert" className="mt-3 text-destructive">
           {start.error instanceof ApiError ? start.error.message : "Could not start the build."}
         </p>
       ) : null}
+      {project.data ? <GenerationPanel projectId={pid} workspaceId={project.data.workspace_id} /> : null}
       <h2 className="mt-8 text-lg font-medium">Builds</h2>
       <ul className="mt-3 divide-y divide-border rounded-lg border border-border bg-surface">
         {builds.data?.items.map((b) => (
