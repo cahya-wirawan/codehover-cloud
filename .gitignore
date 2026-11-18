@@ -8,6 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+# Evaluation fixture: a vendored directory the scan must exclude (backend/evals).
+!backend/evals/corpus/tsapp/node_modules/
 dist
 dist-ssr
 *.local
