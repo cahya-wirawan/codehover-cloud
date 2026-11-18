@@ -1,6 +1,12 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.19
+Date: 2026-11-18 · Package version 0.5.20
+
+0.5.20 records the threat tests for the M4 exit criterion "zero critical isolation/XSS issues":
+- The isolation sweep covers 66 routes (27 unsafe). It finds no route that admits another tenant or anonymous visitors, leaks a victim ID or changes the victim's state.
+- Mutation: admitting any non-member to read routes makes it fail with the leaking routes listed.
+- The XSS corpus passes for the product viewer, the guide and the offline export viewer. An `innerHTML` mutation in the export viewer fails it.
+- Tenant content responses are JSON with `nosniff` and `no-store`. 24 frontend tests pass.
 
 0.5.19 fixes two review findings in the rate limiter. Hits run on their own pool. A unit test checks that IPv6 subjects collapse to their /64 and that mapped IPv4 is plain IPv4, also for the direct peer. The integration tests pass three runs in a row with distinct /64s per simulated client.
 

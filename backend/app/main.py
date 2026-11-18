@@ -109,6 +109,8 @@ async def no_store(request: Request, call_next: RequestResponseEndpoint) -> Resp
     response = await call_next(request)
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
+        # Defense in depth beside the gateway's headers: tenant text is never sniffed as HTML (A07).
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
     return response
 
 

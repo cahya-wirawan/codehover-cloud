@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-11-18
+
+### Added
+
+- 13: M4 threat tests: the cross-tenant and anonymous sweep over every route of the OpenAPI contract, and the XSS corpus for the viewer, the guide and the offline export viewer.
+
+### Security
+
+- 06: the API sets `X-Content-Type-Options: nosniff` on every response itself, beside the gateway's headers.
+
 ## [0.5.19] - 2026-11-18
 
 ### Security
