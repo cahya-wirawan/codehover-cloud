@@ -2,7 +2,8 @@
 
     cd backend && set -a && . ../deployment/.env && set +a && .venv/bin/python -m tests.e2e.demo
 
-Then open http://127.0.0.1:8770 (use 127.0.0.1, not localhost). It runs the real API and the built
+Then open http://127.0.0.1:8770 (any other host name, such as localhost, is redirected there: the API
+accepts changes only from its one configured origin). It runs the real API and the built
 frontend (`cd frontend && npm run build` first) on the E2E server, with:
 - its own database (`codehover_demo`) and bucket (`codehover-demo`) on the Compose stack, so the stack's
   workers never touch demo jobs and demo data survives restarts;
@@ -154,8 +155,17 @@ def demo_app(port: int) -> Any:
                 n=name,
             )
 
+    canonical = f"127.0.0.1:{port}"
+
     @app.middleware("http")
     async def demo(request: Request, call_next: Any) -> Response:
+        if request.headers.get("host") != canonical:
+            # The API accepts changes only from its own origin (CSRF): `localhost` would load the pages
+            # but be refused on every change, so send every other host name to the one origin.
+            from starlette.responses import RedirectResponse
+
+            query = f"?{request.url.query}" if request.url.query else ""
+            return RedirectResponse(f"http://{canonical}{request.url.path}{query}", status_code=307)
         parts = request.url.path.split("/")
         # /api/v1/workspaces/{wid}/... : every workspace comes with the demo repositories.
         if len(parts) > 5 and parts[1:4] == ["api", "v1", "workspaces"] and request.method == "GET":
