@@ -12,6 +12,7 @@ import {
   BuildSearch,
 } from "../features/viewer/BuildPage";
 import { AcceptInvitationPage } from "../features/workspaces/AcceptInvitationPage";
+import { AuditPage } from "../features/workspaces/AuditPage";
 import { ConnectionsPage } from "../features/workspaces/ConnectionsPage";
 import { WorkspacePage } from "../features/workspaces/WorkspacePage";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
@@ -29,6 +30,7 @@ export const routes: RouteObject[] = [
       { path: "w", element: <WorkspacesPage /> },
       { path: "w/:wid", element: <WorkspacePage /> },
       { path: "w/:wid/connections", element: <ConnectionsPage /> },
+      { path: "w/:wid/audit", element: <AuditPage /> },
       { path: "p/:pid", element: <ProjectPage /> },
       {
         path: "p/:pid/builds/:bid",

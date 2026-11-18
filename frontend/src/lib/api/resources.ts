@@ -183,6 +183,27 @@ export interface ExportJob {
   expired: boolean;
 }
 
+export interface Freshness {
+  tracked_ref: string;
+  state: "current" | "update_available" | "never_built" | "unknown";
+  reason: string | null;
+  latest_sha: string | null;
+  last_observed_sha: string | null;
+  last_observed_at: string | null;
+  published_sha: string | null;
+  latest_ready_sha: string | null;
+}
+export interface AuditEntry {
+  id: string;
+  action: string;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  resource_type: string;
+  resource_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 /** Where the reading views get their data: a build of a project, or a published site (02 S11-S13, S20). */
 export interface ViewerSource {
   key: string;
@@ -358,6 +379,13 @@ export const api = {
   unpublish: async (pid: string, ifMatch: string) =>
     apiSend("DELETE", `/projects/${pid}/publication`, undefined, { "If-Match": ifMatch }),
   site: (slug: string) => apiJson<Site>(`/published/${encodeURIComponent(slug)}`),
+  freshness: (pid: string) => apiJson<Freshness>(`/projects/${pid}/freshness`),
+  audit: (wid: string, action: string | null, cursor: string | null) => {
+    const params = new URLSearchParams({ limit: "50" });
+    if (action) params.set("action", action);
+    if (cursor) params.set("cursor", cursor);
+    return apiJson<Page<AuditEntry>>(`/workspaces/${wid}/audit?${params.toString()}`);
+  },
   requestExport: async (bid: string, format: ExportJob["format"]) =>
     json<ExportJob>(await apiSend("POST", `/builds/${bid}/exports`, { format }, { "Idempotency-Key": crypto.randomUUID() })),
   exportStatus: (eid: string) => apiJson<ExportJob>(`/exports/${eid}`),

@@ -15,7 +15,7 @@ from uuid import UUID
 from sqlalchemy import exc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.github.app import GitHubApp
+from app.adapters.github.app import GitHubApp, GitHubError
 from app.adapters.storage import ObjectStore
 from app.core.errors import ApiError
 from app.core.settings import Settings
@@ -734,3 +734,76 @@ async def search_build(
         },
     )
     return [dict(r._mapping) for r in rows]
+
+
+# ---------------------------------------------------------------- freshness (FR-019)
+OBSERVATION_TTL_SECONDS = 300  # repository authority is cached at most five minutes (09)
+
+
+async def freshness(
+    db: AsyncSession, github: GitHubApp | None, member: Member, project_id: UUID
+) -> dict[str, Any]:
+    """Latest upstream SHA of the tracked ref versus the published and latest ready builds. When GitHub
+    cannot answer, the state is `unknown` with the last observation, never a claim of being current."""
+    row = (
+        await db.execute(
+            text(
+                "SELECT p.tracked_ref, p.last_observed_sha, p.last_observed_at,"
+                " p.last_observed_at > now() - make_interval(secs => :ttl) AS recent,"
+                " r.provider_repo_id, r.access_revoked_at, c.installation_id, c.status,"
+                " (SELECT s.commit_sha FROM publications pub JOIN builds b ON b.workspace_id = pub.workspace_id AND b.id = pub.build_id"
+                "   JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
+                "   WHERE pub.workspace_id = p.workspace_id AND pub.project_id = p.id) AS published_sha,"
+                " (SELECT s.commit_sha FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
+                "   WHERE b.workspace_id = p.workspace_id AND b.project_id = p.id AND b.status = 'ready'"
+                "   ORDER BY b.created_at DESC, b.id DESC LIMIT 1) AS latest_ready_sha"
+                " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
+                " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
+                " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL"
+            ),
+            {"w": member.workspace_id, "p": project_id, "ttl": OBSERVATION_TTL_SECONDS},
+        )
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "NOT_FOUND", "Project not found.")
+    await db.commit()
+    observed_sha, observed_at, reason = row.last_observed_sha, row.last_observed_at, None
+    if not row.recent:
+        if row.status != "active" or row.access_revoked_at is not None or github is None:
+            reason = "repository_access_unavailable"
+        else:
+            try:  # no transaction is open during the GitHub call
+                observed_sha = await github.resolve_ref(
+                    row.installation_id, row.provider_repo_id, row.tracked_ref
+                )
+            except GitHubError:
+                reason = "github_unavailable"
+            else:
+                await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
+                observed_at = (
+                    await db.execute(
+                        text(
+                            "UPDATE projects SET last_observed_sha = :s, last_observed_at = now()"
+                            " WHERE workspace_id = :w AND id = :p RETURNING last_observed_at"
+                        ),
+                        {"s": observed_sha, "w": member.workspace_id, "p": project_id},
+                    )
+                ).scalar_one()
+                await db.commit()
+    reference = row.published_sha or row.latest_ready_sha
+    if reason is not None:
+        state = "unknown"
+    elif reference is None:
+        state = "never_built"
+    else:
+        state = "current" if observed_sha == reference else "update_available"
+    return {
+        "tracked_ref": row.tracked_ref,
+        "state": state,
+        "reason": reason,
+        "latest_sha": observed_sha if reason is None else None,
+        "last_observed_sha": observed_sha,
+        "last_observed_at": observed_at,
+        "published_sha": row.published_sha,
+        "latest_ready_sha": row.latest_ready_sha,
+    }

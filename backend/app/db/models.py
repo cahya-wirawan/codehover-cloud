@@ -190,6 +190,8 @@ class Project(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     deleted_at: Mapped[datetime | None] = ts(nullable=True)
+    last_observed_sha: Mapped[str | None] = mapped_column(Text)  # 0014
+    last_observed_at: Mapped[datetime | None] = ts(nullable=True)
 
 
 class Snapshot(Base):

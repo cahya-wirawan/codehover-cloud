@@ -37,6 +37,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/workspaces/{wid}/repositories/{rid}/refs` | none → branches and tags with SHAs | Editor; repository addressed by numeric GitHub ID (rename-safe); outside the installation → 404 |
 | GET/POST `/workspaces/{wid}/projects` | repository_id,name,tracked_ref → project | Member list; editor create |
 | GET/PATCH `/projects/{pid}` | name/config/tracked_ref → project | Viewer read; editor write with ETag |
+| GET `/projects/{pid}/freshness` | none → tracked ref, state (current, update_available, never_built, unknown), latest SHA, last observation, published and latest ready SHAs | Member; the tracked ref is resolved on GitHub at most every 5 minutes with no transaction open; when GitHub or the repository authority is unavailable the state is `unknown` with the last observed SHA and time, never `current` (FR-019, A23) |
 | POST `/projects/{pid}/snapshots` | ref (default tracked ref) → 202 snapshot | Editor; resolves the exact commit, reuses an existing snapshot of that commit, otherwise schedules acquisition and scan as a snapshot task; a failed acquisition can be requested again, a rejected one cannot; at most `MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE` (default 2) unfinished acquisitions per workspace, checked under the usage-account lock → 409 `ACQUISITION_LIMIT` (retryable) |
 | GET `/projects/{pid}/snapshots/{sid}` | none → SHA,status,scan summary (file counts per scan status) | Member |
 | GET `/projects/{pid}/snapshots/{sid}/files` | cursor,status,limit → path, language, status, reason, sizes | Member; content requires viewer endpoint; byte-ordered by path, cursor bound to the status filter |
@@ -66,7 +67,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/workspaces/{wid}/usage/entries` | cursor → ledger, newest first | Owner/admin |
 | POST `/workspaces/{wid}/billing/checkout` | plan_key → checkout_url | Owner; provider-configured price mapping |
 | POST `/workspaces/{wid}/billing/portal` | none → portal_url | Owner; fixed allowed return origin |
-| GET `/workspaces/{wid}/audit` | cursor,type → audit entries | Admin |
+| GET `/workspaces/{wid}/audit` | action prefix (for example `publication.`), cursor, limit → entries newest first with actor name, resource, metadata and request ID | Admin; cursor bound to the filter |
 | POST `/projects/{pid}/deletion` | confirmation → request | Admin; disables delivery immediately |
 | POST `/me/export` / `/me/deletion` | reauthentication, confirmation → request | Self; ownership transfer rule |
 | POST `/webhooks/github` | raw signed body → 202 | HMAC verified; delivery deduplicated |

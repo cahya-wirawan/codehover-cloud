@@ -40,7 +40,7 @@ Lookup functions are `SECURITY DEFINER` with a fixed `search_path`, owned by the
 | invitations | workspace_id, email_normalized, role, token_hash, expires_at, accepted_at | 7-day TTL; unique live invitation by workspace/email |
 | repository_connections | workspace_id, installation_id bigint, github_account_id bigint, connected_by, status, last_verified_at | UNIQUE(workspace_id,installation_id); revocation indexed |
 | repositories | workspace_id, connection_id, provider_repo_id bigint, owner, name, visibility, default_branch, access_revoked_at | UNIQUE(workspace_id,provider_repo_id); names can change; only rows with `access_revoked_at` NULL are granted (09) |
-| projects | workspace_id, repository_id, name, slug, tracked_ref, config jsonb, config_version int, deleted_at | UNIQUE(workspace_id,slug); config ETag/version |
+| projects | workspace_id, repository_id, name, slug, tracked_ref, config jsonb, config_version int, last_observed_sha/last_observed_at (freshness), deleted_at | UNIQUE(workspace_id,slug); config ETag/version |
 | snapshots | workspace_id, project_id, commit_sha text, archive_key, digest, observed_ref, status, source_bytes | UNIQUE(project_id,commit_sha); immutable |
 | source_files | workspace_id, snapshot_id, path text, language, sha256, blob_key, line_count int, byte_count bigint, scan_status/reason | UNIQUE(snapshot_id,path); binary/excluded metadata contains no contents |
 | estimates | workspace_id, project_id, snapshot_id, config_digest, price_version, low/high_micro_usd, token_estimate jsonb, expires_at, created_by | Immutable; 30-minute validity; 30-day metadata retention; `price_version` is a catalog revision (23) |

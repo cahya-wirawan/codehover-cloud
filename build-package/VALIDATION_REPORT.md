@@ -1,6 +1,12 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.11
+Date: 2026-11-18 · Package version 0.5.12
+
+0.5.12 adds freshness and the audit log.
+- Freshness: integration tests move through never-built, current, a cached observation, update-available after the branch moves, and `unknown` with the last observation when GitHub is unreachable (A23). Strangers get 404.
+- Audit: the log is newest first, paginates with filter-bound cursors, filters by action prefix, and is admin-only (403 for editors, 404 for strangers).
+
+289 backend and 17 frontend tests pass.
 
 0.5.11 records T16, the remaining part of the M3 exit criterion. Integration tests open the ZIP and check:
 - exactly the fixed entries, with no excluded or blocked content anywhere (A19, A07);

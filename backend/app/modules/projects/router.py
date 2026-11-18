@@ -951,3 +951,22 @@ async def download_export(export_id: UUID, request: Request, db: Db, member: Exp
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+# ---------------------------------------------------------------- freshness
+class FreshnessOut(BaseModel):
+    tracked_ref: str
+    state: Literal["current", "update_available", "never_built", "unknown"]
+    reason: str | None
+    latest_sha: str | None
+    last_observed_sha: str | None
+    last_observed_at: datetime | None
+    published_sha: str | None
+    latest_ready_sha: str | None
+
+
+@router.get("/projects/{project_id}/freshness", response_model=FreshnessOut)
+async def project_freshness(
+    project_id: UUID, request: Request, db: Db, member: ProjectReader
+) -> FreshnessOut:
+    return FreshnessOut(**await service.freshness(db, _github(request), member, project_id))

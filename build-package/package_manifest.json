@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.5.11",
+  "package_version": "0.5.12",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -65,11 +65,11 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "cb0610aa44b5e58134e1d2e925591976331205fe9f1c6896b51b9e2750aa1c0b"
+      "sha256": "804909531151bb1f980f1519f24550d629464b03a44a3e7de8da9e78b0993990"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "ed75d180276cc3d05d25a7288f8f0ce8c20efbeac9e733c04e7efbb22bb1ff2e"
+      "sha256": "ce68a790b5a541bd5025d020b43c26f7066c9719e469f423f176c28932ba4eb4"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "11070bb52b5318418464f7c4531fa728bb7183de9971250210a0ff6b2831ac4f"
+      "sha256": "d0997aa47e28c188e4aa7435f1501f9b0a5da6bebff6d2b93aa890158a2f82ac"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "a779164609feeb50bb68a3997dc9a052d3e37682797a7afcfd8811d02c6f636e"
+      "sha256": "717febfcbc8d793536886da29cc387efb2e4b748185fa66d04be53849a2d8ff5"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "9669afce94a84c6d35f3fa99d46524754138eee834f71018c3e9d4b2c4be456a"
+      "sha256": "781f6356ea65c8ef427ef3009b239703053697655b3114dc00f7485e0e4b9d2a"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "2da849baedaff4885fb7e3c079a8d07587a30c30fb0358d0977e338e1860d497"
+      "sha256": "c1c410b7d685a169c2916eaaa73554b9ea055d8de191eebc728640a47e7bf35b"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -244,5 +244,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "c271fdf54697558f46932492107ca2fae3bcc52610970ca1b351ab8bceec95c1"
+  "master_spec_sha256": "2e2f72256dd82ff52e1945331c7dddf1c0c7c4575ea8d8d69460e0907400c90e"
 }

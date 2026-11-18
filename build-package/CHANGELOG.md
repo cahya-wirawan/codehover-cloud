@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.12] - 2026-11-18
+
+### Added
+
+- 06, 05: project freshness (`GET /projects/{pid}/freshness`, `projects.last_observed_sha/at`): a 5-minute observation cache, and `unknown` with the last observation when GitHub is unreachable (A23). The workspace audit log adds an action-prefix filter and filter-bound cursors.
+
 ## [0.5.11] - 2026-11-18
 
 ### Added
