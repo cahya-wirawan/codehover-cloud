@@ -13,6 +13,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qsl
+from uuid import UUID
 
 import httpx
 import pytest
@@ -42,6 +43,7 @@ class FakeStripe:
         self.by_key: dict[str, str] = {}
         self.subs: dict[str, dict[str, Any]] = {}
         self.charges: dict[str, str] = {}
+        self.disputes: dict[str, dict[str, str]] = {}
         self.checkouts: list[dict[str, str]] = []
         self.calls: list[str] = []
         self.down = False
@@ -71,6 +73,11 @@ class FakeStripe:
             customer = request.url.params["customer"]
             data = [s for s in self.subs.values() if s["customer"] == customer]
             return httpx.Response(200, json={"object": "list", "data": data, "has_more": False})
+        if path.startswith("/disputes/"):
+            dispute = self.disputes.get(path.removeprefix("/disputes/"))
+            if dispute is None:
+                return httpx.Response(404, json={"error": {"message": "no such dispute"}})
+            return httpx.Response(200, json={"id": path.removeprefix("/disputes/"), **dispute})
         if path.startswith("/charges/"):
             charge = path.removeprefix("/charges/")
             if charge not in self.charges:
@@ -475,6 +482,11 @@ async def test_past_due_beyond_grace_and_ended_beyond_the_read_window_suspend_ho
         ddl("SELECT suspended_reason FROM publications WHERE project_id = :p", p=project)[0][0] == "billing"
     )
     assert (await owner.get(f"/api/v1/builds/{build}/tree")).status_code == 200  # members still read
+    # Republishing must not lift a billing suspension: only the billing sync does.
+    etag = (await owner.get(f"/api/v1/projects/{project}/publication")).headers["etag"]
+    republished = await publish(owner, project, etag, build_id=build)
+    assert republished.status_code == 409 and code(republished) == "SUSPENDED_FOR_BILLING"
+    assert suspension(project) == "billing"
 
     billing.fake.update(sub, status="active")
     await deliver(client, event("invoice.paid", {"customer": customer}))
@@ -505,6 +517,11 @@ async def test_past_due_beyond_grace_and_ended_beyond_the_read_window_suspend_ho
     billing.configure(billing_enforced=True)
     assert await sync.sweep_hosting(sessions, enforced=True) >= 1
     assert (await state(owner, ws))["hosting_suspended"] is True
+    # A newer abandoned checkout does not hide that the paid plan ended.
+    billing.fake.update(sub, ended_at=int((datetime.now(UTC) - timedelta(days=31)).timestamp()))
+    billing.fake.subscribe(customer, status="incomplete_expired")
+    await billing.reconcile()
+    assert (await state(owner, ws))["hosting_suspended"] is True
     assert (
         ddl("SELECT suspended_reason FROM publications WHERE project_id = :p", p=project)[0][0] == "billing"
     )
@@ -533,10 +550,17 @@ async def test_disputes_block_generation_and_refunds_are_audited(
     await billing.reconcile()
     charge = "ch_" + ws.replace("-", "")[:12]
     billing.fake.charges[charge] = customer
-    await deliver(
-        client, event("charge.dispute.created", {"id": "dp_1", "charge": charge, "status": "needs_response"})
-    )
-    await billing.process()
+    first, second = f"dp_{secrets.token_hex(6)}", f"dp_{secrets.token_hex(6)}"
+
+    async def dispute(kind: str, dispute_id: str, status: str) -> None:
+        # The event's own status is a stale hint; processing asks the provider (FakeStripe.disputes).
+        body = event(kind, {"id": dispute_id, "charge": charge, "status": status})
+        assert (await deliver(client, body)).status_code == 200
+        await billing.process()
+
+    for dispute_id in (first, second):
+        billing.fake.disputes[dispute_id] = {"status": "needs_response", "charge": charge}
+        await dispute("charge.dispute.created", dispute_id, "needs_response")
     disputed = await state(owner, ws)
     assert disputed["plan"] == "pro" and disputed["generation_blocked"] == "disputed"
     snapshot = str(ddl("SELECT snapshot_id FROM builds WHERE id = :b", b=build)[0][0])
@@ -544,8 +568,17 @@ async def test_disputes_block_generation_and_refunds_are_audited(
     blocked = await start_from(owner, project, estimate["id"])
     assert blocked.status_code == 402 and code(blocked) == "BILLING_DISPUTED"
 
-    await deliver(client, event("charge.dispute.closed", {"id": "dp_1", "charge": charge, "status": "won"}))
-    await billing.process()
+    billing.fake.disputes[first]["status"] = "won"
+    await dispute("charge.dispute.closed", first, "won")
+    assert (await state(owner, ws))["generation_blocked"] == "disputed"  # the second is still open
+    # A "closed" event that arrives before the provider closed it changes nothing.
+    await dispute("charge.dispute.closed", second, "lost")
+    assert (await state(owner, ws))["generation_blocked"] == "disputed"
+    billing.fake.disputes[second]["status"] = "lost"
+    await dispute("charge.dispute.closed", second, "lost")
+    assert (await state(owner, ws))["generation_blocked"] == "disputed"  # lost: an operator decides
+    assert ddl("SELECT open_disputes FROM billing_customers WHERE workspace_id = :w", w=ws)[0][0] == []
+    assert await sync.clear_lost_dispute(billing.app.state.sessions, UUID(ws), "settled with the customer")
     assert (await state(owner, ws))["generation_blocked"] is None
 
     ledger_before = ddl("SELECT count(*) FROM usage_entries WHERE workspace_id = :w", w=ws)[0][0]
@@ -574,7 +607,15 @@ async def test_disputes_block_generation_and_refunds_are_audited(
             c=charge,
         )[0][0]
     )
-    assert audit_actions(ws)[-3:] == ["billing.dispute_opened", "billing.dispute_closed", "billing.refunded"]
+    assert audit_actions(ws)[-7:] == [
+        "billing.dispute_opened",
+        "billing.dispute_opened",
+        "billing.dispute_closed",
+        "billing.dispute_opened",  # the early "closed" event: the provider still had it open
+        "billing.dispute_lost",
+        "billing.dispute_cleared",
+        "billing.refunded",
+    ]
 
 
 # ---------------------------------------------------------------- trial and plan limits
@@ -604,6 +645,11 @@ async def test_the_trial_is_once_per_workspace_and_counted_once(
     assert (await state(subscribed, other))["trial_available"] is False
     refused = await unsafe(subscribed, "POST", f"/api/v1/workspaces/{other}/billing/trial")
     assert refused.status_code == 409  # never a trial after a subscription
+
+    # One trial per person: a second workspace of the same owner gets none.
+    another = await workspace(owner)
+    second = await unsafe(owner, "POST", f"/api/v1/workspaces/{another}/billing/trial")
+    assert second.status_code == 409 and code(second) == "TRIAL_UNAVAILABLE"
 
 
 async def test_plan_limits_apply_to_new_projects_and_seats_when_enforced(

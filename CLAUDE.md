@@ -19,7 +19,7 @@ M0 to M5 are implemented.
 - **M5:**
   - Stripe through a small httpx adapter (`app/adapters/billing/stripe.py`, not the SDK): Checkout, the Customer Portal and signature verification. `app/modules/billing` holds plans, state, sync and the router.
   - Billing state is the reconciled `subscriptions` table (migration 0022). It is written only from the provider's answer: the worker processes `webhook_receipts` and re-fetches the customer's subscriptions. Reconciliation runs daily and through `app.ops.billing`. A checkout redirect grants nothing (A20).
-  - The plan lifecycle: past due or disputed blocks generation (402); long past due or ended suspends hosting with reason `billing`; there is a one-time trial (`app_private.start_trial`); plan limits apply, with `BILLING_ENFORCED` for projects and seats.
+  - The plan lifecycle: past due or disputed blocks generation (402); long past due or ended suspends hosting with reason `billing`; there is a one-time trial (`app_private.start_trial`, once per workspace and per person); disputes are tracked by ID, and a lost one blocks generation until an operator clears it; plan limits apply, with `BILLING_ENFORCED` for projects and seats.
   - The Plan and usage page, plans on the start page, draft privacy/terms/support pages (`GET /meta`), the billing runbook and the accounting review (spec 22).
   - The payment failure matrix: `tests/integration/test_billing.py`, with `FakeStripe` over `httpx.MockTransport`.
 
@@ -74,6 +74,7 @@ cd frontend && npm run test:e2e           # Playwright + axe journey; same TEST_
 .venv/bin/python -m tests.e2e.demo             # browser demo at http://127.0.0.1:8770 (fake Google/GitHub; own DB and bucket)
 .venv/bin/python -m app.ops.loadcheck --base <url> --site <slug> --users 50   # NFR p95 targets (see README)
 .venv/bin/python -m app.ops.billing reconcile|process   # re-sync Stripe customers / process webhook receipts now
+.venv/bin/python -m app.ops.billing clear-dispute <workspace-id> "<reason>"   # unblock generation after a lost dispute
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
 cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \
   && docker compose --env-file .env -f compose.yaml --profile app up -d --build   # http://localhost:8080

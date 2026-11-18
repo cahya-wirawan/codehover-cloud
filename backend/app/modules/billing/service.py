@@ -94,14 +94,11 @@ async def state(
     elif customer is not None and customer.disputed_at is not None:
         blocked = "disputed"
     suspended = False
-    if (
-        enforced
-        and current is not None
-        and current.status == "canceled"
-        and plan is None
-        and not trial_active
-    ):
-        ended = current.ended_at or current.updated_at  # an abandoned checkout never counts as ended
+    # The newest cancelled subscription decides the read window, whatever later rows exist: an abandoned
+    # or paused checkout must not hide that a paid plan ended (security review).
+    cancelled = [row for row in subs if row.status == "canceled"]
+    if enforced and cancelled and plan is None and not trial_active:
+        ended = max(row.ended_at or row.updated_at for row in cancelled)
         suspended = ended < now - timedelta(days=ENDED_READ_DAYS)
     if (
         current is not None

@@ -43,14 +43,19 @@ SYNC_EVENTS = frozenset(
         "invoice.payment_action_required",
     }
 )
-DISPUTE_EVENTS = frozenset({"charge.dispute.created", "charge.dispute.closed"})
+DISPUTE_EVENTS = frozenset({"charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed"})
 REFUND_EVENTS = frozenset({"charge.refunded"})
 HANDLED = SYNC_EVENTS | DISPUTE_EVENTS | REFUND_EVENTS
 BATCH = 50
 
 
+OPEN_DISPUTE = frozenset({"warning_needs_response", "warning_under_review", "needs_response", "under_review"})
+
+
 class Provider(Protocol):
     async def subscriptions(self, customer: str) -> list[SubscriptionState]: ...
+
+    async def dispute(self, dispute_id: str) -> tuple[str, str | None]: ...
 
     async def charge_customer(self, charge_id: str) -> str | None: ...
 
@@ -256,6 +261,42 @@ async def _hosting(
     return count
 
 
+async def _refresh_dispute_block(db: AsyncSession, workspace_id: UUID) -> None:
+    """New generation is blocked while any dispute is open, and after a lost one until an operator
+    clears it (11)."""
+    await db.execute(
+        text(
+            "UPDATE billing_customers SET disputed_at = CASE"
+            " WHEN cardinality(open_disputes) > 0 OR dispute_lost_at IS NOT NULL THEN COALESCE(disputed_at, now())"
+            " ELSE NULL END WHERE workspace_id = :w"
+        ),
+        {"w": workspace_id},
+    )
+
+
+async def clear_lost_dispute(
+    sessions: async_sessionmaker[AsyncSession], workspace_id: UUID, reason: str
+) -> bool:
+    """An operator's decision after a lost dispute (`python -m app.ops.billing clear-dispute`); audited.
+    Open disputes still block."""
+    async with sessions() as db:
+        await set_context(db, workspace_id=workspace_id)
+        cleared = (
+            await db.execute(
+                text(
+                    "UPDATE billing_customers SET dispute_lost_at = NULL"
+                    " WHERE workspace_id = :w AND dispute_lost_at IS NOT NULL RETURNING id"
+                ),
+                {"w": workspace_id},
+            )
+        ).scalar_one_or_none()
+        if cleared is not None:
+            await _refresh_dispute_block(db, workspace_id)
+            await _audit(db, workspace_id, "billing.dispute_cleared", {"reason": reason[:500]})
+        await db.commit()
+    return cleared is not None
+
+
 async def _finish(
     sessions: async_sessionmaker[AsyncSession], receipt_id: UUID, state: str, workspace_id: UUID | None = None
 ) -> bool:
@@ -283,8 +324,16 @@ async def process_receipt(
     details: dict[str, Any] = receipt.details or {}
     event_type: str = receipt.event_type
     customer = _id(details.get("customer"))
-    if event_type in DISPUTE_EVENTS and customer is None and _id(details.get("charge")):
-        customer = _id(await provider.charge_customer(details["charge"]))
+    dispute_status: str | None = None
+    if event_type in DISPUTE_EVENTS:
+        dispute = _id(details.get("dispute"))
+        if dispute is None:
+            await _finish(sessions, receipt.id, "ignored")
+            return "ignored"
+        dispute_status, charge = await provider.dispute(dispute)  # the current status, not the event's
+        charge = _id(charge) or _id(details.get("charge"))
+        if customer is None and charge is not None:
+            customer = _id(await provider.charge_customer(charge))
     workspace_id = await _workspace(sessions, customer) if customer is not None else None
     if workspace_id is None or customer is None:
         await _finish(sessions, receipt.id, "ignored")
@@ -301,19 +350,28 @@ async def process_receipt(
     if event_type in DISPUTE_EVENTS:
         async with sessions() as db:
             await set_context(db, workspace_id=workspace_id)
-            opened = event_type == "charge.dispute.created"
+            opened = dispute_status in OPEN_DISPUTE
+            lost = dispute_status == "lost"
             await db.execute(
                 text(
-                    "UPDATE billing_customers SET disputed_at ="
-                    " CASE WHEN :open THEN COALESCE(disputed_at, now()) ELSE NULL END WHERE workspace_id = :w"
+                    "UPDATE billing_customers SET open_disputes = CASE WHEN :open"
+                    "   THEN (CASE WHEN :d = ANY(open_disputes) THEN open_disputes ELSE array_append(open_disputes, :d) END)"
+                    "   ELSE array_remove(open_disputes, :d) END,"
+                    " dispute_lost_at = CASE WHEN :lost THEN COALESCE(dispute_lost_at, now()) ELSE dispute_lost_at END"
+                    " WHERE workspace_id = :w"
                 ),
-                {"w": workspace_id, "open": opened},
+                {"w": workspace_id, "d": details["dispute"], "open": opened, "lost": lost},
             )
+            await _refresh_dispute_block(db, workspace_id)
             await _audit(
                 db,
                 workspace_id,
-                "billing.dispute_opened" if opened else "billing.dispute_closed",
-                {"dispute": details.get("dispute"), "status": details.get("dispute_status")},
+                "billing.dispute_opened"
+                if opened
+                else "billing.dispute_lost"
+                if lost
+                else "billing.dispute_closed",
+                {"dispute": details.get("dispute"), "status": dispute_status},
             )
             await db.commit()
     elif event_type in REFUND_EVENTS:

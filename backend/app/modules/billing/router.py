@@ -304,7 +304,9 @@ async def start_trial(request: Request, db: Db, member: WriteMember) -> BillingO
     if granted is None:
         await db.rollback()
         raise ApiError(
-            409, "TRIAL_UNAVAILABLE", "This workspace has already had its trial or a subscription."
+            409,
+            "TRIAL_UNAVAILABLE",
+            "The trial is once per workspace and per person, and never after a subscription.",
         )
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)  # the commit cleared it

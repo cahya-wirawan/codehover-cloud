@@ -863,6 +863,7 @@ async def publish(
             confirmation=body.confirmation,
             acknowledge_partial=body.acknowledge_partial,
             if_match=if_match,
+            billing_enforced=_settings(request).billing_enforced,
         )
         return 200, PublicationOut(**result).model_dump(mode="json")
 

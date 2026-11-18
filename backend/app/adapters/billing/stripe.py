@@ -165,6 +165,12 @@ class StripeBilling:
         )
         return [_subscription(item) for item in data.get("data", [])]
 
+    async def dispute(self, dispute_id: str) -> tuple[str, str | None]:
+        """A dispute's current status and charge: the authoritative state, whatever order events came in."""
+        data = await self._call("GET", f"/disputes/{dispute_id}")
+        charge = data.get("charge")
+        return str(data.get("status", "")), charge if isinstance(charge, str) else None
+
     async def charge_customer(self, charge_id: str) -> str | None:
         """The customer a charge belongs to (disputes name a charge, not a customer)."""
         data = await self._call("GET", f"/charges/{charge_id}")

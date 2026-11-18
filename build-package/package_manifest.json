@@ -65,11 +65,11 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "76790d0ddf94e1ec557a20ea638a3be7ed3a7fe855f705e1997a71ddc5dc42a5"
+      "sha256": "dff570859785581a8464ff495a7b75a6afddb9dfcfb65e81f75adc08b6b6b62c"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "01f863af2aefd33722f4145cc6481eca5cbe146f1d5c84532b432b50ab4dc9a5"
+      "sha256": "ca5d92bf67ffaff80b82481d2a0bf50c54174aa44f48e28fec3868fdf60cde7a"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -89,7 +89,7 @@
     },
     "11_MONETIZATION_AND_BILLING.md": {
       "status": "complete specification",
-      "sha256": "fec0c495c2bd75b7c56e75273cb176839465e0abf742bbe215eb128f4a7c00cc"
+      "sha256": "ca1ce50dac35f8f6d15f85007438dcd19359ef9043de572fe50a3f5f364643dc"
     },
     "12_ANALYTICS_AND_OBSERVABILITY.md": {
       "status": "complete specification",
@@ -133,7 +133,7 @@
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
-      "sha256": "515be1dead335838c6722a1a5254dde4c0fac28a75ea93f006c4be6d2db00b33"
+      "sha256": "dc6451556ff7e71ef061f82e6b2f42b7e6e0f2667917dfacd7a107e139d92780"
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
@@ -141,7 +141,7 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "0bef807d3ef5e8f39fa319c93c6787d11f9b3cd86f3b1756e0719adfd690110c"
+      "sha256": "66d57ca690f9d5e929abded7c9eac65432569f3480fe1ab051a28161944ec96f"
     },
     "README.md": {
       "status": "complete specification",
@@ -153,7 +153,7 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "f62d43948094e4eae1bd1449e0017c2f6219e37cca7e0087f6ab9b889b9c89b1"
+      "sha256": "0874149743dbf78898352353f7aa490e540cc1b0475d71389647886c174714d4"
     },
     "VERSION": {
       "status": "package tooling",
@@ -256,5 +256,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "d38128447c1c90796241c1627f676396392be37c4890b59cb28b6c6e86dd00a9"
+  "master_spec_sha256": "af03c4dcfc0f20264affbeef151c5d27bedfa5bf08fae4a65d0bf24115a99e78"
 }

@@ -1,9 +1,11 @@
-"""`python -m app.ops.billing reconcile|process`: billing recovery commands (22 "Billing incidents").
+"""`python -m app.ops.billing reconcile|process|clear-dispute`: billing recovery commands (22).
 
 - reconcile: re-sync every customer's subscriptions from the provider and apply the hosting rules. Run it
   after a webhook outage, after restoring the database (the provider is the record of payments), or when
   a workspace reports that a payment is not reflected.
 - process: process received Stripe webhook receipts now instead of waiting for the worker.
+- clear-dispute <workspace-id> "<reason>": after a lost dispute is settled with the customer, let the
+  workspace start generation builds again (open disputes still block); audited in the workspace.
 
 Runs with the runtime role (DATABASE_URL), like the worker. Prints a JSON summary; exits 1 when any
 customer or receipt failed.
@@ -14,8 +16,24 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from typing import Any
+from uuid import UUID
 
 import httpx
+
+
+async def _clear(workspace_id: UUID, reason: str) -> int:
+    from app.core.db import create_engine, session_factory
+    from app.core.settings import get_settings
+    from app.modules.billing import sync
+
+    engine = create_engine(get_settings(), application_name="billing-ops")
+    try:
+        cleared = await sync.clear_lost_dispute(session_factory(engine), workspace_id, reason)
+    finally:
+        await engine.dispose()
+    print(json.dumps({"cleared": cleared}))
+    return 0 if cleared else 1
 
 
 async def _run(command: str) -> int:
@@ -36,6 +54,7 @@ async def _run(command: str) -> int:
         engine = create_engine(settings, application_name="billing-ops")
         try:
             sessions = session_factory(engine)
+            result: dict[str, Any]
             if command == "reconcile":
                 result = await sync.reconcile(sessions, provider, settings)
                 result["hosting_changed"] = await sync.sweep_hosting(
@@ -51,8 +70,12 @@ async def _run(command: str) -> int:
     return 1 if failed else 0
 
 
+USAGE = 'usage: python -m app.ops.billing reconcile|process|clear-dispute <workspace-id> "<reason>"'
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["clear-dispute"] and len(sys.argv) == 4 and len(sys.argv[3].strip()) >= 10:
+        sys.exit(asyncio.run(_clear(UUID(sys.argv[2]), sys.argv[3].strip())))
     if len(sys.argv) != 2 or sys.argv[1] not in ("reconcile", "process"):
-        print("usage: python -m app.ops.billing reconcile|process", file=sys.stderr)
+        print(USAGE + "  (a reason of at least 10 characters)", file=sys.stderr)
         sys.exit(2)
     sys.exit(asyncio.run(_run(sys.argv[1])))

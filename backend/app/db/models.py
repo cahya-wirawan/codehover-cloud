@@ -25,7 +25,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -703,6 +703,8 @@ class BillingCustomer(Base):
     provider_customer_id: Mapped[str] = mapped_column(Text)
     disputed_at: Mapped[datetime | None] = ts(nullable=True)
     created_at: Mapped[datetime] = ts(default_now=True)
+    open_disputes: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
+    dispute_lost_at: Mapped[datetime | None] = ts(nullable=True)
 
 
 class Subscription(Base):

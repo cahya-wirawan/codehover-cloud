@@ -9,13 +9,18 @@ Date: 2026-11-18 · Package version 0.5.24
   - Event order: an out-of-order deletion and a redelivered creation converge on the provider's state.
   - Overdue: a failed payment blocks generation (402) and recovers; past due beyond 7 days suspends hosting, and recovery lifts it but never an operator takedown.
   - Ending: cancel at period end keeps the plan; an ended subscription suspends hosting after 30 days only when plans are enforced.
-  - Disputes block generation until closed. Refunds are audited without touching the ledger.
+  - Disputes are tracked by ID with the provider's current status. Two open disputes block until both close, and an early "closed" event changes nothing. A lost dispute blocks until an operator clears it. Refunds are audited without touching the ledger.
   - Reconciliation repairs a dropped webhook and reports a provider outage. An outage leaves receipts for the next cycle.
   - Metadata naming another workspace is rejected and audited.
-  - The trial is once per workspace, counted once, and never after a subscription.
+  - The trial is once per workspace and per person, counted once, and never after a subscription.
   - Plan limits refuse new projects and seats when enforced. A subscribed workspace cannot be deleted. `GET /meta` is public.
 - **Isolation:** the tenancy suite covers the new tables and functions: customers and subscriptions are tenant-scoped, the customer mapping is immutable, the resolver exposes no rows, and only owners start trials. The route sweep covers the four new workspace billing routes; the webhook and `GET /meta` are classified as unscoped. Explicit grants still match a database migrated without defaults.
 - **Frontend:** 4 Vitest tests cover the waiting state after checkout, owner-only actions, the https-only redirect and the draft legal pages. The E2E journey (Playwright and axe, WCAG 2.1 A/AA) adds the start page with plans, Plan and usage before and after the trial, and the privacy, terms and support pages.
+- **Security review of the M5 commit** found four issues, each fixed with a regression test that fails on the earlier code:
+  - republishing lifted a billing suspension;
+  - a newer abandoned checkout hid an ended plan;
+  - each new workspace minted a trial;
+  - closing one dispute cleared all of them, and a lost dispute unblocked generation.
 - **Found while testing:** blank env values (`STRIPE_SECRET_KEY=` in the template) counted as configured credentials. They now mean unset, and a unit test covers it.
 - **Accounting review and incident readiness:** spec 22 lists the records, the checks and the recovery commands.
 - **Still open before charging customers (18):** the same matrix against Stripe test mode in staging; the legal review of the draft texts; owner email notices.
