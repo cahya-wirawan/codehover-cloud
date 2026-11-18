@@ -60,7 +60,7 @@ export function WorkspacesPage() {
       ) : null}
       <Section title="New workspace" className="mt-10">
         <form
-          className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
           onSubmit={(event) => {
             event.preventDefault();
             create.mutate();
@@ -78,9 +78,15 @@ export function WorkspacesPage() {
               placeholder="my-team"
             />
           </Field>
-          <Button type="submit" variant="primary" disabled={create.isPending} className="sm:mb-[22px]">
-            Create workspace
-          </Button>
+          {/* An empty label row puts the button on the inputs' line; the Address hint hangs below. */}
+          <div className="flex flex-col gap-1.5">
+            <span aria-hidden="true" className="hidden text-[13px] font-medium sm:block">
+              &nbsp;
+            </span>
+            <Button type="submit" variant="primary" disabled={create.isPending}>
+              Create workspace
+            </Button>
+          </div>
         </form>
         {create.error ? (
           <p role="alert" className="mt-3 text-destructive">

@@ -208,7 +208,7 @@ export function AppShell() {
           <Sidebar operator={Boolean(user.data?.operator)} />
         </aside>
       ) : null}
-      <div className={cn(withSidebar && "lg:pl-[232px]")}>
+      <div className={cn("flex min-h-dvh flex-col", withSidebar && "lg:pl-[232px]")}>
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur sm:px-6">
           {withSidebar ? (
             <Dialog.Root open={drawer} onOpenChange={setDrawer}>
@@ -244,12 +244,12 @@ export function AppShell() {
           <div className="min-w-0 flex-1">{withSidebar ? <Breadcrumbs /> : null}</div>
           <AccountMenu />
         </header>
-        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1440px] px-4 py-8 outline-none sm:px-8">
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-8 outline-none sm:px-8">
           <Outlet />
         </main>
         {location.pathname.startsWith("/sites/") ? null : (
-          <footer className="mx-auto flex w-full max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 border-t border-border px-4 py-5 text-[13px] text-muted sm:px-8">
-            <nav aria-label="About this service" className="flex flex-wrap gap-x-5 gap-y-2">
+          <footer className="mx-auto flex w-full max-w-[1440px] flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-border px-4 py-5 text-[13px] text-muted sm:px-8">
+            <nav aria-label="About this service" className="flex flex-wrap justify-center gap-x-5 gap-y-2">
               <Link to="/privacy" className="hover:text-foreground">
                 Privacy
               </Link>
