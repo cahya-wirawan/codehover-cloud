@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,7 @@ from app.adapters.oauth.github import GitHubProvider
 from app.adapters.oauth.google import GoogleProvider
 from app.adapters.storage import MemoryObjectStore, ObjectStore, S3ObjectStore
 from app.api import health
+from app.core import metrics
 from app.core.db import create_engine, session_factory
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
@@ -90,6 +92,17 @@ def github_app(settings: Settings, http: httpx.AsyncClient) -> GitHubApp | None:
     )
 
 
+async def observe(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """Request counts and durations by route template (12); event streams are counted, not timed."""
+    started = time.perf_counter()
+    response = await call_next(request)
+    route = metrics.route_of(request.scope)
+    metrics.HTTP_REQUESTS.labels(route, request.method, f"{response.status_code // 100}xx").inc()
+    if response.media_type != "text/event-stream":
+        metrics.HTTP_DURATION.labels(route, request.method).observe(time.perf_counter() - started)
+    return response
+
+
 async def no_store(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """API responses are private and never cached by browsers or intermediaries (08)."""
     response = await call_next(request)
@@ -105,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        metrics.serve(settings.metrics_port)
         try:
             yield
         finally:
@@ -132,6 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     install_error_handlers(app)
     app.middleware("http")(no_store)
+    app.middleware("http")(observe)
     app.add_middleware(RequestIdMiddleware)
 
     api = APIRouter(prefix=API_PREFIX)

@@ -16,6 +16,7 @@ import time
 import aio_pika
 from pydantic import ValidationError
 
+from app.core import metrics
 from app.core.settings import get_settings
 from app.engine import sandbox
 from app.jobs import retention
@@ -59,6 +60,7 @@ async def maintenance(runtime: Runtime, stop: asyncio.Event) -> None:
 async def body(stop: asyncio.Event) -> None:
     _not_dumpable()
     settings = get_settings()
+    metrics.serve(settings.metrics_port)
     runtime, http = build_runtime(settings, "worker")
     report = await sandbox.self_check(allow_unsandboxed=runtime.allow_unsandboxed)
     logger.info("sandbox verified", extra={"isolated": report.get("isolated")})

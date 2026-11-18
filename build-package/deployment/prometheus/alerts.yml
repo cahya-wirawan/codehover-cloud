@@ -1,0 +1,70 @@
+# Initial alert thresholds (12 "Initial alert thresholds"); tune after staging load tests.
+# Route cost, security and purge alerts to operators; notifications never carry tenant data.
+groups:
+  - name: codehover
+    rules:
+      - alert: ApiErrorRateHigh
+        expr: |
+          sum(rate(codehover_http_requests_total{status="5xx"}[5m]))
+            / sum(rate(codehover_http_requests_total[5m])) > 0.02
+          and sum(increase(codehover_http_requests_total[5m])) >= 100
+        labels: { severity: page }
+        annotations:
+          summary: API 5xx above 2% over 5 minutes (at least 100 requests)
+
+      - alert: AvailabilityBudgetBurn
+        # 99.5% monthly target (NFR-002): a 14.4x burn over one hour spends 2% of the month's budget.
+        expr: |
+          sum(rate(codehover_http_requests_total{status="5xx"}[1h]))
+            / sum(rate(codehover_http_requests_total[1h])) > 14.4 * 0.005
+        labels: { severity: page }
+        annotations:
+          summary: Error budget burning fast (14.4x over one hour)
+
+      - alert: NoTaskProgress
+        expr: |
+          max(codehover_queue{measure="runnable_tasks"}) > 0
+          and sum(increase(codehover_task_outcomes_total{outcome="completed"}[10m])) == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: Runnable tasks but no completed task for 10 minutes
+
+      - alert: OutboxLagging
+        expr: max(codehover_queue{measure="outbox_oldest_seconds"}) > 60
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: Oldest due outbox notification older than 60 seconds
+
+      - alert: DeadLettersRising
+        expr: increase(rabbitmq_detailed_queue_messages{queue="codehover.dead"}[10m]) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: Messages are arriving in the dead-letter queue
+
+      - alert: UsageCounterDrift
+        expr: max(codehover_queue{measure="usage_drift_micro_usd"}) > 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: Reserved/settled counters differ from the ledger
+
+      - alert: UnknownProviderSpendStale
+        expr: max(codehover_queue{measure="unknown_oldest_seconds"}) > 86400
+        labels: { severity: ticket }
+        annotations:
+          summary: A provider attempt has had an unknown outcome for more than 24 hours
+
+      - alert: DeletionOverdue
+        expr: max(codehover_queue{measure="deletion_oldest_seconds"}) > 86400
+        labels: { severity: page }
+        annotations:
+          summary: A deletion has not completed within 24 hours (A22)
+
+      - alert: MetricsTargetDown
+        expr: up{job="codehover"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.process }} is not reporting metrics"

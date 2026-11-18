@@ -9,6 +9,7 @@ import aio_pika
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import metrics
 from app.jobs.envelope import ROUTING_KEY, TaskEnvelope
 
 DISPATCH_BATCH = 50
@@ -49,8 +50,10 @@ async def dispatch_once(db: AsyncSession, exchange: Any) -> int:
                 ),
                 {"id": row.id},
             )
+            metrics.OUTBOX_PUBLISHED.labels("failed").inc()
             continue
         await db.execute(text("UPDATE outbox SET published_at = now() WHERE id = :id"), {"id": row.id})
+        metrics.OUTBOX_PUBLISHED.labels("published").inc()
         published += 1
     await db.commit()
     return published

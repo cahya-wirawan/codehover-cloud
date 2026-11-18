@@ -4,6 +4,18 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.16] - 2026-11-18
+
+### Added
+
+- 12, 22: metrics as implemented in T18. Each process serves Prometheus metrics with bounded labels on an internal port, and the scheduler refreshes aggregate job-system gauges from `app_private.ops_gauges` (migration 0017).
+- 12, 22: reference scrape configuration and alert rules with promtool unit tests in `deployment/prometheus/` (both copies), plus an `ops` Compose profile with a digest-pinned Prometheus and `METRICS_PORT`.
+- 13: the A24 telemetry check.
+
+### Security
+
+- 05: the retention sweep re-checks the publication pointer in a separate statement after locking the build. A check inside the locking statement keeps its old snapshot under READ COMMITTED, so a publish committed while the sweep waited could have been purged. Found by automated security review of 0.5.15; a lock-wait race test covers it.
+
 ## [0.5.15] - 2026-11-18
 
 ### Added

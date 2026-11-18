@@ -27,6 +27,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import metrics
 from app.core.tenancy import set_context
 from app.engine import generate
 from app.engine.catalog import Price, cost_micro_usd
@@ -231,6 +232,13 @@ async def _settle(
     if charged:
         await event(db, claimed.workspace_id, claimed.build, "usage.updated", {"settled_micro_usd": charged})
     await db.commit()
+    provider = metrics.label(request.model.provider)
+    metrics.PROVIDER_CALLS.labels(provider, metrics.label(request.purpose), state).inc()
+    if charged:
+        metrics.PROVIDER_COST.labels(provider).inc(charged)
+    if usage is not None:
+        metrics.PROVIDER_TOKENS.labels(provider, "input").inc(usage.input_tokens)
+        metrics.PROVIDER_TOKENS.labels(provider, "output").inc(usage.output_tokens)
     return charged
 
 
@@ -247,7 +255,9 @@ async def run(
     async with sessions() as db:
         hit = await cached(db, claimed, prepared.cache_key)
     if hit is not None and not validate(hit["output"]):
+        metrics.CACHE.labels("hit").inc()
         return Outcome(hit["output"], True, hit["model_id"], 0)
+    metrics.CACHE.labels("miss").inc()
 
     request = prepared.request
     repaired = False

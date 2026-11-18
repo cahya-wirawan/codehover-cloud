@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     generation_allowance_micro_usd: int = Field(default=0, ge=0)
     max_active_builds_per_workspace: int = Field(default=2, ge=1, le=20)
     max_active_acquisitions_per_workspace: int = Field(default=2, ge=1, le=20)
+    # Internal Prometheus port per process (12); 0 disables it. Never routed by the gateway.
+    metrics_port: int = Field(default=0, ge=0, le=65535)
 
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None

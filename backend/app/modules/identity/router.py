@@ -13,6 +13,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.adapters.oauth import OAuthError, OAuthProvider
+from app.core import metrics
 from app.core.errors import ApiError
 from app.core.security import safe_return_path
 from app.core.settings import Settings
@@ -87,6 +88,8 @@ def _provider(request: Request, name: str) -> OAuthProvider | None:
 
 
 def _redirect(path: str, **query: str) -> RedirectResponse:
+    if "error" in query:
+        metrics.AUTH_FAILURES.labels(reason=metrics.label(query["error"])).inc()
     target = f"{path}?{urlencode(query)}" if query else path
     response = RedirectResponse(target, status_code=302)
     response.headers["Cache-Control"] = "no-store"

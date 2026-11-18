@@ -10,8 +10,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Awaitable
 
+from app.core import metrics
 from app.jobs import store
 from app.jobs.envelope import TaskEnvelope
 from app.jobs.stages import HANDLERS, Runtime, StageError
@@ -47,10 +49,22 @@ async def _until_lost[T](work: Awaitable[T], lost: asyncio.Event) -> T:
 
 async def process(rt: Runtime, envelope: TaskEnvelope) -> str:
     """Returns an outcome label for logs and tests."""
+    started = time.perf_counter()
+    seen: list[str] = []
+    outcome = await _process(rt, envelope, seen)
+    if seen:  # a claimed task: count it under its stage (bounded labels only)
+        stage = metrics.label(seen[0])
+        metrics.TASKS.labels(stage, outcome).inc()
+        metrics.TASK_DURATION.labels(stage).observe(time.perf_counter() - started)
+    return outcome
+
+
+async def _process(rt: Runtime, envelope: TaskEnvelope, seen: list[str]) -> str:
     async with rt.sessions() as db:
         claimed = await store.claim(db, envelope)
     if claimed is None:
         return "not_runnable"
+    seen.append(claimed.stage)
     log = {"task_id": str(claimed.task_id), "stage": claimed.stage, "attempt": claimed.attempt}
     if claimed.attempt > store.MAX_ATTEMPTS:  # a task that keeps killing workers
         async with rt.sessions() as db:

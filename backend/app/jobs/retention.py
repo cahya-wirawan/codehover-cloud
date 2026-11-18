@@ -27,6 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.storage import ObjectStore
+from app.core import metrics
 from app.core.tenancy import set_context
 from app.engine.keys import build_prefix, snapshot_prefix
 
@@ -73,14 +74,27 @@ async def _purge_build(
         locked = (
             await db.execute(
                 text(
-                    "SELECT b.id FROM builds b WHERE b.workspace_id = :w AND b.id = :b AND b.content_purged_at IS NULL"
-                    " AND NOT EXISTS (SELECT 1 FROM publications p WHERE p.workspace_id = b.workspace_id"
-                    "                 AND p.build_id = b.id) FOR UPDATE OF b"
+                    "SELECT id FROM builds WHERE workspace_id = :w AND id = :b AND content_purged_at IS NULL"
+                    " FOR UPDATE"
                 ),
                 {"w": workspace_id, "b": build.id},
             )
         ).one_or_none()
-        if locked is None:  # published meanwhile, or already swept
+        # A separate statement after the lock: under READ COMMITTED it takes a fresh snapshot, so it sees a
+        # publication committed while this sweep waited for publish's FOR SHARE on the build. (A NOT EXISTS
+        # inside the locking statement would keep the old snapshot; security review of 0.5.15.)
+        published = (
+            locked is not None
+            and (
+                await db.execute(
+                    text(
+                        "SELECT EXISTS (SELECT 1 FROM publications WHERE workspace_id = :w AND build_id = :b)"
+                    ),
+                    {"w": workspace_id, "b": build.id},
+                )
+            ).scalar_one()
+        )
+        if locked is None or published:  # already swept, or published meanwhile
             await db.commit()
             return False
         for statement in _BUILD_CONTENT:
@@ -218,6 +232,8 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
         identity = (await db.execute(text("SELECT * FROM app_private.sweep_identity()"))).one()
         audit = (await db.execute(text("SELECT app_private.sweep_audit()"))).scalar_one()
         await db.commit()
+    for key, value in totals.items():
+        metrics.RETENTION.labels(kind=key).inc(value)
     totals.update(
         {
             "idempotency_keys": identity.idempotency_keys,
@@ -226,4 +242,6 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
             "audit_events": audit,
         }
     )
+    for key in ("idempotency_keys", "oauth_transactions", "sessions", "audit_events"):
+        metrics.RETENTION.labels(kind=key).inc(totals[key])
     return totals

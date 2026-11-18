@@ -1,6 +1,13 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.15
+Date: 2026-11-18 · Package version 0.5.16
+
+0.5.16 records T18 metrics (`test_telemetry.py`):
+- with production logging, a replay build, a search, an export download and a forged sign-in leave no fixture secret, source text, query, file path, session cookie, CSRF token or UUID in the logs or the metrics exposition;
+- the expected series exist with route templates; hostile label values become `other`;
+- the gauges return the 11 aggregates to the system role only, with zero usage drift on the test data.
+
+promtool validates the configuration and passes all 15 alert unit tests (`alerts.test.yml`). Raising the 5xx threshold makes a test fail. For the sweep race, a test holds a publish's `FOR SHARE` until the sweep's backend is waiting on the lock. The earlier single-statement guard purges the newly published build and fails that test; the fix passes. The first version of the test, which did not wait for the lock, passed under the mutation and was corrected.
 
 0.5.15 completes T17 with retention sweeps (`test_retention.py`), checking each window at and past its boundary:
 - exports expire, lose their object and download as 410;

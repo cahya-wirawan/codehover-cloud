@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.storage import ObjectStore
+from app.core import metrics
 from app.core.tenancy import set_context
 from app.engine.keys import project_prefix, workspace_prefix
 from app.modules.deletion.service import Tombstone, record_tombstone
@@ -185,8 +186,10 @@ async def purge_once(sessions: async_sessionmaker[AsyncSession], store: ObjectSt
     except Exception as error:
         logger.exception("purge failed; retried after its lease", extra=log)
         await _finish(sessions, claimed, f"purge_{type(error).__name__.lower()}"[:64])
+        metrics.PURGES.labels(claimed.scope, "failed").inc()
         return {**log, "outcome": "failed"}
     await _finish(sessions, claimed, None)
+    metrics.PURGES.labels(claimed.scope, "completed").inc()
     logger.info("purged", extra={**log, **counts})
     return {**log, **counts, "outcome": "completed"}
 

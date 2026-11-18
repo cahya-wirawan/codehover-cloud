@@ -11,6 +11,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.db import session_factory
@@ -206,3 +207,44 @@ async def test_dispatched_outbox_rows_are_kept_seven_days() -> None:
     assert ddl("SELECT count(*) FROM outbox WHERE id = :i", i=old)[0][0] == 0
     assert ddl("SELECT count(*) FROM outbox WHERE id = :i", i=recent)[0][0] == 1
     ddl("DELETE FROM outbox WHERE id = :i", i=recent)
+
+
+async def test_a_publish_committed_while_the_sweep_waits_keeps_its_build(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Security review of 0.5.15: the sweep must re-check the pointer after its lock, with a fresh snapshot."""
+    import asyncio
+
+    from tests.integration.conftest import MIGRATION_URL, engine
+
+    owner, ws, project, first, app = await ready_build(client, idp, github)
+    newest = await second_build(owner, app, project)
+    assert (await publish(owner, project, build_id=newest)).status_code == 200
+    age("builds", "completed_at", 31, id=first)
+    monkeypatch.setattr(retention, "KEEP_READY_BUILDS", 1)
+    rt = runtime_for(app)
+    candidate = ddl("SELECT id, project_id FROM builds WHERE id = :b", b=first)[0]
+
+    with engine(MIGRATION_URL).connect() as publisher:
+        tx = publisher.begin()  # a publish in flight: FOR SHARE on the build, pointer moved, not committed
+        publisher.execute(sa.text("SELECT id FROM builds WHERE id = :b FOR SHARE"), {"b": first})
+        publisher.execute(
+            sa.text("UPDATE publications SET build_id = :b, version = version + 1 WHERE project_id = :p"),
+            {"b": first, "p": project},
+        )
+        sweep = asyncio.create_task(
+            retention._purge_build(rt.sessions, app.state.objects, UUID(ws), candidate)
+        )
+        for _ in range(100):  # until the sweep's backend really waits on the publish's row lock
+            await asyncio.sleep(0.05)
+            waiting = ddl(
+                "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock'"
+                " AND query LIKE '%FROM builds WHERE workspace_id%FOR UPDATE%'"
+            )[0][0]
+            if waiting:
+                break
+        assert waiting and not sweep.done()
+        tx.commit()
+        assert await sweep is False
+    assert ddl("SELECT content_purged_at FROM builds WHERE id = :b", b=first)[0][0] is None
+    assert rows_of("symbols", first) > 0
