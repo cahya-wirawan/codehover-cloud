@@ -17,13 +17,13 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-TEMPLATES = ("system", "explain", "overview", "plan", "guide", "repair")
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=8)
 def _load(version: str) -> dict[str, str]:
+    """Every template of the set; a released directory is never edited (new text is a new version)."""
     directory = HERE / version
-    return {name: (directory / f"{name}.txt").read_text() for name in TEMPLATES}
+    return {path.stem: path.read_text() for path in sorted(directory.glob("*.txt"))}
 
 
 @lru_cache(maxsize=4)

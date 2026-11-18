@@ -1,0 +1,11 @@
+Given SNAPSHOT_SHA, REPO_MAP, SAFE_README and FILE_SUMMARIES, propose $MIN_PAGES to $MAX_PAGES guide pages that help a developer understand architecture and important flows. Return {pages:[{slug,title,purpose,source_ranges:[{file_id,path,start_line,end_line}]}],reason}. Choose paths/ranges that exist in the supplied map, avoid duplicate topics, and keep slugs lowercase ASCII [a-z0-9-]. If evidence is insufficient return {pages:[],reason}.
+
+Rules: each page has 1 to 6 source ranges; every range names a file_id and its exact path from FILE_SUMMARIES, with 1 <= start_line <= end_line <= that file's line count, and at most 200 lines. Use an empty reason when pages are returned.
+
+SNAPSHOT_SHA: $SNAPSHOT_SHA
+
+$FILE_SUMMARIES
+
+$REPO_MAP
+
+$SAFE_README

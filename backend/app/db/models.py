@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Double,
     ForeignKey,
@@ -507,5 +508,37 @@ class GuidePage(Base):
     status: Mapped[str] = mapped_column(Text, server_default=text("'planned'"))
     markdown_key: Mapped[str | None] = mapped_column(Text)
     provenance: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
+    original_markdown_key: Mapped[str | None] = mapped_column(Text)  # 0008
     check_status: Mapped[str] = mapped_column(Text, server_default=text("'unchecked'"))
     created_at: Mapped[datetime] = ts(default_now=True)
+
+
+class ClaimCheck(Base):
+    """One extracted claim and cited range with its deterministic and checker results (0008)."""
+
+    __tablename__ = "claim_checks"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    guide_page_id: Mapped[UUID] = ref()
+    claim_key: Mapped[str] = mapped_column(Text)
+    claim_text: Mapped[str] = mapped_column(Text)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    current: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    citation: Mapped[str] = mapped_column(Text)
+    source_file_id: Mapped[UUID | None] = ref(nullable=True)
+    path: Mapped[str | None] = mapped_column(Text)
+    start_line: Mapped[int] = mapped_column(Integer)
+    end_line: Mapped[int] = mapped_column(Integer)
+    source_hash: Mapped[str | None] = mapped_column(Text)
+    deterministic: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    evidence_lines: Mapped[list[Any]] = jsonb(default="'[]'::jsonb")
+    checker_model: Mapped[str | None] = mapped_column(Text)
+    waived_by: Mapped[UUID | None] = ref("users.id", nullable=True)
+    waived_reason: Mapped[str | None] = mapped_column(Text)
+    waived_at: Mapped[datetime | None] = ts(nullable=True)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    checked_at: Mapped[datetime | None] = ts(nullable=True)

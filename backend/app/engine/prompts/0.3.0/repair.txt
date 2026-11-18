@@ -1,0 +1,9 @@
+Your previous answer for this task failed validation. Return a corrected answer for the same task, in the same schema, that fixes every listed problem. Keep everything that was valid. Do not add facts that the original evidence does not support.
+
+$PROBLEMS
+
+$PREVIOUS_ANSWER
+
+The original task follows.
+
+$ORIGINAL_TASK

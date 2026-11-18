@@ -33,7 +33,7 @@ from app.engine.index import IndexedSymbol, build_index
 from app.engine.keys import blob_key, build_key
 from app.engine.replay import GENERATOR, explain_file
 from app.engine.scan import scan
-from app.jobs import generation
+from app.jobs import generation, verification
 from app.jobs.store import Apply, Claim
 
 TEXT_STATUSES = ("selected", "unsupported")
@@ -399,5 +399,7 @@ HANDLERS = {
     "overview": _generation(generation.overview),
     "plan": _generation(generation.plan),
     "guide": _generation(generation.guide),
+    "verify": _generation(verification.verify),
+    "check": _generation(verification.check),
     "render": render,
 }

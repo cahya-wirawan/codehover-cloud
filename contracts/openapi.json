@@ -275,6 +275,142 @@
         "title": "BuildUsage",
         "type": "object"
       },
+      "CheckList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CheckList",
+        "type": "object"
+      },
+      "CheckOut": {
+        "properties": {
+          "checker_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker Model"
+          },
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "claim_key": {
+            "title": "Claim Key",
+            "type": "string"
+          },
+          "claim_text": {
+            "title": "Claim Text",
+            "type": "string"
+          },
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "string"
+          },
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "evidence_lines": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Evidence Lines",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "waived": {
+            "title": "Waived",
+            "type": "boolean"
+          },
+          "waived_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waived Reason"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "claim_key",
+          "claim_text",
+          "citation",
+          "path",
+          "start_line",
+          "end_line",
+          "deterministic",
+          "status",
+          "reason",
+          "evidence_lines",
+          "checker_model",
+          "waived",
+          "waived_reason"
+        ],
+        "title": "CheckOut",
+        "type": "object"
+      },
       "ChunkExplanation": {
         "properties": {
           "end_line": {
@@ -350,6 +486,46 @@
           "end_line"
         ],
         "title": "Citation",
+        "type": "object"
+      },
+      "ClaimCitation": {
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "string"
+          },
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "citation",
+          "path",
+          "start_line",
+          "end_line",
+          "deterministic"
+        ],
+        "title": "ClaimCitation",
         "type": "object"
       },
       "ConnectionList": {
@@ -943,6 +1119,13 @@
             "title": "Citations",
             "type": "array"
           },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/PageClaim"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
           "markdown": {
             "title": "Markdown",
             "type": "string"
@@ -982,7 +1165,8 @@
           "check_status",
           "provenance",
           "markdown",
-          "citations"
+          "citations",
+          "claims"
         ],
         "title": "GuidePageOut",
         "type": "object"
@@ -1352,6 +1536,59 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "PageClaim": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimCitation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "claim_key": {
+            "title": "Claim Key",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "waived": {
+            "title": "Waived",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "claim_key",
+          "text",
+          "ordinal",
+          "status",
+          "reason",
+          "waived",
+          "citations"
+        ],
+        "title": "PageClaim",
+        "type": "object"
+      },
       "PresetList": {
         "properties": {
           "items": {
@@ -1517,6 +1754,78 @@
           "repository"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "QualityOut": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "claims": {
+            "title": "Claims",
+            "type": "integer"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "pages": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Pages",
+            "type": "object"
+          },
+          "publishable": {
+            "title": "Publishable",
+            "type": "boolean"
+          },
+          "requires_acknowledgment": {
+            "title": "Requires Acknowledgment",
+            "type": "boolean"
+          },
+          "supported_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supported Fraction"
+          },
+          "uncited_sentences": {
+            "title": "Uncited Sentences",
+            "type": "integer"
+          },
+          "waived": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Waived",
+            "type": "object"
+          }
+        },
+        "required": [
+          "claims",
+          "counts",
+          "waived",
+          "supported_fraction",
+          "uncited_sentences",
+          "pages",
+          "publishable",
+          "blockers",
+          "requires_acknowledgment"
+        ],
+        "title": "QualityOut",
         "type": "object"
       },
       "ReadyResponse": {
@@ -2274,6 +2583,48 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WaiverIn": {
+        "properties": {
+          "claim_keys": {
+            "items": {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Claim Keys",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_keys",
+          "reason"
+        ],
+        "title": "WaiverIn",
+        "type": "object"
+      },
+      "WaiverOut": {
+        "properties": {
+          "waived": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Waived",
+            "type": "array"
+          }
+        },
+        "required": [
+          "waived"
+        ],
+        "title": "WaiverOut",
+        "type": "object"
+      },
       "WorkspaceCreate": {
         "properties": {
           "name": {
@@ -2769,6 +3120,197 @@
           }
         },
         "summary": "Guide Page",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/quality": {
+      "get": {
+        "operationId": "quality_summary_api_v1_builds__build_id__quality_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Summary",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/quality/checks": {
+      "get": {
+        "operationId": "quality_checks_api_v1_builds__build_id__quality_checks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(supported|partial|unsupported|unchecked|invalid)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Checks",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/quality/waivers": {
+      "post": {
+        "operationId": "waive_claims_api_v1_builds__build_id__quality_waivers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WaiverIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaiverOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Waive Claims",
         "tags": [
           "projects"
         ]

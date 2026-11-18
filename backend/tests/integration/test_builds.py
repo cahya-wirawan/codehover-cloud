@@ -48,7 +48,7 @@ def fixture_tarball() -> bytes:
     return buffer.getvalue()
 
 
-async def drive(app: Any, build_id: str, rounds: int = 12, runtime: Runtime | None = None) -> list[str]:
+async def drive(app: Any, build_id: str, rounds: int = 16, runtime: Runtime | None = None) -> list[str]:
     """Deliver pending notifications to the runner until the build stops, like the consumer would."""
     assert RUNTIME_URL
     rt = runtime or Runtime(

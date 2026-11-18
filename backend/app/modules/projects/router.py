@@ -12,12 +12,19 @@ from pydantic import BaseModel, Field, model_validator
 from app.adapters.github.app import GitHubApp
 from app.adapters.storage import ObjectStore
 from app.core.idempotency import run_once
-from app.core.pagination import clamp_limit, decode_path_cursor, encode_path_cursor
+from app.core.pagination import (
+    Position,
+    clamp_limit,
+    decode_cursor,
+    decode_path_cursor,
+    encode_cursor,
+    encode_path_cursor,
+)
 from app.core.settings import Settings
 from app.engine.catalog import Catalog
 from app.engine.estimate import GenerationConfig
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
-from app.modules.projects import estimates, service
+from app.modules.projects import estimates, quality, service
 from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
 
 router = APIRouter(tags=["projects"])
@@ -35,7 +42,12 @@ async def build_reader(build_id: UUID, db: Db, principal: CurrentPrincipal) -> M
     return await resource_member("build", build_id, db, principal)
 
 
+async def build_writer(build_id: UUID, db: Db, principal: CsrfPrincipal) -> Member:
+    return await resource_member("build", build_id, db, principal)
+
+
 ProjectReader = Annotated[Member, Depends(project_reader)]
+BuildWriter = Annotated[Member, Depends(build_writer)]
 ProjectWriter = Annotated[Member, Depends(project_writer)]
 BuildReader = Annotated[Member, Depends(build_reader)]
 
@@ -250,9 +262,74 @@ class Citation(BaseModel):
     end_line: int
 
 
+class ClaimCitation(BaseModel):
+    citation: str
+    path: str | None
+    start_line: int
+    end_line: int
+    deterministic: str
+
+
+class PageClaim(BaseModel):
+    claim_key: str
+    text: str
+    ordinal: int
+    status: str
+    reason: str | None
+    waived: bool
+    citations: list[ClaimCitation]
+
+
 class GuidePageOut(GuidePageSummary):
     markdown: str
     citations: list[Citation]
+    claims: list[PageClaim]
+
+
+class QualityOut(BaseModel):
+    claims: int
+    counts: dict[str, int]
+    waived: dict[str, int]
+    supported_fraction: float | None
+    uncited_sentences: int
+    pages: dict[str, int]
+    publishable: bool
+    blockers: list[str]
+    requires_acknowledgment: bool
+
+
+class CheckOut(BaseModel):
+    id: UUID
+    slug: str
+    claim_key: str
+    claim_text: str
+    citation: str
+    path: str | None
+    start_line: int
+    end_line: int
+    deterministic: str
+    status: str
+    reason: str
+    evidence_lines: list[int]
+    checker_model: str | None
+    waived: bool
+    waived_reason: str | None
+
+
+class CheckList(BaseModel):
+    items: list[CheckOut]
+    next_cursor: str | None
+
+
+class WaiverIn(BaseModel):
+    claim_keys: Annotated[
+        list[Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]], Field(min_length=1, max_length=100)
+    ]
+    reason: Annotated[str, Field(min_length=10, max_length=1000)]
+
+
+class WaiverOut(BaseModel):
+    waived: list[str]
 
 
 class FileOut(BaseModel):
@@ -518,3 +595,43 @@ async def guide_page(
     slug: Annotated[str, Path(pattern=r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$")],
 ) -> GuidePageOut:
     return GuidePageOut(**await service.guide_page(db, _objects(request), member, build_id, slug))
+
+
+# ---------------------------------------------------------------- quality
+@router.get("/builds/{build_id}/quality", response_model=QualityOut)
+async def quality_summary(build_id: UUID, request: Request, db: Db, member: BuildReader) -> QualityOut:
+    return QualityOut(**await quality.summary(db, _objects(request), member, build_id))
+
+
+@router.get("/builds/{build_id}/quality/checks", response_model=CheckList)
+async def quality_checks(
+    build_id: UUID,
+    request: Request,
+    db: Db,
+    member: BuildReader,
+    status: Annotated[
+        str | None, Query(pattern=r"^(supported|partial|unsupported|unchecked|invalid)$")
+    ] = None,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> CheckList:
+    secret = _settings(request).session_secret.get_secret_value()
+    scope = f"quality:{build_id}:{status or ''}"
+    n = clamp_limit(limit)
+    rows = await quality.checks(db, member, build_id, status, decode_cursor(secret, scope, cursor), n + 1)
+    more = len(rows) > n
+    rows = rows[:n]
+    return CheckList(
+        items=[CheckOut(**r) for r in rows],
+        next_cursor=encode_cursor(secret, scope, Position(rows[-1]["created_at"], rows[-1]["id"]))
+        if more
+        else None,
+    )
+
+
+@router.post("/builds/{build_id}/quality/waivers", response_model=WaiverOut)
+async def waive_claims(build_id: UUID, body: WaiverIn, db: Db, member: BuildWriter) -> WaiverOut:
+    require_role(member, "admin")
+    return WaiverOut(
+        **await quality.waive(db, member, build_id, sorted(set(body.claim_keys)), body.reason.strip())
+    )

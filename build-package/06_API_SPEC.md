@@ -51,9 +51,10 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/builds/{bid}/files/{fid}` | start_line,end_line → source/card metadata and the file explanation (status, summary, chunk summaries and line notes) | Member; max 500 source lines/request |
 | GET `/builds/{bid}/symbols/{symid}` | none → card,span,relations | Member |
 | GET `/builds/{bid}/search` | q,kind,limit → ranked hits | Member; max q 200 chars, limit 50 |
-| GET `/builds/{bid}/guide[/{slug}]` | none → index (overview with key concepts and reading order, pages with status, check status and provenance) or page (Markdown and its citations resolved to paths of this build) | Member; ready builds only |
-| GET `/builds/{bid}/quality` | status,cursor → checks/coverage | Member |
-| POST `/builds/{bid}/quality/waivers` | claim IDs,reason → waiver | Admin; cannot waive missing deterministic source locations |
+| GET `/builds/{bid}/guide[/{slug}]` | none → index (overview with key concepts and reading order, pages with status, check status and provenance) or page (Markdown, its citations resolved to paths of this build, and its current claims with status, reason, waiver and per-citation deterministic result) | Member; ready builds only |
+| GET `/builds/{bid}/quality` | none → claim counts per status, waived counts, supported fraction, uncited sentences, page counts, `publishable`, `blockers` (invalid_citations, unchecked_claims, unsupported_claims, failed_pages, uncited_pages) and `requires_acknowledgment` for partial claims | Member; ready builds |
+| GET `/builds/{bid}/quality/checks` | status,cursor,limit → one row per current claim and citation with deterministic result, label, reason, evidence lines and waiver | Member; cursor bound to the status filter |
+| POST `/builds/{bid}/quality/waivers` | claim_keys (1–100), reason (10–1000 chars) → waived keys | Admin; only checked unsupported or partial claims → otherwise 409 `WAIVER_NOT_ALLOWED` (invalid citations and unchecked claims can never be waived; the database refuses it too); audited with the reason; waived claims stay visible and counted |
 | POST `/projects/{pid}/publication` | build_id,visibility,confirmation → publication | Admin; ETag/idempotency; public confirmation |
 | DELETE `/projects/{pid}/publication` | `If-Match` publication ETag → 204 | Admin; immediate stop serving; no request body |
 | GET `/published/{slug}/...` | resource route → viewer data | Resolver authorizes visibility; shares no private object URL |

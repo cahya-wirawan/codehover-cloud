@@ -37,7 +37,7 @@ from tests.integration.test_github import FakeGitHub, github  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
 
-GENERATION_STAGES = ["acquire", "index", "explain", "overview", "plan", "guide", "render"]
+GENERATION_STAGES = ["acquire", "index", "explain", "overview", "plan", "guide", "verify", "check", "render"]
 
 
 @dataclass
@@ -117,11 +117,11 @@ async def test_replay_preset_runs_the_whole_generation_pipeline(
 ) -> None:
     owner, ws, build, app = await generation_build(client, idp, github, preset="replay-v2")
     outcomes = await drive(app, build, runtime=runtime_for(app))
-    assert outcomes == ["completed"] * 6, outcomes
+    assert outcomes == ["completed"] * 8, outcomes
     status = (await owner.get(f"/api/v1/builds/{build}")).json()
     assert status["status"] == "ready"
     assert [s["stage"] for s in status["stages"]] == GENERATION_STAGES
-    assert status["prompt_version"] == "0.2.0"
+    assert status["prompt_version"] == "0.3.0"
 
     cards = {r[0]: r[1] for r in ddl("SELECT symbol_key, card FROM symbols WHERE build_id = :b", b=build)}
     assert cards["main"]["summary"] == "Entry point."
@@ -153,7 +153,7 @@ async def test_replay_preset_runs_the_whole_generation_pipeline(
     assert set(manifest["artifacts"]) == {"overview", "guide_plan"}
 
     recorded = attempts(build)
-    assert {a[0] for a in recorded} == {"explain", "overview", "plan", "guide"}
+    assert {a[0] for a in recorded} == {"explain", "overview", "plan", "guide", "check"}
     assert all(a[1] == "succeeded" and a[2] == 0 for a in recorded)
     assert ledger_balance(ws) == {}  # zero cap, zero cost
 
@@ -184,7 +184,7 @@ async def test_priced_calls_are_earmarked_settled_and_released(
 ) -> None:
     owner, ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = ScriptedProvider()
-    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 6
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
     recorded = attempts(build)
     assert recorded and all(a[1] == "succeeded" for a in recorded)
     assert all(0 < a[2] <= a[3] for a in recorded)  # actual cost never above the earmark
@@ -228,7 +228,7 @@ async def test_transient_errors_retry_and_invalid_answers_get_one_repair(
             "plan": ["invalid"],
         }
     )
-    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 6
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
     by_purpose: dict[str, list[Any]] = {}
     for a in attempts(build):
         by_purpose.setdefault(a[0], []).append(a)
@@ -250,7 +250,7 @@ async def test_refusal_falls_back_to_a_labeled_source_only_card(
     provider = ScriptedProvider(
         faults={"explain": [ProviderError("permanent", "provider_refusal", usage=Usage(10, 0))]}
     )
-    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 6
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
     statuses = sorted(r[0] for r in ddl("SELECT status FROM file_explanations WHERE build_id = :b", b=build))
     assert statuses == ["failed", "generated", "generated"]
     failed = ddl(
@@ -271,7 +271,7 @@ async def test_unknown_provider_outcome_keeps_its_hold_after_the_build_ends(
 ) -> None:
     owner, ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = ScriptedProvider(faults={"overview": [ProviderError("unknown", "provider_timeout")]})
-    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 6
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
     unknown = [a for a in attempts(build) if a[1] == "unknown"]
     assert len(unknown) == 1 and unknown[0][2] is None
     hold = unknown[0][3]
@@ -310,7 +310,7 @@ async def test_crash_after_paid_output_reuses_the_checkpoint_without_paying_agai
     assert await runner.process(rt, envelope) == "completed"  # the expired lease is re-claimed
     assert len(provider.calls) == paid  # every chunk came from the checkpoint
     assert account_counters(ws)[2] == charged
-    assert await drive(app, build, runtime=rt) == ["completed"] * 4
+    assert await drive(app, build, runtime=rt) == ["completed"] * 6
     assert (await owner.get(f"/api/v1/builds/{build}")).json()["status"] == "ready"
 
 
@@ -392,7 +392,7 @@ async def test_reclaimed_task_marks_unsettled_attempts_unknown_and_keeps_their_h
     assert started
     ddl("UPDATE build_tasks SET lease_until = now() - interval '1 second' WHERE id = :t", t=claimed.task_id)
     assert await runner.process(rt, envelope) == "completed"
-    assert await drive(app, build, runtime=rt) == ["completed"] * 4
+    assert await drive(app, build, runtime=rt) == ["completed"] * 6
     recorded = attempts(build)
     unknown = [a for a in recorded if a[1] == "unknown"]
     assert len(unknown) == len(started) and all(a[4] == "lease_lost" for a in unknown)
@@ -412,7 +412,7 @@ async def test_files_outside_the_scope_never_reach_a_provider_prompt(
         client, idp, github, preset="balanced-v1", cap=5_000_000, include=["src/app.py"]
     )
     provider = ScriptedProvider()
-    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 6
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
     assert provider.prompts
     for prompt in provider.prompts:
         assert "src/util.py" not in prompt and "def helper" not in prompt and "web/index.ts" not in prompt

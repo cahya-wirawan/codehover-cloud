@@ -1,6 +1,16 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.1
+Date: 2026-11-18 · Package version 0.5.2
+
+0.5.2 records T12. Integration tests cover:
+- a replay guide whose claims are all supported, so the build is publishable;
+- a checker outage that leaves every claim unchecked on a ready draft and blocks publication (A13);
+- a repair cycle that removes unsupported claims, keeps the original page and rows, and re-checks only changed claims;
+- unsupported claims that block until an admin waives them with an audited reason, then stay counted;
+- a citation by path instead of file ID that is invalid, never sent to the checker, and refused for waiver by the API and by a database CHECK (A14);
+- quality endpoints that are private to the workspace.
+
+Unit tests cover extraction (trailing citations, list items, code fences, slug-bound keys), each deterministic rejection reason, checker and repair validation, and the gate. Seven mutations are caught: citing excluded files, skipping range bounds, treating an outage as supported, waiving anything, letting unchecked claims through, sending invalid claims to the checker, and keeping superseded rows current. 253 backend tests pass.
 
 0.5.1 fixes two findings of the automated review of T11. With the scope narrowed to `src/app.py`, no captured prompt contains `src/util.py`, its `helper` definition, or the excluded secrets; removing the new filter makes that test fail. New allowlist cases reject reference-style and autolink `javascript:` targets and raw HTML in list items and blocks. 232 backend tests pass.
 

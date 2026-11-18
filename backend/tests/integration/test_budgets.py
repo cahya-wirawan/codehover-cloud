@@ -241,7 +241,7 @@ async def test_build_reserves_its_cap_once_and_releases_the_rest_at_the_end(
     assert usage["available_micro_usd"] == ALLOWANCE - 2_000_000
 
     outcomes = await drive(app, build["id"])
-    assert outcomes == ["completed"] * 6, outcomes  # acquire skipped: the snapshot was already scanned
+    assert outcomes == ["completed"] * 8, outcomes  # acquire skipped: the snapshot was already scanned
     done = (await owner.get(f"/api/v1/builds/{build['id']}")).json()
     assert done["status"] == "ready"
     assert done["usage"] == {"cap_micro_usd": 2_000_000, "reserved_micro_usd": 0, "settled_micro_usd": 0}

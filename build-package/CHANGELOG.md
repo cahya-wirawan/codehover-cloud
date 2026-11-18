@@ -4,6 +4,19 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-18
+
+### Added
+
+- `contracts/claim-check.schema.json` and `claim-repair.schema.json` 1.0.0, the outputs of P05 and P06 (the files first shipped in 0.5.1 ahead of their implementation).
+- 05: the full `claim_checks` row and `guide_pages.original_markdown_key`.
+- 06: the quality summary and check list, waiver rules (`WAIVER_NOT_ALLOWED`), and claims on guide pages.
+
+### Changed
+
+- 07: verification as implemented in T12: the verify and check stages, checker batching and isolation, `unchecked` on any checker failure, the bounded repair cycle with results carried over for unchanged claims, and the `uncited_pages` blocker.
+- 19: prompt set 0.3.0 adds P05 and P06.
+
 ## [0.5.1] - 2026-11-18
 
 ### Security

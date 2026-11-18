@@ -24,7 +24,7 @@ from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION
 from app.engine.catalog import Catalog
 from app.engine.generate import CITATION
 from app.jobs import store as jobs
-from app.modules.projects import estimates
+from app.modules.projects import estimates, quality
 from app.modules.usage import ledger
 from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
@@ -548,7 +548,7 @@ async def guide_page(
     page = (
         await db.execute(
             text(
-                "SELECT slug, title, ordinal, purpose, status, check_status, provenance, markdown_key FROM guide_pages"
+                "SELECT id, slug, title, ordinal, purpose, status, check_status, provenance, markdown_key FROM guide_pages"
                 " WHERE workspace_id = :w AND build_id = :b AND slug = :s"
             ),
             {"w": member.workspace_id, "b": build_id, "s": slug},
@@ -563,6 +563,7 @@ async def guide_page(
             {"w": member.workspace_id, "s": build.snapshot_id},
         )
     }
+    page_claims = await quality.page_claims(db, member, page.id)
     await db.commit()
     markdown = (await objects.get(page.markdown_key)).decode("utf-8")
     citations = [
@@ -571,4 +572,5 @@ async def guide_page(
     ]
     result = dict(page._mapping)
     result.pop("markdown_key")
-    return {**result, "markdown": markdown, "citations": citations}
+    result.pop("id")
+    return {**result, "markdown": markdown, "citations": citations, "claims": page_claims}

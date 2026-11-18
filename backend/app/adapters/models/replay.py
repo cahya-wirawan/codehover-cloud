@@ -152,3 +152,54 @@ class ReplayGateway:
                 parts.append(f"- `{e['path']}` defines `{name}` [[{e['file_id']}:{line}-{line}]].")
         parts += ["", "Behavior beyond these definitions is not described by this replay page."]
         return {"markdown": "\n".join(parts)[:20000]}
+
+    # P05: supported when every code identifier the claim names appears in its cited lines.
+    def _check(self, evidence: dict[str, Any]) -> dict[str, Any]:
+        checks = []
+        for item in evidence["claims"]:
+            names = [
+                t
+                for t in re.findall(r"`([^`]+)`", item["claim"])
+                if "/" not in t and not re.search(r"\.\w+$", t)
+            ]
+            numbered = [
+                (int(row.split("|", 1)[0]), row.split("|", 1)[1] if "|" in row else "")
+                for c in item["cited_lines"]
+                for row in c["lines"].split("\n")
+                if row.split("|", 1)[0].strip().isdigit()
+            ]
+            found = [n for n in names if any(re.search(rf"\b{re.escape(n)}\b", text) for _, text in numbered)]
+            lines = sorted(
+                {
+                    line
+                    for line, text in numbered
+                    if any(re.search(rf"\b{re.escape(n)}\b", text) for n in found)
+                }
+            )
+            if names and len(found) == len(names):
+                status, reason = "supported", "Every named identifier appears in the cited lines."
+            elif found:
+                status, reason = "partial", "Only some named identifiers appear in the cited lines."
+            elif names:
+                status, reason = "unsupported", "None of the named identifiers appear in the cited lines."
+            else:
+                status, reason = "partial", "The claim names nothing the replay checker can match."
+            checks.append(
+                {
+                    "claim_id": item["claim_id"],
+                    "status": status,
+                    "reason": reason,
+                    "evidence_line_numbers": lines,
+                }
+            )
+        return {"checks": checks}
+
+    # P06: the replay repair never invents text; it removes what the checker could not support.
+    def _claim_repair(self, evidence: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "replacements": [
+                {"claim_id": item["claim_id"], "text": "", "citations": [], "action": "remove"}
+                for item in evidence["claims"]
+                if item["status"] == "unsupported"
+            ]
+        }

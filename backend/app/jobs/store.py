@@ -33,7 +33,17 @@ HEARTBEAT_SECONDS = 20
 MAX_ATTEMPTS = 4  # first try + three retries
 BACKOFF_SECONDS = (5, 30, 120)
 STAGES = ("acquire", "index", "explain", "render")  # M1 replay builds (started from a ref)
-GENERATION_STAGES = ("acquire", "index", "explain", "overview", "plan", "guide", "render")  # estimate builds
+GENERATION_STAGES = (  # estimate builds
+    "acquire",
+    "index",
+    "explain",
+    "overview",
+    "plan",
+    "guide",
+    "verify",
+    "check",
+    "render",
+)
 TERMINAL_CODES = {
     "budget_exhausted": ("budget_exhausted", "build.budget_exhausted"),
     "cancelled": ("cancelled", "build.cancelled"),
