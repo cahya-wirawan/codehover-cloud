@@ -7,7 +7,8 @@ context of the request like any other worker:
 - objects: everything under the project (or workspace) prefix, swept before and after the database step,
   so an object stored late by a fenced worker is still removed;
 - rows with content: source files, symbols, references, explanations, guide pages, claim checks, search
-  documents, artifacts, events, exports, publications and generation cache entries;
+  documents, artifacts, events, exports, publications (except operator takedowns, which keep their address
+  reserved) and generation cache entries;
 - kept as minimal tombstones: the project, build, task, snapshot, estimate and provider-attempt rows the
   usage ledger and audit log refer to, with names scrubbed. Accounting stays reconcilable (11).
 
@@ -42,7 +43,9 @@ _PROJECT_CONTENT = (
     "DELETE FROM artifacts WHERE workspace_id = :w AND build_id = ANY(:b)",
     "DELETE FROM build_events WHERE workspace_id = :w AND build_id = ANY(:b)",
     "DELETE FROM exports WHERE workspace_id = :w AND build_id = ANY(:b)",
-    "DELETE FROM publications WHERE workspace_id = :w AND project_id = :p",
+    # An operator takedown survives: its row (identifiers only) keeps the public address reserved.
+    "DELETE FROM publications WHERE workspace_id = :w AND project_id = :p"
+    " AND suspended_reason IS DISTINCT FROM 'operator'",
     "DELETE FROM generation_cache WHERE workspace_id = :w AND attempt_id IN"
     " (SELECT id FROM provider_attempts WHERE workspace_id = :w AND build_id = ANY(:b))",
     "DELETE FROM source_files WHERE workspace_id = :w AND snapshot_id = ANY(:s)",

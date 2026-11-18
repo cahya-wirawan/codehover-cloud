@@ -18,6 +18,14 @@ def project_prefix(workspace_id: UUID, project_id: UUID) -> str:
     return f"workspaces/{workspace_id}/projects/{project_id}/"
 
 
+def build_prefix(workspace_id: UUID, project_id: UUID, build_id: UUID) -> str:
+    return f"workspaces/{workspace_id}/projects/{project_id}/builds/{build_id}/"
+
+
+def snapshot_prefix(workspace_id: UUID, project_id: UUID, snapshot_id: UUID) -> str:
+    return f"workspaces/{workspace_id}/projects/{project_id}/snapshots/{snapshot_id}/"
+
+
 def workspace_prefix(workspace_id: UUID) -> str:
     return f"workspaces/{workspace_id}/"
 

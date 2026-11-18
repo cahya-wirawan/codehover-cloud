@@ -17,6 +17,7 @@ class ObjectStore(Protocol):
     async def get(self, key: str) -> bytes: ...
     async def exists(self, key: str) -> bool: ...
     async def list(self, prefix: str) -> list[str]: ...
+    async def delete(self, key: str) -> None: ...  # idempotent: a missing object is not an error
     async def delete_prefix(self, prefix: str) -> int: ...  # returns the number of objects deleted
 
 
@@ -48,6 +49,9 @@ class MemoryObjectStore:
     async def list(self, prefix: str) -> list[str]:
         prefix = _checked_prefix(prefix)
         return sorted(k for k in self.objects if k.startswith(prefix))
+
+    async def delete(self, key: str) -> None:
+        self.objects.pop(key, None)
 
     async def delete_prefix(self, prefix: str) -> int:
         doomed = await self.list(prefix)
@@ -93,6 +97,9 @@ class S3ObjectStore:
             if not page.get("IsTruncated"):
                 return keys
             token = page["NextContinuationToken"]
+
+    async def delete(self, key: str) -> None:
+        await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=key)
 
     async def delete_prefix(self, prefix: str) -> int:
         keys = await self.list(prefix)

@@ -88,6 +88,12 @@ export function BuildPage() {
             {data.cancel_requested_at && !terminal ? " · cancelling after the current step" : null}
             {data.rejection_code ? <> · rejected by safety scan ({data.rejection_code})</> : null}
           </p>
+          {data.content_purged_at ? (
+            <p role="status" className="mt-1">
+              Retention removed this build&apos;s explanations and guide on{" "}
+              {new Date(data.content_purged_at).toLocaleDateString()}; start a new build to read it again.
+            </p>
+          ) : null}
           {generation ? (
             <p className="mt-1 text-muted">
               Spent {formatUsd(data.usage.settled_micro_usd)} of a {formatUsd(data.usage.cap_micro_usd)} cap

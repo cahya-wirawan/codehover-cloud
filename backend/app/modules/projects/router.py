@@ -206,6 +206,7 @@ class BuildOut(BaseModel):
     prompt_version: str
     created_at: datetime
     completed_at: datetime | None
+    content_purged_at: datetime | None = None  # retention removed the build's content (0016)
     stages: list[StageOut]
     counts: dict[str, int]
     usage: BuildUsage

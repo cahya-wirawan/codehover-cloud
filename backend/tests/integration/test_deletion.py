@@ -315,3 +315,30 @@ async def test_account_deletion_needs_a_recent_sign_in_and_resolves_ownership(
         ][0]
         == "account.deleted"
     )
+
+
+async def test_an_operator_takedown_survives_project_deletion(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """Security review of 0015: deleting the project must not free a taken-down public address."""
+    import sqlalchemy as sa
+
+    owner, _ws, project, build, app = await ready_build(client, idp, github)
+    slug = f"takedown-{secrets.token_hex(3)}"
+    published = await publish(
+        owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
+    )
+    assert published.status_code == 200, published.text
+    ddl(
+        "UPDATE publications SET suspended_at = now(), suspended_reason = 'operator' WHERE project_id = :p",
+        p=project,
+    )
+    assert (await delete_project(owner, project, "API")).status_code == 202
+    make_due(project_id=project)
+    await purge_due(runtime_for(app).sessions, app.state.objects)
+    assert ddl("SELECT state FROM deletion_requests WHERE project_id = :p", p=project)[0][0] == "completed"
+    kept = ddl("SELECT public_slug, suspended_reason FROM publications WHERE project_id = :p", p=project)
+    assert kept == [(slug, "operator")]  # the takedown and its reserved address remain
+    with pytest.raises(sa.exc.IntegrityError):
+        ddl("DELETE FROM publications WHERE project_id = :p", p=project)  # the 0012 trigger, again
+    assert (await client.get(f"/api/v1/published/{slug}")).status_code == 404

@@ -314,7 +314,7 @@ async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[st
         await db.execute(
             text(
                 "SELECT b.id, b.project_id, b.snapshot_id, b.estimate_id, b.retry_of_id, b.status, b.created_at,"
-                " b.completed_at, b.cancel_requested_at,"
+                " b.completed_at, b.cancel_requested_at, b.content_purged_at,"
                 " b.engine_version, b.prompt_version, b.cap_micro_usd, b.reserved_micro_usd, b.settled_micro_usd,"
                 " s.commit_sha, s.status AS snapshot_status, s.rejection_code"
                 " FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"

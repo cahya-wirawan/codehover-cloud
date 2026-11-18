@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.15] - 2026-11-18
+
+### Added
+
+- 05, 06, 08: retention sweeps as implemented in T17 (migration 0016). Exports gain the `expired` state, builds gain `content_purged_at`, and a purged build cannot be published or exported (409 `BUILD_EXPIRED`). Identity and audit rows are swept through functions whose policies admit only rows past their window; the scheduler removes dispatched outbox rows after 7 days.
+
+### Security
+
+- 05: an operator takedown survives project deletion. The purge keeps the suspended publication row, so its public address stays reserved, and the 0012 trigger again refuses deleting it in every case. Found by automated security review of 0.5.14.
+
 ## [0.5.14] - 2026-11-18
 
 ### Added

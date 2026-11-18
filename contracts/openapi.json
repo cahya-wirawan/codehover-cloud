@@ -238,6 +238,18 @@
             ],
             "title": "Completed At"
           },
+          "content_purged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Purged At"
+          },
           "counts": {
             "additionalProperties": {
               "type": "integer"

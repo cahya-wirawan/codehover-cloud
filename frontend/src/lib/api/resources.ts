@@ -55,6 +55,7 @@ export interface Build extends BuildSummary {
   stages: { stage: string; state: string; error_code: string | null }[];
   counts: { files: number; symbols: number };
   usage: BuildUsage;
+  content_purged_at?: string | null;
 }
 export interface Snapshot {
   id: string;
@@ -174,7 +175,7 @@ export interface ExportJob {
   id: string;
   build_id: string;
   format: "static_zip" | "kb_json";
-  status: "pending" | "ready" | "failed";
+  status: "pending" | "ready" | "failed" | "expired";
   byte_count: number | null;
   error_code: string | null;
   created_at: string;

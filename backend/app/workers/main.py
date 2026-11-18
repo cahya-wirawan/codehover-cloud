@@ -1,7 +1,8 @@
 """`python -m app.workers.main`: task consumer (04). Refuses to start without network isolation on Linux.
 
-Beside the consumer, a maintenance loop purges due deletions (app.jobs.purge) with the same runtime role,
-object store and tenant context rules as every stage."""
+Beside the consumer, a maintenance loop purges due deletions (app.jobs.purge) and, hourly, sweeps
+retention (app.jobs.retention), with the same runtime role, object store and tenant context rules as
+every stage."""
 
 from __future__ import annotations
 
@@ -10,12 +11,14 @@ import contextlib
 import ctypes
 import logging
 import sys
+import time
 
 import aio_pika
 from pydantic import ValidationError
 
 from app.core.settings import get_settings
 from app.engine import sandbox
+from app.jobs import retention
 from app.jobs.envelope import TaskEnvelope
 from app.jobs.purge import purge_due
 from app.jobs.queue import topology
@@ -26,6 +29,7 @@ from app.workers._shell import run
 
 logger = logging.getLogger("app.workers.main")
 MAINTENANCE_SECONDS = 30.0
+RETENTION_SECONDS = 3600.0
 
 
 def _not_dumpable() -> None:
@@ -38,9 +42,14 @@ def _not_dumpable() -> None:
 
 
 async def maintenance(runtime: Runtime, stop: asyncio.Event) -> None:
+    last_sweep = 0.0
     while not stop.is_set():
         try:
             await purge_due(runtime.sessions, runtime.store)
+            if time.monotonic() - last_sweep >= RETENTION_SECONDS:
+                counts = await retention.sweep(runtime.sessions, runtime.store)
+                last_sweep = time.monotonic()
+                logger.info("retention swept", extra=counts)
         except Exception:
             logger.exception("maintenance cycle failed")
         with contextlib.suppress(TimeoutError):

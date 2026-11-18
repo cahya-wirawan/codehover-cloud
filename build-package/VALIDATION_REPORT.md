@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.14
+Date: 2026-11-18 · Package version 0.5.15
+
+0.5.15 completes T17 with retention sweeps (`test_retention.py`), checking each window at and past its boundary:
+- exports expire, lose their object and download as 410;
+- old unpublished builds lose rows and objects, while the published build and the newest builds stay; a purged build cannot be published or exported (409 `BUILD_EXPIRED`), and a second sweep changes nothing;
+- failed builds are swept at 8 days but not at 6; events after 30 days, expired cache entries, and estimates no build uses;
+- audit events at 181 days but not at 179, ended sessions after 30 days with the live session untouched, and expired idempotency keys;
+- dispatched outbox rows at 8 days but not at 6.
+
+Removing both published-build guards makes a test fail. A regression test covers the security fix: an operator takedown survives project deletion and purge, and its row cannot be deleted.
 
 0.5.14 records T17, part of the M4 exit criterion. Integration tests (`test_deletion.py`) check:
 - a project deletion: serving stops in the same transaction, with the project, build, export download and public site all 404;

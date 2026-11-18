@@ -209,6 +209,7 @@ class Snapshot(Base):
     file_count: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+    content_purged_at: Mapped[datetime | None] = ts(nullable=True)
 
 
 class SourceFile(Base):
@@ -266,6 +267,7 @@ class Build(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
+    content_purged_at: Mapped[datetime | None] = ts(nullable=True)
     usage_account_id: Mapped[UUID | None] = ref(nullable=True)  # reservation account (0006)
 
 
