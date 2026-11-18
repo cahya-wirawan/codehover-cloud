@@ -681,13 +681,13 @@ async def upload_archive(
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_COMPRESSED_BYTES:
         raise ApiError(413, "PAYLOAD_TOO_LARGE", "Archives are limited to 100 MiB.")
+    await _limit(request, "acquire", member)  # before reading the body: refused uploads cost nothing
     chunks, size = [], 0
     async for chunk in request.stream():
         size += len(chunk)
         if size > MAX_COMPRESSED_BYTES:
             raise ApiError(413, "PAYLOAD_TOO_LARGE", "Archives are limited to 100 MiB.")
         chunks.append(chunk)
-    await _limit(request, "acquire", member)
     snapshot = await uploads.receive(
         db, _objects(request), _settings(request), member, project_id, b"".join(chunks)
     )

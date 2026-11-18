@@ -223,6 +223,10 @@ async def start_generation_build(
         )
     own = await provider_keys.active_providers(db, member.workspace_id)
     if funding == "own_key":
+        # The key spends the owner's provider account with no allowance behind it: admins and owners only
+        # (security review). Editors build on the plan allowance.
+        if not member.at_least("admin"):
+            raise ApiError(403, "FORBIDDEN", "Only workspace admins can build on the workspace's own key.")
         if cap is None:
             raise ApiError(422, "CAP_REQUIRED", "Set a spending cap for a build on your own key.")
         if not estimates.own_key_usable(catalog, approved.config["model_preset"], own):

@@ -178,3 +178,16 @@ async def test_upload_requests_are_checked_before_anything_is_stored(
     wrong = await upload(gh_owner, gh_project, archive())
     assert wrong.status_code == 409 and code(wrong) == "NOT_AN_UPLOAD_PROJECT"
     assert uploads.UPLOAD_REF == "upload"
+
+
+async def test_the_upload_rate_limit_applies_before_the_body_is_read(
+    client: httpx.AsyncClient, new_user: NewUser
+) -> None:
+    app = client.app  # type: ignore[attr-defined]
+    owner = await new_user()
+    ws = await workspace(owner)
+    project = await upload_project(owner, ws)
+    app.state.settings = app.state.settings.model_copy(update={"rate_limit_acquisitions_per_hour": 1})
+    assert (await upload(owner, project["id"], archive())).status_code == 202
+    limited = await upload(owner, project["id"], b"not even a zip")  # refused by the limit, not the format
+    assert limited.status_code == 429

@@ -14,7 +14,7 @@ All notable changes to this build package. The format follows [Keep a Changelog 
   - Generated projects reuse their approved configuration within the cap; others get a replay build. Nothing a push starts is published. Migration 0024.
   - The project page has a "Rebuild on push" panel with the push history. New optional settings are `PUSH_DEBOUNCE_SECONDS` and `PUSH_MAX_WAIT_SECONDS`, added to both deployment copies.
 - 05, 06, 07, 08, 11 (M6, T24): bring your own key and batch processing (migration 0026).
-  - Owners save one Anthropic key per workspace. It is checked with the provider, sealed and shown only as a hint. Builds can choose `funding: own_key`, which spends within the cap and never uses the plan allowance; a removed key stops the build.
+  - Owners save one Anthropic key per workspace. It is checked with the provider, sealed and shown only as a hint. Admins and owners can start builds with `funding: own_key`, which spends within the cap and never uses the plan allowance; a removed key stops the build.
   - `batch: true` sends explain requests as one provider batch at the catalog batch price. The batch ID is persisted, the task waits without spending attempts, and anything the batch could not answer runs synchronously at the standard price.
   - Presets report `batch` and `own_key`, and both copies of the catalog example have a batch price.
 - 21: SCIP (T23) is deferred by decision, with the review it needs recorded.

@@ -175,7 +175,7 @@ async def test_owners_store_a_checked_key_that_is_never_shown_again(
 
 
 async def test_an_own_key_build_spends_on_that_key_within_its_cap_and_not_the_allowance(
-    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
 ) -> None:
     owner, ws, project, build, app = await ready_build(client, idp, github)
     accept_good_keys(app)
@@ -202,6 +202,16 @@ async def test_an_own_key_build_spends_on_that_key_within_its_cap_and_not_the_al
         headers={"Idempotency-Key": secrets.token_hex(12)},
     )
     assert no_cap.status_code == 422 and code(no_cap) == "CAP_REQUIRED"
+    editor = await new_user()
+    await join(owner, ws, editor, "editor")
+    refused = await unsafe(
+        editor,
+        "POST",
+        f"/api/v1/projects/{project}/builds",
+        json={"estimate_id": estimate["id"], "funding": "own_key", "cap_micro_usd": 1_000_000},
+        headers={"Idempotency-Key": secrets.token_hex(12)},
+    )
+    assert refused.status_code == 403  # an editor cannot spend the owner's provider account
     before = account_counters(ws)
     started = await unsafe(
         owner,
