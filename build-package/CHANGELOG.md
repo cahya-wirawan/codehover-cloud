@@ -4,6 +4,73 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-11-18
+
+### Security
+
+- 22: the parser sandbox adds a Landlock filesystem allowlist, denies process inspection (`ptrace`, `process_vm_*`) and program execution, and the worker becomes non-dumpable. A compromised parser could otherwise read credentials as the same UID and leak them through parse output. Found by automated security review. While implementing this, a jump-offset error in the rewritten seccomp program briefly allowed every denied syscall; the Linux probe caught it, and a unit test now pins the jump targets.
+
+## [0.3.11] - 2026-11-18
+
+### Changed
+
+- M1 implementation decisions recorded:
+  - 22: the sandbox design (seccomp bootstrap, worker self-check, Linux CI gate) and the dead-letter queue `codehover.dead`;
+  - 07: the replay generator and the M1 stages;
+  - 06: replay build start by `ref` until estimates arrive in M2;
+  - 05: the webhook status function and re-notification via `notified_at`.
+
+## [0.3.10] - 2026-11-18
+
+### Security
+
+- 09: introducing repository grants fails closed. Rows that existed before migration 0004, possibly with over-broad grants, start revoked until a reconnect. Found by automated security review.
+
+## [0.3.9] - 2026-11-18
+
+### Security
+
+- 09, 05, 06: a GitHub connection grants only repositories the connecting user can read, with a known re-verification limitation. Previously anyone able to read one repository of an installation could expose all of its repositories to their workspace. Found by automated security review of T05; implemented by migration 0004.
+
+## [0.3.8] - 2026-11-18
+
+### Changed
+
+- 06, 09, 22: the GitHub App connect flow as implemented in T05: the two-phase setup and callback, the required linked GitHub identity, the role re-check, the App URL and permission settings, the repository and ref contract, and the error codes.
+
+## [0.3.7] - 2026-11-18
+
+### Added
+
+- 05: `invitation_by_token`, and the database-enforced owner invariant (deferred, workspace-locking trigger `memberships_keep_owner`). Implemented by migration 0003 (T04).
+- 06: workspace, member and invitation contract details: ETag preconditions, invitation `accept_url` with the token in the fragment, role limits per action, and error codes.
+
+### Changed
+
+- 05: queries must filter by `workspace_id` explicitly even inside a workspace context, because user-scoped policies widen visibility. Found when an unfiltered member list leaked memberships across workspaces during T04.
+
+## [0.3.6] - 2026-11-17
+
+### Security
+
+- 09 and 05: every OAuth flow is bound to the browser that started it, through a flow cookie whose digest consumption requires. This closes login CSRF: a callback URL opened in another browser can no longer sign the victim into the attacker's account, nor burn the attacker's transaction. Found by automated security review of T03.
+
+## [0.3.5] - 2026-11-17
+
+### Changed
+
+- Decisions made while implementing sign-in (T03) are now in the spec:
+  - 09: the CSRF derivation, the exact-Origin rule, the session touch interval, reauthentication by signing in again, and the development cookie name;
+  - 06: the `return_to` parameter, callback error redirects, authentication error codes, and `no-store` on API responses;
+  - 05: sealed PKCE verifier and nonce storage.
+
+## [0.3.4] - 2026-11-17
+
+### Added
+
+- 05 adds the `idempotency_keys` table: 06 required `Idempotency-Key` storage, but the data model had no table for it.
+- 05 adds the pre-authentication lookups `identity_user`, `create_user_with_identity`, `session_by_token` and `oauth_transaction_create/consume`, with their RLS rules. These were found while implementing migration 0002 (T02).
+
 ## [0.3.3] - 2026-11-17
 
 ### Added

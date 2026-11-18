@@ -68,3 +68,53 @@ export async function apiGet<T>(
   if (!response.ok) throw await parseError(response);
   return parse(await response.json());
 }
+
+let csrfToken: string | null = null;
+
+/** Forget the session-bound CSRF token (after sign-out or a 403 from a stale token). */
+export function resetCsrfToken(): void {
+  csrfToken = null;
+}
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  const token = await apiGet("/auth/csrf", (value) => {
+    const candidate = (value as { csrf_token?: unknown }).csrf_token;
+    if (typeof candidate !== "string") throw new Error("Unexpected CSRF response");
+    return candidate;
+  });
+  csrfToken = token;
+  return token;
+}
+
+/** Unsafe request: the browser adds Origin; the session-bound X-CSRF-Token comes from /auth/csrf (09). */
+export async function apiSend(
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  const token = await getCsrfToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "X-CSRF-Token": token,
+      ...extraHeaders,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!response.ok) {
+    if (response.status === 403) resetCsrfToken();
+    throw await parseError(response);
+  }
+  return response;
+}
+
+/** JSON GET without a parser, for responses from our own API (shapes come from the OpenAPI contract). */
+export function apiJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return apiGet(path, (value) => value as T, signal);
+}
+

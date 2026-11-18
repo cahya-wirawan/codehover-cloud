@@ -31,6 +31,7 @@ logger = logging.getLogger("app.ops.bootstrap")
 
 WORK_QUEUE_PATTERN = r"^codehover\.work\."
 DEAD_LETTER_EXCHANGE = "codehover.dlx"
+DEAD_LETTER_QUEUE = "codehover.dead"  # poison messages are kept here for operators (04), never dropped
 WORK_POLICY_NAME = "codehover-work-dlx"
 DELIVERY_LIMIT = 20  # RabbitMQ 4 default, set explicitly so it is visible and reviewed
 
@@ -113,6 +114,16 @@ def ensure_broker_policy(client: httpx.Client, target: BrokerTarget) -> None:
         json={"type": "topic", "durable": True, "auto_delete": False, "internal": False, "arguments": {}},
     )
     exchange.raise_for_status()
+    queue = client.put(
+        f"/api/queues/{vhost}/{quote(DEAD_LETTER_QUEUE, safe='')}",
+        json={"durable": True, "auto_delete": False, "arguments": {"x-queue-type": "quorum"}},
+    )
+    queue.raise_for_status()
+    binding = client.post(
+        f"/api/bindings/{vhost}/e/{quote(DEAD_LETTER_EXCHANGE, safe='')}/q/{quote(DEAD_LETTER_QUEUE, safe='')}",
+        json={"routing_key": "#", "arguments": {}},
+    )
+    binding.raise_for_status()
     policy = client.put(
         f"/api/policies/{vhost}/{WORK_POLICY_NAME}",
         json={

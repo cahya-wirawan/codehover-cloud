@@ -1,5 +1,7 @@
 import { Link, Outlet } from "react-router";
 
+import { AccountMenu } from "../features/auth/AccountMenu";
+
 export function AppShell() {
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -9,10 +11,11 @@ export function AppShell() {
       >
         Skip to content
       </a>
-      <header className="flex h-16 items-center border-b border-border bg-surface px-6">
+      <header className="flex h-16 items-center justify-between border-b border-border bg-surface px-6">
         <Link to="/" className="text-base font-medium">
           codehover-cloud
         </Link>
+        <AccountMenu />
       </header>
       <main id="main" className="mx-auto max-w-[1440px] px-6 py-8">
         <Outlet />
