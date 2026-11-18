@@ -39,6 +39,9 @@ def test_no_context_sees_no_tenant_or_identity_rows(world: World, runtime: Db) -
         "build_tasks",
         "outbox",
         "sessions",
+        "usage_accounts",
+        "estimates",
+        "provider_attempts",
     ):
         assert runtime.one(f"SELECT count(*) FROM {table}") == 0, table  # noqa: S608 - fixed table names
 
@@ -47,6 +50,9 @@ def test_workspace_context_shows_only_that_tenant(world: World, runtime: Db) -> 
     runtime.context(workspace=world.a.workspace, user=world.a.user)
     assert {r[0] for r in runtime.rows("SELECT id FROM projects")} == {world.a.project}
     assert {r[0] for r in runtime.rows("SELECT id FROM builds")} == {world.a.build}
+    assert {r[0] for r in runtime.rows("SELECT id FROM estimates")} == {world.a.estimate}
+    assert {r[0] for r in runtime.rows("SELECT id FROM usage_accounts")} == {world.a.account}
+    assert {r[0] for r in runtime.rows("SELECT id FROM provider_attempts")} == {world.a.attempt}
     assert runtime.one("SELECT count(*) FROM builds WHERE id = :b", b=world.b.build) == 0
 
 
@@ -311,6 +317,8 @@ def test_system_role_sees_due_work_across_tenants_but_no_content(world: World, s
     expect(system, DENIED, "SELECT count(*) FROM projects")
     expect(system, DENIED, "SELECT output_key FROM build_tasks LIMIT 1")
     expect(system, DENIED, "SELECT count(*) FROM usage_entries")
+    expect(system, DENIED, "SELECT count(*) FROM provider_attempts")
+    expect(system, DENIED, "SELECT count(*) FROM estimates")
 
 
 @needs_system

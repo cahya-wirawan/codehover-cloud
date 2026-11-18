@@ -1,0 +1,167 @@
+"""Single-envelope budget ledger (11 "At build creation ...", 05 "Budget counters").
+
+- reserve_build: at build creation, lock the period's usage account, check
+  settled + reserved + cap <= allowance, and hold the whole cap once.
+- settle_attempt (provider gateway, T11): move an attempt's actual cost from reserved to settled on the
+  build and its account, release the attempt's earmark.
+- release_build: at termination, return the unspent envelope except holds for attempts whose provider
+  outcome is unknown.
+
+Every transition writes one append-only `usage_entries` row with a unique idempotency key in the same
+transaction as the counter change; a repeated transition finds its key and changes nothing.
+Amounts are integer USD micro-units.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@dataclass(frozen=True)
+class Account:
+    id: UUID
+    period_start: datetime
+    period_end: datetime
+    allowance_micro_usd: int
+    reserved_micro_usd: int
+    settled_micro_usd: int
+
+    @property
+    def available_micro_usd(self) -> int:
+        return max(0, self.allowance_micro_usd - self.reserved_micro_usd - self.settled_micro_usd)
+
+
+_ACCOUNT_SQL = (
+    "SELECT id, period_start, period_end, allowance_micro_usd, reserved_micro_usd, settled_micro_usd"
+    " FROM usage_accounts WHERE workspace_id = :w AND period_start = :s"
+)
+_ACCOUNT = text(_ACCOUNT_SQL)
+_ACCOUNT_FOR_UPDATE = text(_ACCOUNT_SQL + " FOR UPDATE")
+
+
+def period_bounds(now: datetime) -> tuple[datetime, datetime]:
+    start = datetime(now.year, now.month, 1, tzinfo=UTC)
+    end = datetime(now.year + (now.month == 12), now.month % 12 + 1, 1, tzinfo=UTC)
+    return start, end
+
+
+async def current_account(
+    db: AsyncSession, workspace_id: UUID, default_allowance: int, *, lock: bool
+) -> Account:
+    """The account of the current calendar month (UTC), created with the operator default allowance."""
+    start, end = period_bounds(datetime.now(UTC))
+    await db.execute(
+        text(
+            "INSERT INTO usage_accounts(workspace_id, period_start, period_end, allowance_micro_usd)"
+            " VALUES (:w, :s, :e, :a) ON CONFLICT (workspace_id, period_start) DO NOTHING"
+        ),
+        {"w": workspace_id, "s": start, "e": end, "a": default_allowance},
+    )
+    query = _ACCOUNT_FOR_UPDATE if lock else _ACCOUNT
+    row = (await db.execute(query, {"w": workspace_id, "s": start})).one()
+    return Account(*row)
+
+
+async def _entry(
+    db: AsyncSession,
+    workspace_id: UUID,
+    account_id: UUID,
+    build_id: UUID | None,
+    kind: str,
+    amount: int,
+    key: str,
+) -> bool:
+    """Append a ledger row; False when this transition was already recorded (idempotent replay)."""
+    inserted = (
+        await db.execute(
+            text(
+                "INSERT INTO usage_entries(workspace_id, account_id, build_id, kind, amount_micro_usd, idempotency_key)"
+                " VALUES (:w, :a, :b, :k, :n, :key) ON CONFLICT (workspace_id, idempotency_key) DO NOTHING RETURNING id"
+            ),
+            {"w": workspace_id, "a": account_id, "b": build_id, "k": kind, "n": amount, "key": key},
+        )
+    ).scalar_one_or_none()
+    return inserted is not None
+
+
+async def reserve_build(
+    db: AsyncSession, workspace_id: UUID, account: Account, build_id: UUID, cap: int
+) -> None:
+    """Caller holds the account row lock (current_account(lock=True)) and checked availability."""
+    if cap == 0:
+        return
+    if not await _entry(db, workspace_id, account.id, build_id, "reserve", cap, f"build:{build_id}:reserve"):
+        return
+    await db.execute(
+        text(
+            "UPDATE usage_accounts SET reserved_micro_usd = reserved_micro_usd + :n, version = version + 1"
+            " WHERE workspace_id = :w AND id = :a"
+        ),
+        {"n": cap, "w": workspace_id, "a": account.id},
+    )
+    await db.execute(
+        text("UPDATE builds SET reserved_micro_usd = :n WHERE workspace_id = :w AND id = :b"),
+        {"n": cap, "w": workspace_id, "b": build_id},
+    )
+
+
+async def unresolved_holds(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> int:
+    """Earmarks of provider attempts that are still running or whose outcome is unknown (T11)."""
+    held = (
+        await db.execute(
+            text(
+                "SELECT COALESCE(sum(max_reserved_micro_usd), 0) FROM provider_attempts"
+                " WHERE workspace_id = :w AND build_id = :b AND state IN ('started', 'unknown')"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).scalar_one()
+    return int(held)
+
+
+async def release_build(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> int:
+    """Return the unspent envelope of a terminal build to its account. Returns the released amount."""
+    build = (
+        await db.execute(
+            text(
+                "SELECT usage_account_id, reserved_micro_usd FROM builds"
+                " WHERE workspace_id = :w AND id = :b FOR UPDATE"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).one()
+    if build.usage_account_id is None or build.reserved_micro_usd == 0:
+        return 0
+    amount = int(build.reserved_micro_usd) - await unresolved_holds(db, workspace_id, build_id)
+    if amount <= 0:
+        return 0
+    # Keyed by the remaining amount so a later release (after an unknown outcome resolves) is distinct.
+    key = f"build:{build_id}:release:{build.reserved_micro_usd}"
+    if not await _entry(db, workspace_id, build.usage_account_id, build_id, "release", amount, key):
+        return 0
+    await _move(db, workspace_id, build.usage_account_id, build_id, reserved=-amount, settled=0)
+    return amount
+
+
+async def _move(
+    db: AsyncSession, workspace_id: UUID, account_id: UUID, build_id: UUID, *, reserved: int, settled: int
+) -> None:
+    await db.execute(
+        text(
+            "UPDATE usage_accounts SET reserved_micro_usd = reserved_micro_usd + :r,"
+            " settled_micro_usd = settled_micro_usd + :s, version = version + 1 WHERE workspace_id = :w AND id = :a"
+        ),
+        {"r": reserved, "s": settled, "w": workspace_id, "a": account_id},
+    )
+    await db.execute(
+        text(
+            "UPDATE builds SET reserved_micro_usd = reserved_micro_usd + :r, settled_micro_usd = settled_micro_usd + :s"
+            " WHERE workspace_id = :w AND id = :b"
+        ),
+        {"r": reserved, "s": settled, "w": workspace_id, "b": build_id},
+    )

@@ -1,6 +1,16 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.3.12
+Date: 2026-11-18 · Package version 0.4.0
+
+0.4.0 records T10 (M2): snapshots before builds, estimates and single-envelope reservations. Integration tests on PostgreSQL 18 cover:
+- a snapshot acquired and scanned before any build, with signed, filter-bound file cursors;
+- an immutable estimate that expires, goes stale when the catalog changes, and fixes the approved commit even after the branch moves (A05);
+- a cap reserved once and released at the end, with ledger entries balancing the account counters;
+- a cap above the remaining allowance refused, and the workspace active-build limit;
+- a two-session race in which the second reservation waits for the account lock (A08);
+- other tenants seeing 404 for estimates, snapshots and usage.
+
+Mutation checks catch removing the account row lock, the allowance check, the expiry check and the terminal release. An API-level race alone did not catch the missing lock, because the two requests ran one after the other; the direct two-session test does. 176 backend tests pass.
 
 0.3.12 hardens the sandbox. The Linux probe ran with a world-readable `/run/secrets/github_app_key` present. Inside the sandbox it could not read the parent's environ, `/etc` or the secret, and could not exec or open any socket; the parser still works under Landlock. On the Compose stack, the hardened worker passed the stricter self-check, and its own environ is unreadable to same-UID processes (`PR_SET_DUMPABLE=0`). 146 backend tests pass.
 

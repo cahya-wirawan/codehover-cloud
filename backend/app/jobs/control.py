@@ -70,7 +70,7 @@ async def reconcile_once(db: AsyncSession) -> dict[str, int]:
     runnable = list(
         await db.execute(
             text(
-                "SELECT id, workspace_id, build_id FROM build_tasks"
+                "SELECT id, workspace_id, build_id, snapshot_id FROM build_tasks"
                 " WHERE (state = 'pending' OR (state = 'retry_wait' AND next_attempt_at <= now()))"
                 "   AND (notified_at IS NULL OR notified_at < now() - make_interval(secs => :after))"
                 " ORDER BY next_attempt_at NULLS FIRST LIMIT 200 FOR UPDATE SKIP LOCKED"
@@ -79,13 +79,18 @@ async def reconcile_once(db: AsyncSession) -> dict[str, int]:
         )
     )
     for task in runnable:
-        envelope = TaskEnvelope(task_id=task.id, build_id=task.build_id, workspace_id=task.workspace_id)
+        envelope = TaskEnvelope(
+            task_id=task.id,
+            build_id=task.build_id,
+            snapshot_id=task.snapshot_id,
+            workspace_id=task.workspace_id,
+        )
         await db.execute(
             text(
                 "INSERT INTO outbox(workspace_id, aggregate_id, event_type, payload)"
                 " VALUES (:w, :t, 'task.ready', CAST(:p AS jsonb))"
             ),
-            {"w": task.workspace_id, "t": task.id, "p": envelope.model_dump_json()},
+            {"w": task.workspace_id, "t": task.id, "p": envelope.wire()},
         )
         await db.execute(text("UPDATE build_tasks SET notified_at = now() WHERE id = :t"), {"t": task.id})
     await db.commit()

@@ -37,12 +37,12 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/workspaces/{wid}/repositories/{rid}/refs` | none → branches and tags with SHAs | Editor; repository addressed by numeric GitHub ID (rename-safe); outside the installation → 404 |
 | GET/POST `/workspaces/{wid}/projects` | repository_id,name,tracked_ref → project | Member list; editor create |
 | GET/PATCH `/projects/{pid}` | name/config/tracked_ref → project | Viewer read; editor write with ETag |
-| POST `/projects/{pid}/snapshots` | ref → snapshot job/status | Editor; acquisition async |
-| GET `/projects/{pid}/snapshots/{sid}` | none → SHA,status,scan summary | Member |
-| GET `/projects/{pid}/snapshots/{sid}/files` | cursor,status → metadata | Member; content requires viewer endpoint |
-| POST `/projects/{pid}/estimates` | snapshot_id, config → estimate | Editor; scan/config bounded |
+| POST `/projects/{pid}/snapshots` | ref (default tracked ref) → 202 snapshot | Editor; resolves the exact commit, reuses an existing snapshot of that commit, otherwise schedules acquisition and scan as a snapshot task; a failed acquisition can be requested again, a rejected one cannot |
+| GET `/projects/{pid}/snapshots/{sid}` | none → SHA,status,scan summary (file counts per scan status) | Member |
+| GET `/projects/{pid}/snapshots/{sid}/files` | cursor,status,limit → path, language, status, reason, sizes | Member; content requires viewer endpoint; byte-ordered by path, cursor bound to the status filter |
+| POST `/projects/{pid}/estimates` | snapshot_id, config → estimate | Editor; `Idempotency-Key`; snapshot not scanned → 409 `SNAPSHOT_NOT_READY`; preset not in the catalog → 422 `PRESET_UNKNOWN`; no selectable file in scope → 422 `SCOPE_EMPTY`; only `en`/`standard` until P1 variants |
 | GET `/projects/{pid}/estimates/{eid}` | none → estimate | Member |
-| GET/POST `/projects/{pid}/builds` | estimate_id, cap_micro_usd → build (M1 replay builds: `ref`, zero cap; estimates arrive in M2) | Viewer list; editor start; `Idempotency-Key` required; second active build → 409 `BUILD_ACTIVE`; unknown ref → 422 `REF_NOT_FOUND`; reuses the immutable snapshot of an already-scanned commit |
+| GET/POST `/projects/{pid}/builds` | estimate_id, optional cap_micro_usd → build; or `ref` for a replay build with zero cap | Viewer list; editor start; `Idempotency-Key` required; the cap defaults to the lower of the remaining allowance and the estimate's high bound; expired estimate → 409 `ESTIMATE_EXPIRED`; catalog revision or preset changed → 409 `ESTIMATE_STALE`; cap above the remaining allowance → 409 `ALLOWANCE_EXCEEDED`; second active build → 409 `BUILD_ACTIVE`; workspace active-build limit → 409 `WORKSPACE_BUILD_LIMIT`; unknown ref → 422 `REF_NOT_FOUND`; reuses the immutable snapshot of an already-scanned commit |
 | GET `/builds/{bid}` | none → states,counts,usage,quality | Member |
 | POST `/builds/{bid}/cancel` | reason optional → updated build | Editor; idempotent cancellation |
 | POST `/builds/{bid}/retry` | valid estimate_id → new build | Editor; same SHA/config unless new estimate specifies otherwise |
@@ -60,8 +60,9 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/builds/{bid}/exports` | format static_zip/kb_json,variant → export | Editor default export permission |
 | GET `/exports/{eid}` | none → state,expires_at | Requester or admin |
 | GET `/exports/{eid}/download` | none → attachment stream | Reauthorize every request; no public bearer URL |
-| GET `/workspaces/{wid}/usage` | period → allowance,reserved,settled | Members summary |
-| GET `/workspaces/{wid}/usage/entries` | cursor → ledger | Owner/admin |
+| GET `/workspaces/{wid}/usage` | none → current period, allowance, reserved, settled, available | Members summary |
+| GET `/catalog/presets` | none → price_version and approved presets (models, providers, data regions) | Authenticated; no tenant data |
+| GET `/workspaces/{wid}/usage/entries` | cursor → ledger, newest first | Owner/admin |
 | POST `/workspaces/{wid}/billing/checkout` | plan_key → checkout_url | Owner; provider-configured price mapping |
 | POST `/workspaces/{wid}/billing/portal` | none → portal_url | Owner; fixed allowed return origin |
 | GET `/workspaces/{wid}/audit` | cursor,type → audit entries | Admin |

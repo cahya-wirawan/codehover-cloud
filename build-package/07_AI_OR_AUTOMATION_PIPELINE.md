@@ -20,6 +20,8 @@ Each stage persists typed inputs, digests, outputs and terminal status. Engine e
 | check | extracted claims + exact immutable cited lines | deterministic status + semantic supported/partial/unsupported/unchecked, reason and evidence ID |
 | render | valid versioned output bundle | escaped code, sanitized prose, local assets, manifest and optional static ZIP/KB |
 
+The estimate runs on the scanned snapshot before parsing. It therefore selects files with one deterministic file-level scope function (include/exclude globs, then non-test files, shallower paths and path order up to `max_files`), and the build explains exactly that selection; ranking orders work inside it. Token counts are byte- and line-based bounds reported as a low/high range, priced from the catalog revision named in the estimate.
+
 File chunks break at top-level definitions, target 400–500 lines, hard request token cap from model catalog. Each chunk returns its own Explanation; the file card shows the first chunk's summary followed by later chunk summaries in source order, with no extra model call in MVP. Very large definitions get bounded subranges with explicit incomplete-context annotation; no silent truncation described as complete. Excluded files do not enter repo maps, summaries, guides or provider prompts. Reference context has explicit file/source version and resolution basis; a name match is not claimed as type-confirmed.
 
 ## Provider abstraction

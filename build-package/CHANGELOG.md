@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-18
+
+### Changed
+
+- `contracts/task-envelope.schema.json` 2.0.0 (incompatible): a task names exactly one build or one snapshot, because a snapshot is now acquired and scanned before any build exists. Consumers still accept v1 messages while they drain (23).
+- 05: `build_tasks` may belong to a snapshot; `builds` record the usage account their envelope was reserved against; `provider_attempts` gain the build, fencing generation, role, purpose, model and output digest; `usage_entries` amounts are non-negative, with the direction carried by the kind.
+- 06: the snapshot, estimate, build start, usage and catalog-preset contracts as implemented in T10, with the error codes `SNAPSHOT_NOT_READY`, `PRESET_UNKNOWN`, `SCOPE_EMPTY`, `ESTIMATE_STALE`, `ALLOWANCE_EXCEEDED` and `WORKSPACE_BUILD_LIMIT`.
+- 07: the estimate runs before parsing, so scope selection is one deterministic file-level function shared by the estimate and the build.
+- 11: until entitlements exist, the monthly allowance is the operator setting `GENERATION_ALLOWANCE_MICRO_USD` (default 0).
+
 ## [0.3.12] - 2026-11-18
 
 ### Security

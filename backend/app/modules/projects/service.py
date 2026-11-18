@@ -15,12 +15,16 @@ from uuid import UUID
 from sqlalchemy import exc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.github.app import GitHubApp, GitHubError
+from app.adapters.github.app import GitHubApp
 from app.adapters.storage import ObjectStore
 from app.core.errors import ApiError
+from app.core.settings import Settings
 from app.core.tenancy import set_context
-from app.engine import ENGINE_VERSION, PROMPT_VERSION
+from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION
+from app.engine.catalog import Catalog
 from app.jobs import store as jobs
+from app.modules.projects import estimates
+from app.modules.usage import ledger
 from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
 
@@ -99,66 +103,170 @@ async def get_project(db: AsyncSession, member: Member, project_id: UUID) -> dic
 
 # ---------------------------------------------------------------- builds
 async def start_build(
-    db: AsyncSession, github: GitHubApp | None, member: Member, project_id: UUID, ref: str | None
+    db: AsyncSession,
+    github: GitHubApp | None,
+    settings: Settings,
+    member: Member,
+    project_id: UUID,
+    ref: str | None,
 ) -> dict[str, Any]:
-    source = (
-        await db.execute(
-            text(
-                "SELECT p.tracked_ref, r.provider_repo_id, r.access_revoked_at, c.installation_id, c.status"
-                " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
-                " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
-                " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL"
-            ),
-            {"w": member.workspace_id, "p": project_id},
-        )
-    ).one_or_none()
-    if source is None:
-        raise ApiError(404, "NOT_FOUND", "Project not found.")
-    await db.commit()
-    if source.status != "active" or source.access_revoked_at is not None:
-        raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub to build this project.")
-    if github is None:
-        raise ApiError(503, "GITHUB_APP_UNAVAILABLE", "GitHub repository access is not configured.")
-    requested = ref or source.tracked_ref
-    try:  # no transaction open during the GitHub call
-        sha = await github.resolve_ref(source.installation_id, source.provider_repo_id, requested)
-    except GitHubError as error:
-        if error.status in (404, 422):
-            raise ApiError(422, "REF_NOT_FOUND", "That branch, tag or commit does not exist.") from error
-        raise ApiError(503, "UNAVAILABLE", "GitHub is not reachable right now.", retryable=True) from error
-
-    await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
-    snapshot = (
-        await db.execute(
-            text(
-                "INSERT INTO snapshots(workspace_id, project_id, commit_sha, observed_ref)"
-                " VALUES (:w, :p, :sha, :ref) ON CONFLICT (project_id, commit_sha)"
-                " DO UPDATE SET updated_at = now() RETURNING id, status"
-            ),
-            {"w": member.workspace_id, "p": project_id, "sha": sha, "ref": requested},
-        )
-    ).one()
+    """M1 replay build from a ref: no estimate, zero cap, cards derived from the source only."""
+    requested, sha = await estimates.resolve_commit(db, github, member, project_id, ref)
+    snapshot = await estimates.upsert_snapshot(db, member, project_id, sha, requested)
     if snapshot.status == "rejected":
         await db.rollback()
         raise ApiError(422, "SNAPSHOT_REJECTED", "This commit was rejected by the safety scan.")
     config = {"ref": requested, "generator": "replay-v1"}
     digest = hashlib.sha256(json.dumps({**config, "commit": sha}, sort_keys=True).encode()).hexdigest()
+    await _admit(db, settings, member)
+    build_id = await _insert_build(
+        db,
+        member,
+        project_id,
+        snapshot.id,
+        config=config,
+        digest=digest,
+        prompt_version=PROMPT_VERSION,
+        cap=0,
+        estimate_id=None,
+        account_id=None,
+    )
+    await _schedule(db, member, build_id, scanned=snapshot.status == "scanned", commit_sha=sha)
+    return await get_build(db, member, build_id)
+
+
+async def start_generation_build(
+    db: AsyncSession,
+    catalog: Catalog,
+    settings: Settings,
+    member: Member,
+    project_id: UUID,
+    estimate_id: UUID,
+    cap: int | None,
+) -> dict[str, Any]:
+    """Build from an approved estimate: exact snapshot and scope, cap reserved once (11, A05, A08)."""
+    approved = (
+        await db.execute(
+            text(
+                "SELECT e.id, e.snapshot_id, e.config, e.config_digest, e.price_version, e.high_micro_usd,"
+                " e.expires_at <= now() AS expired, s.status AS snapshot_status, s.commit_sha,"
+                " r.access_revoked_at, c.status AS connection_status"
+                " FROM estimates e JOIN snapshots s ON s.workspace_id = e.workspace_id AND s.id = e.snapshot_id"
+                " JOIN projects p ON p.workspace_id = e.workspace_id AND p.id = e.project_id"
+                " JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
+                " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
+                " WHERE e.workspace_id = :w AND e.project_id = :p AND e.id = :e AND p.deleted_at IS NULL"
+            ),
+            {"w": member.workspace_id, "p": project_id, "e": estimate_id},
+        )
+    ).one_or_none()
+    if approved is None:
+        raise ApiError(404, "NOT_FOUND", "Estimate not found.")
+    if approved.expired:
+        raise ApiError(
+            409,
+            "ESTIMATE_EXPIRED",
+            "Refresh this estimate before building.",
+            details={"estimate_id": str(estimate_id)},
+        )
+    if approved.price_version != catalog.revision or catalog.preset(approved.config["model_preset"]) is None:
+        raise ApiError(
+            409,
+            "ESTIMATE_STALE",
+            "Prices or presets changed since this estimate; refresh it.",
+            details={"estimate_id": str(estimate_id)},
+        )
+    if approved.connection_status != "active" or approved.access_revoked_at is not None:
+        raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub to build this project.")
+    if approved.snapshot_status != "scanned":
+        raise ApiError(409, "SNAPSHOT_NOT_READY", "This snapshot is not available for building.")
+    account = await _admit(db, settings, member)
+    requested_cap = min(account.available_micro_usd, approved.high_micro_usd) if cap is None else cap
+    if requested_cap > account.available_micro_usd:
+        await db.rollback()
+        raise ApiError(
+            409,
+            "ALLOWANCE_EXCEEDED",
+            "The build cap is larger than the generation allowance left this period.",
+            details={"available_micro_usd": account.available_micro_usd, "cap_micro_usd": requested_cap},
+        )
+    config = {
+        "generation": approved.config,
+        "catalog": catalog.revision,
+        "estimate_id": str(estimate_id),
+    }
+    build_id = await _insert_build(
+        db,
+        member,
+        project_id,
+        approved.snapshot_id,
+        config=config,
+        digest=approved.config_digest,
+        prompt_version=GENERATION_PROMPT_VERSION,
+        cap=requested_cap,
+        estimate_id=estimate_id,
+        account_id=account.id,
+    )
+    await ledger.reserve_build(db, member.workspace_id, account, build_id, requested_cap)
+    await _schedule(db, member, build_id, scanned=True, commit_sha=approved.commit_sha)
+    return await get_build(db, member, build_id)
+
+
+async def _admit(db: AsyncSession, settings: Settings, member: Member) -> ledger.Account:
+    """Lock the period's usage account: serializes reservations and the workspace active-build limit."""
+    account = await ledger.current_account(
+        db, member.workspace_id, settings.generation_allowance_micro_usd, lock=True
+    )
+    active = (
+        await db.execute(
+            text("SELECT count(*) FROM builds WHERE workspace_id = :w AND status IN ('queued', 'running')"),
+            {"w": member.workspace_id},
+        )
+    ).scalar_one()
+    limit = settings.max_active_builds_per_workspace
+    if active >= limit:
+        await db.rollback()
+        raise ApiError(
+            409,
+            "WORKSPACE_BUILD_LIMIT",
+            "This workspace already has the maximum number of active builds.",
+            details={"limit": limit},
+        )
+    return account
+
+
+async def _insert_build(
+    db: AsyncSession,
+    member: Member,
+    project_id: UUID,
+    snapshot_id: UUID,
+    *,
+    config: dict[str, Any],
+    digest: str,
+    prompt_version: str,
+    cap: int,
+    estimate_id: UUID | None,
+    account_id: UUID | None,
+) -> UUID:
     try:
-        build_id = (
+        build_id: UUID = (
             await db.execute(
                 text(
-                    "INSERT INTO builds(workspace_id, project_id, snapshot_id, config, config_digest,"
-                    " engine_version, prompt_version, cap_micro_usd, created_by)"
-                    " VALUES (:w, :p, :s, CAST(:c AS jsonb), :d, :ev, :pv, 0, :u) RETURNING id"
+                    "INSERT INTO builds(workspace_id, project_id, snapshot_id, estimate_id, config, config_digest,"
+                    " engine_version, prompt_version, cap_micro_usd, usage_account_id, created_by)"
+                    " VALUES (:w, :p, :s, :e, CAST(:c AS jsonb), :d, :ev, :pv, :cap, :a, :u) RETURNING id"
                 ),
                 {
                     "w": member.workspace_id,
                     "p": project_id,
-                    "s": snapshot.id,
+                    "s": snapshot_id,
+                    "e": estimate_id,
                     "c": json.dumps(config),
                     "d": digest,
                     "ev": ENGINE_VERSION,
-                    "pv": PROMPT_VERSION,
+                    "pv": prompt_version,
+                    "cap": cap,
+                    "a": account_id,
                     "u": member.user_id,
                 },
             )
@@ -168,8 +276,14 @@ async def start_build(
         raise ApiError(
             409, "BUILD_ACTIVE", "A build for this project is already queued or running."
         ) from error
-    first_stage = "index" if snapshot.status == "scanned" else "acquire"
-    if first_stage == "index":  # reuse the immutable snapshot; record the skipped stage
+    return build_id
+
+
+async def _schedule(
+    db: AsyncSession, member: Member, build_id: UUID, *, scanned: bool, commit_sha: str
+) -> None:
+    """First task, outbox row, events and audit in the build's transaction (04)."""
+    if scanned:  # reuse the immutable snapshot; record the skipped stage
         await db.execute(
             text(
                 "INSERT INTO build_tasks(workspace_id, build_id, stage, work_key, state)"
@@ -177,20 +291,20 @@ async def start_build(
             ),
             {"w": member.workspace_id, "b": build_id},
         )
-    await jobs.create_task(db, member.workspace_id, build_id, first_stage, "build")
-    await jobs.event(db, member.workspace_id, build_id, "build.queued", {"commit_sha": sha})
-    await audit(db, member, "build.requested", "build", build_id, {"commit_sha": sha})
+    await jobs.create_task(db, member.workspace_id, build_id, "index" if scanned else "acquire", "build")
+    await jobs.event(db, member.workspace_id, build_id, "build.queued", {"commit_sha": commit_sha})
+    await audit(db, member, "build.requested", "build", build_id, {"commit_sha": commit_sha})
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
-    return await get_build(db, member, build_id)
 
 
 async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[str, Any]:
     row = (
         await db.execute(
             text(
-                "SELECT b.id, b.project_id, b.status, b.created_at, b.completed_at, b.engine_version,"
-                " b.prompt_version, s.commit_sha, s.status AS snapshot_status, s.rejection_code"
+                "SELECT b.id, b.project_id, b.snapshot_id, b.estimate_id, b.status, b.created_at, b.completed_at,"
+                " b.engine_version, b.prompt_version, b.cap_micro_usd, b.reserved_micro_usd, b.settled_micro_usd,"
+                " s.commit_sha, s.status AS snapshot_status, s.rejection_code"
                 " FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
                 " WHERE b.workspace_id = :w AND b.id = :b"
             ),
@@ -217,8 +331,11 @@ async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[st
             {"w": member.workspace_id, "b": build_id},
         )
     ).one()
+    build = dict(row._mapping)
+    usage = {k: build.pop(k) for k in ("cap_micro_usd", "reserved_micro_usd", "settled_micro_usd")}
     return {
-        **dict(row._mapping),
+        **build,
+        "usage": usage,
         "stages": [dict(s._mapping) for s in stages],
         "counts": {"files": counts.files, "symbols": counts.symbols},
     }

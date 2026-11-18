@@ -79,6 +79,9 @@ class Tenant:
     build: UUID
     task: UUID
     outbox: UUID
+    account: UUID
+    estimate: UUID
+    attempt: UUID
 
 
 @dataclass(frozen=True)
@@ -125,13 +128,32 @@ def _make_tenant(db: Db, label: str, run: str) -> Tenant:
         p=project,
         sha=secrets.token_hex(20),
     )
-    build = db.one(
-        "INSERT INTO builds(workspace_id, project_id, snapshot_id, config, config_digest, engine_version,"
-        " prompt_version, cap_micro_usd, created_by)"
-        " VALUES (:w, :p, :s, '{}', :d, '0.1.0', '0.1.0', 1000, :u) RETURNING id",
+    account = db.one(
+        "INSERT INTO usage_accounts(workspace_id, period_start, period_end, allowance_micro_usd)"
+        " VALUES (:w, date_trunc('month', now()), date_trunc('month', now()) + interval '1 month', 5000)"
+        " RETURNING id",
+        w=workspace,
+    )
+    estimate = db.one(
+        "INSERT INTO estimates(workspace_id, project_id, snapshot_id, config, config_digest, price_version,"
+        " low_micro_usd, high_micro_usd, expires_at, created_by)"
+        " VALUES (:w, :p, :s, '{}', :d, 'catalog-2026-11-a', 100, 900, now() + interval '30 minutes', :u)"
+        " RETURNING id",
         w=workspace,
         p=project,
         s=snapshot,
+        d=secrets.token_hex(32),
+        u=user,
+    )
+    build = db.one(
+        "INSERT INTO builds(workspace_id, project_id, snapshot_id, estimate_id, config, config_digest,"
+        " engine_version, prompt_version, cap_micro_usd, usage_account_id, created_by)"
+        " VALUES (:w, :p, :s, :e, '{}', :d, '0.1.0', '0.1.0', 1000, :a, :u) RETURNING id",
+        w=workspace,
+        p=project,
+        s=snapshot,
+        e=estimate,
+        a=account,
         d=secrets.token_hex(32),
         u=user,
     )
@@ -148,8 +170,30 @@ def _make_tenant(db: Db, label: str, run: str) -> Tenant:
         w=workspace,
         t=task,
     )
+    attempt = db.one(
+        "INSERT INTO provider_attempts(workspace_id, build_id, task_id, attempt_number, lease_generation, role,"
+        " purpose, model_id, request_digest, price_snapshot, max_reserved_micro_usd)"
+        " VALUES (:w, :b, :t, 1, 1, 'writer', 'explain', 'replay/replay-v2', :d, '{}', 10) RETURNING id",
+        w=workspace,
+        b=build,
+        t=task,
+        d=secrets.token_hex(32),
+    )
     db.context()
-    return Tenant(user, workspace, connection, repository, project, snapshot, build, task, outbox)
+    return Tenant(
+        user,
+        workspace,
+        connection,
+        repository,
+        project,
+        snapshot,
+        build,
+        task,
+        outbox,
+        account,
+        estimate,
+        attempt,
+    )
 
 
 @pytest.fixture(scope="module")

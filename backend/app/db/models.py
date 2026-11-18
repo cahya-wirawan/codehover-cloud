@@ -237,6 +237,7 @@ class Estimate(Base):
     token_estimate: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
     created_at: Mapped[datetime] = ts(default_now=True)
     expires_at: Mapped[datetime] = ts()
+    created_by: Mapped[UUID | None] = ref("users.id", nullable=True)  # 0006
 
 
 class Build(Base):
@@ -261,13 +262,16 @@ class Build(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
+    usage_account_id: Mapped[UUID | None] = ref(nullable=True)  # reservation account (0006)
 
 
 class BuildTask(Base):
+    """Owned by exactly one build or one snapshot (snapshot acquisition, 0006)."""
+
     __tablename__ = "build_tasks"
     id: Mapped[UUID] = pk()
     workspace_id: Mapped[UUID] = ref()
-    build_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID | None] = ref(nullable=True)
     stage: Mapped[str] = mapped_column(Text)
     variant: Mapped[str] = mapped_column(Text, server_default=text("'en-standard'"))
     work_key: Mapped[str] = mapped_column(Text)
@@ -282,6 +286,7 @@ class BuildTask(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     notified_at: Mapped[datetime | None] = ts(nullable=True)  # last queue notification (0005)
+    snapshot_id: Mapped[UUID | None] = ref(nullable=True)  # 0006
 
 
 class BuildEvent(Base):
@@ -349,6 +354,36 @@ class UsageEntry(Base):
     amount_micro_usd: Mapped[int] = mapped_column(BigInteger)
     idempotency_key: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = ts(default_now=True)
+    attempt_id: Mapped[UUID | None] = ref(nullable=True)  # 0006
+
+
+class ProviderAttempt(Base):
+    """One outbound model request: earmark before, settle once after (0006)."""
+
+    __tablename__ = "provider_attempts"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    task_id: Mapped[UUID] = ref()
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    lease_generation: Mapped[int] = mapped_column(Integer)
+    role: Mapped[str] = mapped_column(Text)
+    purpose: Mapped[str] = mapped_column(Text)
+    model_id: Mapped[str] = mapped_column(Text)
+    request_digest: Mapped[str] = mapped_column(Text)
+    provider_request_id: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default=text("'started'"))
+    input_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    output_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    cache_read_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    cache_write_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    price_snapshot: Mapped[dict[str, Any]] = jsonb()
+    max_reserved_micro_usd: Mapped[int] = mapped_column(BigInteger)
+    settled_micro_usd: Mapped[int | None] = mapped_column(BigInteger)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    output_digest: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    completed_at: Mapped[datetime | None] = ts(nullable=True)
 
 
 # ---------------------------------------------------------------- audit and idempotency

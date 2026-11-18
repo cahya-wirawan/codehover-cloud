@@ -62,19 +62,29 @@ def _github_error(error: GitHubError) -> StageError:
 
 
 # ---------------------------------------------------------------- acquire
+_SOURCE = (
+    "SELECT s.project_id, s.id AS snapshot_id, s.status, s.commit_sha, r.provider_repo_id, r.access_revoked_at,"
+    " c.installation_id, c.status AS connection_status"
+    " FROM snapshots s"
+    " JOIN projects p ON p.workspace_id = s.workspace_id AND p.id = s.project_id"
+    " JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
+    " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
+)
+
+
 async def acquire(rt: Runtime, claimed: Claim) -> Apply | None:
-    rows = await _read(
-        rt,
-        claimed,
-        "SELECT b.project_id, b.snapshot_id, s.status, s.commit_sha, r.provider_repo_id, r.access_revoked_at,"
-        " c.installation_id, c.status AS connection_status"
-        " FROM builds b"
-        " JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
-        " JOIN projects p ON p.workspace_id = b.workspace_id AND p.id = b.project_id"
-        " JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
-        " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
-        " WHERE b.workspace_id = :w AND b.id = :b",
-    )
+    """Download, extract and scan the snapshot: for a build (M1 replay builds) or on its own (0006)."""
+    if claimed.snapshot_id is not None:
+        rows = await _read(
+            rt, claimed, _SOURCE + " WHERE s.workspace_id = :w AND s.id = :s", s=claimed.snapshot_id
+        )
+    else:
+        rows = await _read(
+            rt,
+            claimed,
+            _SOURCE + " JOIN builds b ON b.workspace_id = s.workspace_id AND b.snapshot_id = s.id"
+            " WHERE b.workspace_id = :w AND b.id = :b",
+        )
     row = rows[0]
     if row.status == "scanned":
         return None  # immutable snapshot already acquired (cache across builds)
@@ -312,7 +322,7 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
         ],
     }
     body = json.dumps(manifest, sort_keys=True).encode()
-    key = build_key(claimed.workspace_id, build.project_id, claimed.build_id, "manifest.json")
+    key = build_key(claimed.workspace_id, build.project_id, claimed.build, "manifest.json")
     sha = await rt.store.put(key, body, "application/json")
 
     async def apply(db: AsyncSession) -> None:

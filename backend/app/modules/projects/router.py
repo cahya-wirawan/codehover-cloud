@@ -7,13 +7,17 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
 from app.adapters.storage import ObjectStore
 from app.core.idempotency import run_once
+from app.core.pagination import clamp_limit, decode_path_cursor, encode_path_cursor
+from app.core.settings import Settings
+from app.engine.catalog import Catalog
+from app.engine.estimate import GenerationConfig
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
-from app.modules.projects import service
+from app.modules.projects import estimates, service
 from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
 
 router = APIRouter(tags=["projects"])
@@ -59,7 +63,84 @@ class ProjectList(BaseModel):
 
 
 class BuildStart(BaseModel):
+    """Either `estimate_id` (generation build, optional cap) or `ref` (M1 replay build, zero cap)."""
+
     ref: Annotated[str | None, Field(max_length=255)] = None
+    estimate_id: UUID | None = None
+    cap_micro_usd: Annotated[int | None, Field(ge=0, le=10**12)] = None
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> BuildStart:
+        if self.estimate_id is not None and self.ref is not None:
+            raise ValueError("send either estimate_id or ref, not both")
+        if self.estimate_id is None and self.cap_micro_usd is not None:
+            raise ValueError("cap_micro_usd requires estimate_id")
+        return self
+
+
+class SnapshotRequest(BaseModel):
+    ref: Annotated[str | None, Field(max_length=255)] = None
+
+
+class SnapshotOut(BaseModel):
+    id: UUID
+    project_id: UUID
+    commit_sha: str
+    observed_ref: str
+    status: str
+    rejection_code: str | None
+    file_count: int | None
+    source_bytes: int | None
+    scan_summary: dict[str, int]
+    created_at: datetime
+
+
+class SnapshotFile(BaseModel):
+    id: UUID
+    path: str
+    language: str | None
+    status: str
+    reason: str | None
+    byte_count: int
+    line_count: int | None
+
+
+class SnapshotFileList(BaseModel):
+    items: list[SnapshotFile]
+    next_cursor: str | None
+
+
+class EstimateRequest(BaseModel):
+    snapshot_id: UUID
+    config: GenerationConfig
+
+
+class TokenRange(BaseModel):
+    input: int
+    output: int
+
+
+class CostRange(BaseModel):
+    low: int
+    high: int
+
+
+class EstimateOut(BaseModel):
+    id: UUID
+    project_id: UUID
+    snapshot_id: UUID
+    commit_sha: str
+    config: dict[str, Any]
+    config_digest: str
+    price_version: str
+    selected_files: int
+    excluded_files: int
+    estimated_tokens: dict[str, TokenRange]
+    cost_micro_usd: CostRange
+    created_at: datetime
+    expires_at: datetime
+    expired: bool
+    disclaimer: str
 
 
 class StageOut(BaseModel):
@@ -68,9 +149,17 @@ class StageOut(BaseModel):
     error_code: str | None
 
 
+class BuildUsage(BaseModel):
+    cap_micro_usd: int
+    reserved_micro_usd: int
+    settled_micro_usd: int
+
+
 class BuildOut(BaseModel):
     id: UUID
     project_id: UUID
+    snapshot_id: UUID
+    estimate_id: UUID | None
     status: str
     commit_sha: str
     snapshot_status: str
@@ -81,6 +170,7 @@ class BuildOut(BaseModel):
     completed_at: datetime | None
     stages: list[StageOut]
     counts: dict[str, int]
+    usage: BuildUsage
 
 
 class BuildSummary(BaseModel):
@@ -166,6 +256,16 @@ def _github(request: Request) -> GitHubApp | None:
     return app
 
 
+def _settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
+
+
+def _catalog(request: Request) -> Catalog:
+    catalog: Catalog = request.app.state.catalog
+    return catalog
+
+
 def _objects(request: Request) -> ObjectStore:
     store: ObjectStore = request.app.state.objects
     return store
@@ -211,7 +311,20 @@ async def start_build(
     require_role(member, "editor")
 
     async def produce() -> tuple[int, dict[str, Any]]:
-        build = await service.start_build(db, _github(request), member, project_id, body.ref)
+        if body.estimate_id is not None:
+            build = await service.start_generation_build(
+                db,
+                _catalog(request),
+                _settings(request),
+                member,
+                project_id,
+                body.estimate_id,
+                body.cap_micro_usd,
+            )
+        else:
+            build = await service.start_build(
+                db, _github(request), _settings(request), member, project_id, body.ref
+            )
         return 202, BuildOut(**build).model_dump(mode="json")
 
     status, payload = await run_once(
@@ -259,3 +372,87 @@ async def file_view(
 @router.get("/builds/{build_id}/symbols/{symbol_id}", response_model=SymbolOut)
 async def symbol_view(build_id: UUID, symbol_id: UUID, db: Db, member: BuildReader) -> SymbolOut:
     return SymbolOut(**await service.symbol_view(db, member, build_id, symbol_id))
+
+
+# ---------------------------------------------------------------- snapshots and estimates
+@router.post("/projects/{project_id}/snapshots", response_model=SnapshotOut, status_code=202)
+async def request_snapshot(
+    project_id: UUID,
+    body: SnapshotRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    member: ProjectWriter,
+) -> SnapshotOut:
+    require_role(member, "editor")
+    snapshot = await estimates.request_snapshot(db, _github(request), member, project_id, body.ref)
+    response.headers["Location"] = f"/api/v1/projects/{project_id}/snapshots/{snapshot['id']}"
+    return SnapshotOut(**snapshot)
+
+
+@router.get("/projects/{project_id}/snapshots/{snapshot_id}", response_model=SnapshotOut)
+async def get_snapshot(project_id: UUID, snapshot_id: UUID, db: Db, member: ProjectReader) -> SnapshotOut:
+    return SnapshotOut(**await estimates.get_snapshot(db, member, project_id, snapshot_id))
+
+
+@router.get("/projects/{project_id}/snapshots/{snapshot_id}/files", response_model=SnapshotFileList)
+async def list_snapshot_files(
+    project_id: UUID,
+    snapshot_id: UUID,
+    request: Request,
+    db: Db,
+    member: ProjectReader,
+    status: Annotated[
+        str | None, Query(pattern=r"^(selected|excluded|binary|oversize|unsupported|blocked)$")
+    ] = None,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> SnapshotFileList:
+    scope = f"snapshot-files:{snapshot_id}:{status or ''}"
+    secret = _settings(request).session_secret.get_secret_value()
+    after = decode_path_cursor(secret, scope, cursor)
+    n = clamp_limit(limit)
+    rows = await estimates.list_snapshot_files(db, member, project_id, snapshot_id, status, after, n + 1)
+    more = len(rows) > n
+    rows = rows[:n]
+    return SnapshotFileList(
+        items=[SnapshotFile(**r) for r in rows],
+        next_cursor=encode_path_cursor(secret, scope, rows[-1]["path"]) if more else None,
+    )
+
+
+@router.post("/projects/{project_id}/estimates", response_model=EstimateOut, status_code=201)
+async def create_estimate(
+    project_id: UUID,
+    body: EstimateRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    member: ProjectWriter,
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> EstimateOut:
+    require_role(member, "editor")
+
+    async def produce() -> tuple[int, dict[str, Any]]:
+        created = await estimates.create_estimate(
+            db, _catalog(request), member, project_id, body.snapshot_id, body.config
+        )
+        return 201, EstimateOut(**created).model_dump(mode="json")
+
+    status, payload = await run_once(
+        db,
+        user_id=member.user_id,
+        workspace_id=member.workspace_id,
+        route=f"POST /projects/{project_id}/estimates",
+        key=idempotency_key,
+        body=body.model_dump(mode="json"),
+        produce=produce,
+    )
+    response.status_code = status
+    response.headers["Location"] = f"/api/v1/projects/{project_id}/estimates/{payload['id']}"
+    return EstimateOut(**payload)
+
+
+@router.get("/projects/{project_id}/estimates/{estimate_id}", response_model=EstimateOut)
+async def get_estimate(project_id: UUID, estimate_id: UUID, db: Db, member: ProjectReader) -> EstimateOut:
+    return EstimateOut(**await estimates.get_estimate(db, member, project_id, estimate_id))

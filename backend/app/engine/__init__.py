@@ -2,4 +2,5 @@
 
 ENGINE_VERSION = "0.1.0"
 PROMPT_VERSION = "0.1.0"  # replay prompt set (23): deterministic, no model calls
+GENERATION_PROMPT_VERSION = "0.2.0"  # prompt set of estimate-based generation builds (19)
 PARSER_VERSION = "0.1.0"
