@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-18
+
+### Changed
+
+- 06: cancellation, retry and build-event polling as implemented in M2: immediate stop when nothing runs, no new earmark after a cancel request, cancellation at the next stage boundary, `retry_of_id`, `ESTIMATE_MISMATCH`, and `{items,next_after}` polling ahead of the SSE stream.
+
 ## [0.5.2] - 2026-11-18
 
 ### Added

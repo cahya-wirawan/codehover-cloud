@@ -1,6 +1,16 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.2
+Date: 2026-11-18 · Package version 0.5.3
+
+0.5.3 records cancellation, retry and event polling. Integration tests cover:
+- a queued build cancelled at once with its full envelope released;
+- a cancel during a call: in-flight calls settle, no later stage runs, and the ledger balances (A10);
+- with one call in flight, the next unit refused at its earmark, so exactly one call happens;
+- a retry after a checker outage that pays only for checks and becomes publishable (A13);
+- retry rules: not while running, not with another snapshot's estimate, and 404 for strangers;
+- ordered, resumable events.
+
+Removing the cancel check at the earmark, or the cancel at the stage boundary, is caught. The frontend adds the estimate flow (snapshot, scope, preset, cost range, price revision, expiry, cap), cancel and retry, usage, and the guide with claim badges. Guide text renders as text, and a test confirms that an HTML-looking model output creates no element. 259 backend and 10 frontend tests pass.
 
 0.5.2 records T12. Integration tests cover:
 - a replay guide whose claims are all supported, so the build is publishable;

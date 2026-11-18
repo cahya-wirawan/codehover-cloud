@@ -90,6 +90,27 @@ class BuildStart(BaseModel):
         return self
 
 
+class CancelIn(BaseModel):
+    reason: Annotated[str | None, Field(max_length=200)] = None
+
+
+class RetryIn(BaseModel):
+    estimate_id: UUID | None = None
+    cap_micro_usd: Annotated[int | None, Field(ge=0, le=10**12)] = None
+
+
+class EventOut(BaseModel):
+    sequence: int
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
+
+
+class EventList(BaseModel):
+    items: list[EventOut]
+    next_after: int
+
+
 class SnapshotRequest(BaseModel):
     ref: Annotated[str | None, Field(max_length=255)] = None
 
@@ -172,6 +193,8 @@ class BuildOut(BaseModel):
     project_id: UUID
     snapshot_id: UUID
     estimate_id: UUID | None
+    retry_of_id: UUID | None
+    cancel_requested_at: datetime | None
     status: str
     commit_sha: str
     snapshot_status: str
@@ -635,3 +658,60 @@ async def waive_claims(build_id: UUID, body: WaiverIn, db: Db, member: BuildWrit
     return WaiverOut(
         **await quality.waive(db, member, build_id, sorted(set(body.claim_keys)), body.reason.strip())
     )
+
+
+# ---------------------------------------------------------------- cancel, retry, events
+@router.post("/builds/{build_id}/cancel", response_model=BuildOut)
+async def cancel_build(build_id: UUID, body: CancelIn, db: Db, member: BuildWriter) -> BuildOut:
+    require_role(member, "editor")
+    return BuildOut(**await service.request_cancel(db, member, build_id, body.reason))
+
+
+@router.post("/builds/{build_id}/retry", response_model=BuildOut, status_code=202)
+async def retry_build(
+    build_id: UUID,
+    body: RetryIn,
+    request: Request,
+    response: Response,
+    db: Db,
+    member: BuildWriter,
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> BuildOut:
+    require_role(member, "editor")
+
+    async def produce() -> tuple[int, dict[str, Any]]:
+        build = await service.retry_build(
+            db,
+            _github(request),
+            _catalog(request),
+            _settings(request),
+            member,
+            build_id,
+            body.estimate_id,
+            body.cap_micro_usd,
+        )
+        return 202, BuildOut(**build).model_dump(mode="json")
+
+    status, payload = await run_once(
+        db,
+        user_id=member.user_id,
+        workspace_id=member.workspace_id,
+        route=f"POST /builds/{build_id}/retry",
+        key=idempotency_key,
+        body=body.model_dump(mode="json"),
+        produce=produce,
+    )
+    response.status_code = status
+    response.headers["Location"] = f"/api/v1/builds/{payload['id']}"
+    return BuildOut(**payload)
+
+
+@router.get("/builds/{build_id}/events", response_model=EventList)
+async def build_events(
+    build_id: UUID,
+    db: Db,
+    member: BuildReader,
+    after: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+) -> EventList:
+    return EventList(**await service.build_events(db, member, build_id, after, limit))

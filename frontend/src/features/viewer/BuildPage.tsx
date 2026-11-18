@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router";
 
-import { api, TERMINAL } from "../../lib/api/resources";
+import { ApiError } from "../../lib/api/client";
+import { api, formatUsd, TERMINAL } from "../../lib/api/resources";
 import { CodeViewer } from "./CodeViewer";
+import { GuidePanel } from "./GuidePanel";
 
 const STATE_LABEL: Record<string, string> = {
   pending: "Pending",
@@ -14,15 +16,35 @@ const STATE_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  queued: "queued",
+  running: "running",
+  ready: "ready",
+  failed: "failed",
+  cancelled: "cancelled",
+  budget_exhausted: "stopped: spending cap reached",
+};
+
 export function BuildPage() {
-  const { bid = "" } = useParams();
+  const { pid = "", bid = "" } = useParams();
+  const navigate = useNavigate();
+  const client = useQueryClient();
   const build = useQuery({
     queryKey: ["build", bid],
     queryFn: () => api.build(bid),
     // Polling fallback (02 S09); counts, not fake progress.
     refetchInterval: (query) => (query.state.data && TERMINAL.has(query.state.data.status) ? false : 2000),
   });
+  const cancel = useMutation({
+    mutationFn: () => api.cancelBuild(bid),
+    onSuccess: (value) => client.setQueryData(["build", bid], value),
+  });
+  const retry = useMutation({
+    mutationFn: () => api.retryBuild(bid),
+    onSuccess: (value) => navigate(`/p/${pid}/builds/${value.id}`),
+  });
   const data = build.data;
+  const generation = data?.estimate_id !== null && data?.estimate_id !== undefined;
 
   return (
     <section aria-labelledby="b-title">
@@ -31,9 +53,39 @@ export function BuildPage() {
         <>
           <p className="mt-1 text-muted">
             Commit <span className="font-mono">{data.commit_sha.slice(0, 12)}</span> · status{" "}
-            <strong className={data.status === "failed" ? "text-destructive" : ""}>{data.status}</strong>
+            <strong className={data.status === "failed" || data.status === "budget_exhausted" ? "text-destructive" : ""}>
+              {STATUS_LABEL[data.status] ?? data.status}
+            </strong>
+            {data.cancel_requested_at && !TERMINAL.has(data.status) ? " · cancelling after the current step" : null}
             {data.rejection_code ? <> · rejected by safety scan ({data.rejection_code})</> : null}
           </p>
+          {generation ? (
+            <p className="mt-1 text-muted">
+              Spent {formatUsd(data.usage.settled_micro_usd)} of a {formatUsd(data.usage.cap_micro_usd)} cap
+              {data.usage.reserved_micro_usd ? ` · ${formatUsd(data.usage.reserved_micro_usd)} still held` : ""}
+            </p>
+          ) : null}
+          <div className="mt-3 flex gap-2">
+            {!TERMINAL.has(data.status) && !data.cancel_requested_at ? (
+              <button type="button" onClick={() => cancel.mutate()} disabled={cancel.isPending}
+                className="h-9 rounded-lg border border-border px-3">
+                Cancel build
+              </button>
+            ) : null}
+            {TERMINAL.has(data.status) ? (
+              <button type="button" onClick={() => retry.mutate()} disabled={retry.isPending}
+                className="h-9 rounded-lg border border-border px-3">
+                Retry as a new build
+              </button>
+            ) : null}
+          </div>
+          {cancel.error || retry.error ? (
+            <p role="alert" className="mt-2 text-destructive">
+              {(cancel.error ?? retry.error) instanceof ApiError
+                ? (cancel.error ?? retry.error)?.message
+                : "The request failed."}
+            </p>
+          ) : null}
           <ol className="mt-4 flex flex-wrap gap-2" aria-label="Stages">
             {data.stages.map((s) => (
               <li key={s.stage} className="rounded-lg border border-border bg-surface px-3 py-1">
@@ -45,9 +97,10 @@ export function BuildPage() {
           {data.status === "ready" ? (
             <>
               <p className="mt-4 text-muted">
-                {data.counts.files} files · {data.counts.symbols} definitions · explanations are derived from source only
-                (replay); check cited code.
+                {data.counts.files} files · {data.counts.symbols} definitions ·{" "}
+                {generation ? "machine-written explanations; check the cited code." : "explanations are derived from source only (replay); check cited code."}
               </p>
+              {generation ? <GuidePanel buildId={bid} /> : null}
               <CodeViewer buildId={bid} />
             </>
           ) : null}

@@ -44,9 +44,9 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/projects/{pid}/estimates/{eid}` | none → estimate | Member |
 | GET/POST `/projects/{pid}/builds` | estimate_id, optional cap_micro_usd → build; or `ref` for a replay build with zero cap | Viewer list; editor start; `Idempotency-Key` required; the cap defaults to the lower of the remaining allowance and the estimate's high bound; expired estimate → 409 `ESTIMATE_EXPIRED`; catalog revision or preset changed → 409 `ESTIMATE_STALE`; cap above the remaining allowance → 409 `ALLOWANCE_EXCEEDED`; second active build → 409 `BUILD_ACTIVE`; workspace active-build limit → 409 `WORKSPACE_BUILD_LIMIT`; unknown ref → 422 `REF_NOT_FOUND`; reuses the immutable snapshot of an already-scanned commit |
 | GET `/builds/{bid}` | none → states,counts,usage,quality | Member |
-| POST `/builds/{bid}/cancel` | reason optional → updated build | Editor; idempotent cancellation |
-| POST `/builds/{bid}/retry` | valid estimate_id → new build | Editor; same SHA/config unless new estimate specifies otherwise |
-| GET `/builds/{bid}/events` | Last-Event-ID → SSE | Member; cursor resume and periodic permission recheck |
+| POST `/builds/{bid}/cancel` | reason optional → updated build (`cancel_requested_at`) | Editor; idempotent; a build with no running task stops at once, otherwise no new provider call is earmarked and the store cancels at the next stage boundary or retry; in-flight calls settle and the unspent envelope is released (A10) |
+| POST `/builds/{bid}/retry` | estimate_id optional (default: the original estimate, if still valid), cap_micro_usd optional → 202 new build with `retry_of_id` | Editor; `Idempotency-Key`; terminal builds only (else 409 `BUILD_ACTIVE`); the estimate must be for the same snapshot (422 `ESTIMATE_MISMATCH`); replay builds retry by commit; cached units of the same snapshot and configuration are reused, so normally only checks spend budget (A13) |
+| GET `/builds/{bid}/events` | Last-Event-ID → SSE; M2 implements the polling form `after,limit → {items,next_after}` | Member; cursor resume and periodic permission recheck; the SSE stream follows with T13 |
 | GET `/builds/{bid}/tree` | parent_path,cursor → entries | Member/public only through published resource resolver |
 | GET `/builds/{bid}/files/{fid}` | start_line,end_line → source/card metadata and the file explanation (status, summary, chunk summaries and line notes) | Member; max 500 source lines/request |
 | GET `/builds/{bid}/symbols/{symid}` | none → card,span,relations | Member |

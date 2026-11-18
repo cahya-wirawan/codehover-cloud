@@ -110,6 +110,8 @@ async def start_build(
     member: Member,
     project_id: UUID,
     ref: str | None,
+    *,
+    retry_of: UUID | None = None,
 ) -> dict[str, Any]:
     """M1 replay build from a ref: no estimate, zero cap, cards derived from the source only."""
     requested, sha = await estimates.resolve_commit(db, github, member, project_id, ref)
@@ -131,6 +133,7 @@ async def start_build(
         cap=0,
         estimate_id=None,
         account_id=None,
+        retry_of=retry_of,
     )
     await _schedule(db, member, build_id, scanned=snapshot.status == "scanned", commit_sha=sha)
     return await get_build(db, member, build_id)
@@ -144,6 +147,8 @@ async def start_generation_build(
     project_id: UUID,
     estimate_id: UUID,
     cap: int | None,
+    *,
+    retry_of: UUID | None = None,
 ) -> dict[str, Any]:
     """Build from an approved estimate: exact snapshot and scope, cap reserved once (11, A05, A08)."""
     approved = (
@@ -209,6 +214,7 @@ async def start_generation_build(
         cap=requested_cap,
         estimate_id=estimate_id,
         account_id=account.id,
+        retry_of=retry_of,
     )
     await ledger.reserve_build(db, member.workspace_id, account, build_id, requested_cap)
     await _schedule(db, member, build_id, scanned=True, commit_sha=approved.commit_sha)
@@ -250,20 +256,22 @@ async def _insert_build(
     cap: int,
     estimate_id: UUID | None,
     account_id: UUID | None,
+    retry_of: UUID | None = None,
 ) -> UUID:
     try:
         build_id: UUID = (
             await db.execute(
                 text(
-                    "INSERT INTO builds(workspace_id, project_id, snapshot_id, estimate_id, config, config_digest,"
-                    " engine_version, prompt_version, cap_micro_usd, usage_account_id, created_by)"
-                    " VALUES (:w, :p, :s, :e, CAST(:c AS jsonb), :d, :ev, :pv, :cap, :a, :u) RETURNING id"
+                    "INSERT INTO builds(workspace_id, project_id, snapshot_id, estimate_id, retry_of_id, config,"
+                    " config_digest, engine_version, prompt_version, cap_micro_usd, usage_account_id, created_by)"
+                    " VALUES (:w, :p, :s, :e, :r, CAST(:c AS jsonb), :d, :ev, :pv, :cap, :a, :u) RETURNING id"
                 ),
                 {
                     "w": member.workspace_id,
                     "p": project_id,
                     "s": snapshot_id,
                     "e": estimate_id,
+                    "r": retry_of,
                     "c": json.dumps(config),
                     "d": digest,
                     "ev": ENGINE_VERSION,
@@ -305,7 +313,8 @@ async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[st
     row = (
         await db.execute(
             text(
-                "SELECT b.id, b.project_id, b.snapshot_id, b.estimate_id, b.status, b.created_at, b.completed_at,"
+                "SELECT b.id, b.project_id, b.snapshot_id, b.estimate_id, b.retry_of_id, b.status, b.created_at,"
+                " b.completed_at, b.cancel_requested_at,"
                 " b.engine_version, b.prompt_version, b.cap_micro_usd, b.reserved_micro_usd, b.settled_micro_usd,"
                 " s.commit_sha, s.status AS snapshot_status, s.rejection_code"
                 " FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
@@ -574,3 +583,114 @@ async def guide_page(
     result.pop("markdown_key")
     result.pop("id")
     return {**result, "markdown": markdown, "citations": citations, "claims": page_claims}
+
+
+# ---------------------------------------------------------------- cancel, retry, events
+async def request_cancel(
+    db: AsyncSession, member: Member, build_id: UUID, reason: str | None
+) -> dict[str, Any]:
+    """Idempotent (06). No new provider call starts after this; an in-flight call may still finish and
+    is settled; the unspent envelope is released when the build stops (A10)."""
+    build = (
+        await db.execute(
+            text(
+                "SELECT status, cancel_requested_at FROM builds WHERE workspace_id = :w AND id = :b FOR UPDATE"
+            ),
+            {"w": member.workspace_id, "b": build_id},
+        )
+    ).one_or_none()
+    if build is None:
+        raise ApiError(404, "NOT_FOUND", "Build not found.")
+    if build.status in ("queued", "running") and build.cancel_requested_at is None:
+        await db.execute(
+            text(
+                "UPDATE builds SET cancel_requested_at = now(), updated_at = now() WHERE workspace_id = :w AND id = :b"
+            ),
+            {"w": member.workspace_id, "b": build_id},
+        )
+        await jobs.event(
+            db, member.workspace_id, build_id, "build.cancel_requested", {"reason": (reason or "")[:200]}
+        )
+        working = (
+            await db.execute(
+                text(
+                    "SELECT count(*) FROM build_tasks WHERE workspace_id = :w AND build_id = :b"
+                    " AND state = 'leased' AND lease_until > now()"
+                ),
+                {"w": member.workspace_id, "b": build_id},
+            )
+        ).scalar_one()
+        if not working:  # nothing is running: stop now; otherwise the worker stops at its next step
+            await jobs.cancel_build(db, member.workspace_id, build_id)
+        await audit(db, member, "build.cancel_requested", "build", build_id, {"reason": (reason or "")[:200]})
+    await db.commit()
+    await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
+    return await get_build(db, member, build_id)
+
+
+async def retry_build(
+    db: AsyncSession,
+    github: GitHubApp | None,
+    catalog: Catalog,
+    settings: Settings,
+    member: Member,
+    build_id: UUID,
+    estimate_id: UUID | None,
+    cap: int | None,
+) -> dict[str, Any]:
+    """A new build for the same snapshot (06): terminal builds never run again. Generation builds need a
+    valid estimate for that snapshot; the tenant cache makes completed units free on the retry (A13)."""
+    original = (
+        await db.execute(
+            text(
+                "SELECT b.project_id, b.snapshot_id, b.estimate_id, b.status, b.config, e.snapshot_id AS estimate_snapshot"
+                " FROM builds b LEFT JOIN estimates e ON e.workspace_id = b.workspace_id AND e.id = :e"
+                " WHERE b.workspace_id = :w AND b.id = :b"
+            ),
+            {"w": member.workspace_id, "b": build_id, "e": estimate_id},
+        )
+    ).one_or_none()
+    if original is None:
+        raise ApiError(404, "NOT_FOUND", "Build not found.")
+    if original.status in ("queued", "running"):
+        raise ApiError(409, "BUILD_ACTIVE", "This build is still running.")
+    if "generation" not in original.config:
+        await db.commit()
+        snapshot_ref = (
+            await db.execute(
+                text("SELECT commit_sha FROM snapshots WHERE workspace_id = :w AND id = :s"),
+                {"w": member.workspace_id, "s": original.snapshot_id},
+            )
+        ).scalar_one()
+        return await start_build(
+            db, github, settings, member, original.project_id, snapshot_ref, retry_of=build_id
+        )
+    chosen = estimate_id or original.estimate_id
+    if estimate_id is not None and original.estimate_snapshot != original.snapshot_id:
+        raise ApiError(422, "ESTIMATE_MISMATCH", "The estimate must be for this build's snapshot.")
+    return await start_generation_build(
+        db, catalog, settings, member, original.project_id, chosen, cap, retry_of=build_id
+    )
+
+
+async def build_events(
+    db: AsyncSession, member: Member, build_id: UUID, after: int, limit: int
+) -> dict[str, Any]:
+    """Polling fallback for build progress (06 "Server-sent events"); sequence numbers are the event IDs."""
+    exists = (
+        await db.execute(
+            text("SELECT 1 FROM builds WHERE workspace_id = :w AND id = :b"),
+            {"w": member.workspace_id, "b": build_id},
+        )
+    ).one_or_none()
+    if exists is None:
+        raise ApiError(404, "NOT_FOUND", "Build not found.")
+    rows = await db.execute(
+        text(
+            "SELECT sequence, event_type, payload, created_at FROM build_events"
+            " WHERE workspace_id = :w AND build_id = :b AND sequence > :after ORDER BY sequence LIMIT :n"
+        ),
+        {"w": member.workspace_id, "b": build_id, "after": after, "n": limit},
+    )
+    items = [dict(r._mapping) for r in rows]
+    return {"items": items, "next_after": items[-1]["sequence"] if items else after}

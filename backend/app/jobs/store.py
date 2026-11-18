@@ -335,11 +335,36 @@ async def complete(db: AsyncSession, claimed: Claim, apply: Apply | None = None)
     ).scalar_one()
     stages = pipeline(bool(generation))
     position = stages.index(claimed.stage)
-    if position + 1 < len(stages):
+    if await cancel_requested(db, claimed.workspace_id, claimed.build_id):
+        await cancel_build(db, claimed.workspace_id, claimed.build_id)  # no further stage starts (A10)
+    elif position + 1 < len(stages):
         await create_task(db, claimed.workspace_id, claimed.build_id, stages[position + 1], "build")
     else:
         await finish_build(db, claimed.workspace_id, claimed.build_id, "ready", "build.ready")
     await db.commit()
+
+
+async def cancel_requested(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> bool:
+    requested = (
+        await db.execute(
+            text("SELECT cancel_requested_at IS NOT NULL FROM builds WHERE workspace_id = :w AND id = :b"),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).scalar_one()
+    return bool(requested)
+
+
+async def cancel_build(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> bool:
+    """Cancel the waiting tasks and finish the build: completed usage stays settled, the unspent envelope
+    is released, holds for unknown outcomes remain (A10)."""
+    await db.execute(
+        text(
+            "UPDATE build_tasks SET state = 'cancelled', next_attempt_at = NULL, updated_at = now()"
+            " WHERE workspace_id = :w AND build_id = :b AND state IN ('pending', 'retry_wait')"
+        ),
+        {"w": workspace_id, "b": build_id},
+    )
+    return await finish_build(db, workspace_id, build_id, "cancelled", "build.cancelled")
 
 
 async def finish_build(
@@ -393,7 +418,9 @@ async def fail(
             )
         await db.commit()
         return "retry_wait" if retry else "failed"
-    if retry:
+    if retry and await cancel_requested(db, claimed.workspace_id, claimed.build_id):
+        await cancel_build(db, claimed.workspace_id, claimed.build_id)
+    elif retry:
         await event(
             db,
             claimed.workspace_id,

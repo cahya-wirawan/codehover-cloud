@@ -52,6 +52,18 @@
       },
       "BuildOut": {
         "properties": {
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
           "commit_sha": {
             "title": "Commit Sha",
             "type": "string"
@@ -121,6 +133,18 @@
             ],
             "title": "Rejection Code"
           },
+          "retry_of_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of Id"
+          },
           "snapshot_id": {
             "format": "uuid",
             "title": "Snapshot Id",
@@ -150,6 +174,8 @@
           "project_id",
           "snapshot_id",
           "estimate_id",
+          "retry_of_id",
+          "cancel_requested_at",
           "status",
           "commit_sha",
           "snapshot_status",
@@ -273,6 +299,24 @@
           "settled_micro_usd"
         ],
         "title": "BuildUsage",
+        "type": "object"
+      },
+      "CancelIn": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "CancelIn",
         "type": "object"
       },
       "CheckList": {
@@ -816,6 +860,57 @@
           "config"
         ],
         "title": "EstimateRequest",
+        "type": "object"
+      },
+      "EventList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "title": "Next After",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_after"
+        ],
+        "title": "EventList",
+        "type": "object"
+      },
+      "EventOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "event_type",
+          "payload",
+          "created_at"
+        ],
+        "title": "EventOut",
         "type": "object"
       },
       "FileExplanationOut": {
@@ -2001,6 +2096,37 @@
         "title": "RepositoryOut",
         "type": "object"
       },
+      "RetryIn": {
+        "properties": {
+          "cap_micro_usd": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Micro Usd"
+          },
+          "estimate_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Id"
+          }
+        },
+        "title": "RetryIn",
+        "type": "object"
+      },
       "RoleChange": {
         "properties": {
           "role": {
@@ -2948,6 +3074,125 @@
         ]
       }
     },
+    "/api/v1/builds/{build_id}/cancel": {
+      "post": {
+        "operationId": "cancel_build_api_v1_builds__build_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Build",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/events": {
+      "get": {
+        "operationId": "build_events_api_v1_builds__build_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Events",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/builds/{build_id}/files/{file_id}": {
       "get": {
         "operationId": "file_view_api_v1_builds__build_id__files__file_id__get",
@@ -3311,6 +3556,75 @@
           }
         },
         "summary": "Waive Claims",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/retry": {
+      "post": {
+        "operationId": "retry_build_api_v1_builds__build_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Build",
         "tags": [
           "projects"
         ]
