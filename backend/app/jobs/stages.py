@@ -24,7 +24,7 @@ from app.adapters.github.app import GitHubApp, GitHubError
 from app.adapters.models.replay import ReplayGateway
 from app.adapters.storage import ObjectStore
 from app.core.tenancy import set_context
-from app.engine import ENGINE_VERSION, PARSER_VERSION, PROMPT_VERSION, sandbox
+from app.engine import ENGINE_VERSION, PARSER_VERSION, PROMPT_VERSION, sandbox, search
 from app.engine.acquire import MAX_COMPRESSED_BYTES, ArchiveRejected, extract
 from app.engine.catalog import Catalog
 from app.engine.catalog import builtin as builtin_catalog
@@ -371,11 +371,24 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
             {"id": str(f.id), "path": f.path, "sha256": f.sha256, "status": f.scan_status} for f in files
         ],
     }
+    documents = await _search_documents(rt, claimed)
     body = json.dumps(manifest, sort_keys=True).encode()
     key = build_key(claimed.workspace_id, build.project_id, claimed.build, "manifest.json")
     sha = await rt.store.put(key, body, "application/json")
 
     async def apply(db: AsyncSession) -> None:
+        await db.execute(
+            text("DELETE FROM search_documents WHERE workspace_id = :w AND build_id = :b"),
+            {"w": claimed.workspace_id, "b": claimed.build},
+        )
+        for doc in documents:
+            await db.execute(
+                text(
+                    "INSERT INTO search_documents(workspace_id, build_id, kind, ref_id, name, path, line, symbol_kind,"
+                    " snippet, terms, body) VALUES (:w, :b, :kind, :ref, :name, :path, :line, :sk, :snippet, :terms, :body)"
+                ),
+                {"w": claimed.workspace_id, "b": claimed.build, **doc},
+            )
         await db.execute(
             text(
                 "INSERT INTO artifacts(workspace_id, build_id, kind, object_key, sha256, byte_count, content_type)"
@@ -390,6 +403,74 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
         )
 
     return apply
+
+
+async def _search_documents(rt: Runtime, claimed: Claim) -> list[dict[str, Any]]:
+    """Definitions, files and guide pages of this build, for build-scoped search (05)."""
+    documents: list[dict[str, Any]] = []
+    for s in await _read(
+        rt,
+        claimed,
+        "SELECT y.id, y.name, y.symbol_key, y.kind, y.start_line, y.signature, y.card->>'summary' AS summary,"
+        " f.path FROM symbols y JOIN source_files f ON f.workspace_id = y.workspace_id AND f.id = y.source_file_id"
+        " WHERE y.workspace_id = :w AND y.build_id = :b",
+    ):
+        documents.append(
+            {
+                "kind": "symbol",
+                "ref": s.id,
+                "name": s.name[:1024],
+                "path": s.path,
+                "line": s.start_line,
+                "sk": s.kind,
+                "snippet": (s.summary or s.signature or "")[:600],
+                "terms": search.identifier_terms(s.name, s.symbol_key),
+                "body": f"{s.signature or ''} {s.summary or ''}"[:20000],
+            }
+        )
+    for f in await _read(
+        rt,
+        claimed,
+        "SELECT f.id, f.path, e.summary FROM builds b JOIN source_files f"
+        " ON f.workspace_id = b.workspace_id AND f.snapshot_id = b.snapshot_id"
+        " LEFT JOIN file_explanations e ON e.workspace_id = f.workspace_id AND e.build_id = b.id AND e.source_file_id = f.id"
+        " WHERE b.workspace_id = :w AND b.id = :b AND f.scan_status IN ('selected', 'unsupported')",
+    ):
+        name = f.path.rsplit("/", 1)[-1]
+        documents.append(
+            {
+                "kind": "file",
+                "ref": f.id,
+                "name": name[:1024],
+                "path": f.path,
+                "line": None,
+                "sk": None,
+                "snippet": (f.summary or "")[:600],
+                "terms": search.identifier_terms(f.path),
+                "body": (f.summary or "")[:20000],
+            }
+        )
+    for g in await _read(
+        rt,
+        claimed,
+        "SELECT id, slug, title, purpose, markdown_key FROM guide_pages"
+        " WHERE workspace_id = :w AND build_id = :b AND status = 'written'",
+    ):
+        markdown = (await rt.store.get(g.markdown_key)).decode("utf-8") if g.markdown_key else ""
+        documents.append(
+            {
+                "kind": "guide",
+                "ref": g.id,
+                "name": g.title[:1024],
+                "path": g.slug,
+                "line": None,
+                "sk": None,
+                "snippet": (g.purpose or "")[:600],
+                "terms": search.identifier_terms(g.slug),
+                "body": search.prose(markdown),
+            }
+        )
+    return documents
 
 
 HANDLERS = {

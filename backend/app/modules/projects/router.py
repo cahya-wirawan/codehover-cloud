@@ -374,6 +374,8 @@ class Related(BaseModel):
     name: str
     kind: str
     path: str
+    file_id: UUID
+    start_line: int
     resolution: str
     ambiguous: bool
 
@@ -754,4 +756,36 @@ async def build_events(
         slot,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------- search
+class SearchHit(BaseModel):
+    kind: str
+    ref_id: UUID
+    name: str
+    path: str | None
+    line: int | None
+    symbol_kind: str | None
+    snippet: str
+    basis: str
+    score: float
+
+
+class SearchOut(BaseModel):
+    items: list[SearchHit]
+    next_cursor: None = None
+
+
+@router.get("/builds/{build_id}/search", response_model=SearchOut)
+async def search_build(
+    build_id: UUID,
+    db: Db,
+    member: BuildReader,
+    q: Annotated[str, Query(min_length=1, max_length=200)],
+    kind: Annotated[str | None, Query(pattern=r"^(symbol|file|guide)$")] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> SearchOut:
+    return SearchOut(
+        items=[SearchHit(**h) for h in await service.search_build(db, member, build_id, q, kind, limit)]
     )

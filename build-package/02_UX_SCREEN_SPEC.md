@@ -30,6 +30,9 @@ All screens are Proposed. Navigation: workspace switcher; Projects; Builds; Usag
 
 ## Component contracts
 
+M3 implements the code view (S11) with a product-controlled line renderer rather than CodeMirror 6. Every definition is a button: pointer hover previews the card after 200 ms; Enter or click pins it as a non-modal dialog and moves focus to it; Esc unpins and returns focus to the definition. File, line range and pinned symbol live in the URL, so guide citations, search results and relations deep-link to exact lines. Columns stay Unicode scalar offsets end to end, so no UTF-16 conversion is needed yet. Adopting CodeMirror is an open decision.
+
+
 Hover card shows kind/signature, summary, details, params, returns, notes, Uses/Used by and confidence, with exact-source and guide links. Delay pointer open 200 ms; focused symbol opens by Enter, pins with Enter/click, closes by Esc; moving into the card must not close it. Cap width 480px and height 60vh; interactive popover is a dialog rather than a tooltip. Ambiguous target list displays all candidates with file path and resolution basis. Source ranges are 1-based inclusive lines; columns are 0-based and end-exclusive, counted in Unicode scalar values in the API, and converted to CodeMirror UTF-16 offsets at a single tested boundary.
 
 Build timeline displays pending/running/completed/skipped/failed stages with counts, not fake animated progress. Spend distinguishes estimate, reserved upper bound and settled usage. Error diagnostics use request/build IDs and safe reason, with a Retry action only when retryable.

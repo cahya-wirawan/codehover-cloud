@@ -400,3 +400,42 @@ def test_integrity_rules(world: World, ddl: Db) -> None:
             s=world.a.snapshot,
             p=bad,
         )
+
+
+def test_every_tenant_table_forces_rls_with_a_runtime_tenant_policy(
+    world: World, ddl: Db, runtime: Db
+) -> None:
+    """Schema-wide guard: a new table with workspace_id cannot ship without FORCE RLS and a policy that
+    scopes the runtime role to app.workspace_id (CLAUDE.md "Schema and models")."""
+    tables = [
+        r[0]
+        for r in ddl.rows(
+            "SELECT c.table_name FROM information_schema.columns c JOIN information_schema.tables t"
+            " ON t.table_schema = c.table_schema AND t.table_name = c.table_name"
+            " WHERE c.table_schema = 'public' AND c.column_name = 'workspace_id' AND t.table_type = 'BASE TABLE'"
+            " ORDER BY 1"
+        )
+    ]
+    assert {
+        "generation_cache",
+        "file_explanations",
+        "guide_pages",
+        "claim_checks",
+        "search_documents",
+    } <= set(tables)
+    for table in tables:
+        forced = ddl.one(
+            "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = CAST(:t AS regclass)",
+            t=table,
+        )
+        assert forced, table
+        if not ddl.one("SELECT has_table_privilege('app_runtime', CAST(:t AS regclass), 'SELECT')", t=table):
+            continue  # unreachable for the runtime role (oauth_transactions: lookup functions only)
+        policies = ddl.rows(
+            "SELECT COALESCE(qual, '') || ' ' || COALESCE(with_check, '') FROM pg_policies"
+            " WHERE schemaname = 'public' AND tablename = :t AND 'app_runtime' = ANY(roles)",
+            t=table,
+        )
+        # Tenant rows are scoped by the workspace context; idempotency keys by their user (05).
+        assert any("app.workspace_id" in q or "app.user_id" in q for (q,) in policies), table
+        assert runtime.one(f"SELECT count(*) FROM {table}") == 0, table  # noqa: S608 - names from the catalog

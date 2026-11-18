@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Computed,
     DateTime,
     Double,
     ForeignKey,
@@ -24,7 +25,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -542,3 +543,23 @@ class ClaimCheck(Base):
     waived_at: Mapped[datetime | None] = ts(nullable=True)
     created_at: Mapped[datetime] = ts(default_now=True)
     checked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class SearchDocument(Base):
+    """Build-scoped derived search row (0009); `name_lower` and `document` are generated columns."""
+
+    __tablename__ = "search_documents"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    kind: Mapped[str] = mapped_column(Text)
+    ref_id: Mapped[UUID] = ref()
+    name: Mapped[str] = mapped_column(Text)
+    name_lower: Mapped[str | None] = mapped_column(Text, Computed("lower(name)"))
+    path: Mapped[str | None] = mapped_column(Text)
+    line: Mapped[int | None] = mapped_column(Integer)
+    symbol_kind: Mapped[str | None] = mapped_column(Text)
+    snippet: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    terms: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    body: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    document: Mapped[Any] = mapped_column(TSVECTOR, Computed("document"), nullable=True)

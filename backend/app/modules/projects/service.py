@@ -20,7 +20,7 @@ from app.adapters.storage import ObjectStore
 from app.core.errors import ApiError
 from app.core.settings import Settings
 from app.core.tenancy import set_context
-from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION
+from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION, search
 from app.engine.catalog import Catalog
 from app.engine.generate import CITATION
 from app.jobs import store as jobs
@@ -508,7 +508,8 @@ async def symbol_view(db: AsyncSession, member: Member, build_id: UUID, symbol_i
     async def related(column: str, other: str) -> list[dict[str, Any]]:
         rows = await db.execute(
             text(
-                f"SELECT DISTINCT o.id, o.name, o.kind, f.path, e.resolution, e.ambiguity_group IS NOT NULL AS ambiguous"  # noqa: S608 - fixed column names
+                f"SELECT DISTINCT o.id, o.name, o.kind, f.path, f.id AS file_id, o.start_line, e.resolution,"  # noqa: S608 - fixed column names
+                " e.ambiguity_group IS NOT NULL AS ambiguous"
                 f" FROM reference_edges e JOIN symbols o ON o.workspace_id = e.workspace_id AND o.id = e.{other}"
                 " JOIN source_files f ON f.workspace_id = o.workspace_id AND f.id = o.source_file_id"
                 f" WHERE e.workspace_id = :w AND e.build_id = :b AND e.{column} = :s ORDER BY f.path, o.name LIMIT 50"
@@ -694,3 +695,42 @@ async def build_events(
     )
     items = [dict(r._mapping) for r in rows]
     return {"items": items, "next_after": items[-1]["sequence"] if items else after}
+
+
+# ---------------------------------------------------------------- search
+async def search_build(
+    db: AsyncSession, member: Member, build_id: UUID, query: str, kind: str | None, limit: int
+) -> list[dict[str, Any]]:
+    """Build-scoped search (06): exact name, then name prefix, then weighted full text. The workspace and
+    build filter come first; query text is sanitized into a prefix tsquery and never logged."""
+    await _ready_build(db, member, build_id)
+    lowered = query.strip().lower()
+    tsq = search.tsquery(query)
+    if not lowered:
+        return []
+    escaped = lowered.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = await db.execute(
+        text(
+            "SELECT d.kind, d.ref_id, d.name, d.path, d.line, d.symbol_kind, d.snippet,"
+            " CASE WHEN d.name_lower = :lower THEN 'exact_name' WHEN d.name_lower LIKE :prefix ESCAPE '\\'"
+            "   THEN 'name_prefix' ELSE 'text' END AS basis,"
+            " CASE WHEN CAST(:tsq AS text) IS NULL THEN 0"
+            "   ELSE ts_rank(d.document, to_tsquery('simple', CAST(:tsq AS text))) END AS score"
+            " FROM search_documents d"
+            " WHERE d.workspace_id = :w AND d.build_id = :b AND (CAST(:kind AS text) IS NULL OR d.kind = :kind)"
+            " AND (d.name_lower = :lower OR d.name_lower LIKE :prefix ESCAPE '\\'"
+            "   OR (CAST(:tsq AS text) IS NOT NULL AND d.document @@ to_tsquery('simple', CAST(:tsq AS text))))"
+            " ORDER BY CASE WHEN d.name_lower = :lower THEN 0 WHEN d.name_lower LIKE :prefix ESCAPE '\\' THEN 1 ELSE 2 END,"
+            " score DESC, d.name, d.path, d.id LIMIT :n"
+        ),
+        {
+            "w": member.workspace_id,
+            "b": build_id,
+            "kind": kind,
+            "lower": lowered,
+            "prefix": escaped + "%",
+            "tsq": tsq,
+            "n": limit,
+        },
+    )
+    return [dict(r._mapping) for r in rows]

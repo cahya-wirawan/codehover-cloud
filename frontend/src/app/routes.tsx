@@ -2,7 +2,14 @@ import type { RouteObject } from "react-router";
 
 import { LoginPage } from "../features/auth/LoginPage";
 import { ProjectPage } from "../features/projects/ProjectPage";
-import { BuildPage } from "../features/viewer/BuildPage";
+import {
+  BuildCode,
+  BuildGuide,
+  BuildOverview,
+  BuildPage,
+  BuildReview,
+  BuildSearch,
+} from "../features/viewer/BuildPage";
 import { AcceptInvitationPage } from "../features/workspaces/AcceptInvitationPage";
 import { ConnectionsPage } from "../features/workspaces/ConnectionsPage";
 import { WorkspacePage } from "../features/workspaces/WorkspacePage";
@@ -22,7 +29,18 @@ export const routes: RouteObject[] = [
       { path: "w/:wid", element: <WorkspacePage /> },
       { path: "w/:wid/connections", element: <ConnectionsPage /> },
       { path: "p/:pid", element: <ProjectPage /> },
-      { path: "p/:pid/builds/:bid", element: <BuildPage /> },
+      {
+        path: "p/:pid/builds/:bid",
+        element: <BuildPage />,
+        children: [
+          { index: true, element: <BuildOverview /> },
+          { path: "code", element: <BuildCode /> },
+          { path: "guide", element: <BuildGuide /> },
+          { path: "guide/:slug", element: <BuildGuide /> },
+          { path: "search", element: <BuildSearch /> },
+          { path: "review", element: <BuildReview /> },
+        ],
+      },
       { path: "invitations/accept", element: <AcceptInvitationPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],

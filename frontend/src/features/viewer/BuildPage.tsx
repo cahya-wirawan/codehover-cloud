@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router";
 
 import { ApiError } from "../../lib/api/client";
-import { api, formatUsd, TERMINAL } from "../../lib/api/resources";
+import { api, type Build, formatUsd, TERMINAL } from "../../lib/api/resources";
 import { CodeViewer } from "./CodeViewer";
 import { GuidePanel } from "./GuidePanel";
+import { ReviewPanel } from "./ReviewPanel";
+import { SearchPanel } from "./SearchPanel";
 import { pollInterval, streamingSupported, useBuildEvents } from "./useBuildEvents";
 
 const STATE_LABEL: Record<string, string> = {
@@ -27,6 +29,16 @@ const STATUS_LABEL: Record<string, string> = {
   budget_exhausted: "stopped: spending cap reached",
 };
 
+interface BuildContext {
+  build: Build;
+  base: string;
+  generation: boolean;
+  canWaive: boolean;
+}
+
+const useBuild = () => useOutletContext<BuildContext>();
+
+/** Build detail (02 S09) with the reading tabs of a ready build (S11-S14). */
 export function BuildPage() {
   const { pid = "", bid = "" } = useParams();
   const navigate = useNavigate();
@@ -43,6 +55,9 @@ export function BuildPage() {
   });
   const terminal = build.data ? TERMINAL.has(build.data.status) : false;
   useBuildEvents(bid, build.data !== undefined && !terminal, onUnavailable);
+  const project = useQuery({ queryKey: ["project", pid], queryFn: () => api.project(pid), enabled: pid !== "" });
+  const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
+  const role = workspaces.data?.items.find((w) => w.id === project.data?.workspace_id)?.role;
   const cancel = useMutation({
     mutationFn: () => api.cancelBuild(bid),
     onSuccess: (value) => client.setQueryData(["build", bid], value),
@@ -53,6 +68,10 @@ export function BuildPage() {
   });
   const data = build.data;
   const generation = data?.estimate_id !== null && data?.estimate_id !== undefined;
+  const base = `/p/${pid}/builds/${bid}`;
+  const error = cancel.error ?? retry.error;
+  const tab = ({ isActive }: { isActive: boolean }) =>
+    `rounded-lg px-3 py-1 ${isActive ? "bg-surface-muted font-medium" : "text-muted hover:text-foreground"}`;
 
   return (
     <section aria-labelledby="b-title">
@@ -64,7 +83,7 @@ export function BuildPage() {
             <strong className={data.status === "failed" || data.status === "budget_exhausted" ? "text-destructive" : ""}>
               {STATUS_LABEL[data.status] ?? data.status}
             </strong>
-            {data.cancel_requested_at && !TERMINAL.has(data.status) ? " · cancelling after the current step" : null}
+            {data.cancel_requested_at && !terminal ? " · cancelling after the current step" : null}
             {data.rejection_code ? <> · rejected by safety scan ({data.rejection_code})</> : null}
           </p>
           {generation ? (
@@ -74,48 +93,77 @@ export function BuildPage() {
             </p>
           ) : null}
           <div className="mt-3 flex gap-2">
-            {!TERMINAL.has(data.status) && !data.cancel_requested_at ? (
+            {!terminal && !data.cancel_requested_at ? (
               <button type="button" onClick={() => cancel.mutate()} disabled={cancel.isPending}
-                className="h-9 rounded-lg border border-border px-3">
-                Cancel build
-              </button>
+                className="h-9 rounded-lg border border-input-border px-3">Cancel build</button>
             ) : null}
-            {TERMINAL.has(data.status) ? (
+            {terminal ? (
               <button type="button" onClick={() => retry.mutate()} disabled={retry.isPending}
-                className="h-9 rounded-lg border border-border px-3">
-                Retry as a new build
-              </button>
+                className="h-9 rounded-lg border border-input-border px-3">Retry as a new build</button>
             ) : null}
           </div>
-          {cancel.error || retry.error ? (
+          {error ? (
             <p role="alert" className="mt-2 text-destructive">
-              {(cancel.error ?? retry.error) instanceof ApiError
-                ? (cancel.error ?? retry.error)?.message
-                : "The request failed."}
+              {error instanceof ApiError ? error.message : "The request failed."}
             </p>
           ) : null}
-          <ol className="mt-4 flex flex-wrap gap-2" aria-label="Stages">
-            {data.stages.map((s) => (
-              <li key={s.stage} className="rounded-lg border border-border bg-surface px-3 py-1">
-                {s.stage}: {STATE_LABEL[s.state] ?? s.state}
-                {s.error_code ? <span className="text-destructive"> ({s.error_code})</span> : null}
-              </li>
-            ))}
-          </ol>
-          {data.status === "ready" ? (
-            <>
-              <p className="mt-4 text-muted">
-                {data.counts.files} files · {data.counts.symbols} definitions ·{" "}
-                {generation ? "machine-written explanations; check the cited code." : "explanations are derived from source only (replay); check cited code."}
-              </p>
-              {generation ? <GuidePanel buildId={bid} /> : null}
-              <CodeViewer buildId={bid} />
-            </>
-          ) : null}
+          <nav aria-label="Build sections" className="mt-4 flex flex-wrap gap-1 border-b border-border pb-2">
+            <NavLink end to={base} className={tab}>Overview</NavLink>
+            {data.status === "ready" ? (
+              <>
+                <NavLink to={`${base}/code`} className={tab}>Code</NavLink>
+                {generation ? <NavLink to={`${base}/guide`} className={tab}>Guide</NavLink> : null}
+                <NavLink to={`${base}/search`} className={tab}>Search</NavLink>
+                {generation ? <NavLink to={`${base}/review`} className={tab}>Review</NavLink> : null}
+              </>
+            ) : null}
+          </nav>
+          <Outlet context={{ build: data, base, generation, canWaive: role === "admin" || role === "owner" } satisfies BuildContext} />
         </>
       ) : (
         <p role="status" className="mt-3 text-muted">Loading build…</p>
       )}
     </section>
   );
+}
+
+export function BuildOverview() {
+  const { build } = useBuild();
+  return (
+    <>
+      <ol className="mt-4 flex flex-wrap gap-2" aria-label="Stages">
+        {build.stages.map((s) => (
+          <li key={s.stage} className="rounded-lg border border-border bg-surface px-3 py-1">
+            {s.stage}: {STATE_LABEL[s.state] ?? s.state}
+            {s.error_code ? <span className="text-destructive"> ({s.error_code})</span> : null}
+          </li>
+        ))}
+      </ol>
+      {build.status === "ready" ? (
+        <p className="mt-4 text-muted">
+          {build.counts.files} files · {build.counts.symbols} definitions · prompts {build.prompt_version}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+export function BuildCode() {
+  const { build } = useBuild();
+  return <CodeViewer buildId={build.id} />;
+}
+
+export function BuildGuide() {
+  const { build, base } = useBuild();
+  return <GuidePanel buildId={build.id} base={base} />;
+}
+
+export function BuildSearch() {
+  const { build, base } = useBuild();
+  return <SearchPanel buildId={build.id} base={base} />;
+}
+
+export function BuildReview() {
+  const { build, canWaive } = useBuild();
+  return <ReviewPanel buildId={build.id} canWaive={canWaive} />;
 }

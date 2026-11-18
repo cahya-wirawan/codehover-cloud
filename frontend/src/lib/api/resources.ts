@@ -169,16 +169,50 @@ export interface FileView {
   id: string;
   path: string;
   start_line: number;
+  end_line?: number;
+  line_count?: number | null;
   lines: string[];
   symbols: FileSymbol[];
+  explanation?: {
+    status: string;
+    summary: string;
+    chunks: { start_line: number; end_line: number; summary: string; status: string; notes: { start_line: number; end_line: number; text: string }[] }[];
+  } | null;
 }
 export interface Related {
   id: string;
   name: string;
   kind: string;
   path: string;
+  file_id?: string;
+  start_line?: number;
   resolution: string;
   ambiguous: boolean;
+}
+export interface SearchHit {
+  kind: "symbol" | "file" | "guide";
+  ref_id: string;
+  name: string;
+  path: string | null;
+  line: number | null;
+  symbol_kind: string | null;
+  snippet: string;
+  basis: "exact_name" | "name_prefix" | "text";
+}
+export interface QualityCheck {
+  id: string;
+  slug: string;
+  claim_key: string;
+  claim_text: string;
+  citation: string;
+  path: string | null;
+  start_line: number;
+  end_line: number;
+  deterministic: "valid" | "invalid";
+  status: CheckStatus;
+  reason: string;
+  waived: boolean;
+  waived_reason: string | null;
 }
 export interface SymbolView {
   id: string;
@@ -239,6 +273,21 @@ export const api = {
   guide: (bid: string) => apiJson<GuideIndex>(`/builds/${bid}/guide`),
   guidePage: (bid: string, slug: string) => apiJson<GuidePage>(`/builds/${bid}/guide/${encodeURIComponent(slug)}`),
   quality: (bid: string) => apiJson<Quality>(`/builds/${bid}/quality`),
+  qualityChecks: (bid: string, status: string | null, cursor: string | null) => {
+    const params = new URLSearchParams({ limit: "100" });
+    if (status) params.set("status", status);
+    if (cursor) params.set("cursor", cursor);
+    return apiJson<Page<QualityCheck>>(`/builds/${bid}/quality/checks?${params.toString()}`);
+  },
+  waive: async (bid: string, claimKeys: string[], reason: string) =>
+    json<{ waived: string[] }>(await apiSend("POST", `/builds/${bid}/quality/waivers`, { claim_keys: claimKeys, reason })),
+  search: (bid: string, q: string, kind: string | null) => {
+    const params = new URLSearchParams({ q });
+    if (kind) params.set("kind", kind);
+    return apiJson<Page<SearchHit>>(`/builds/${bid}/search?${params.toString()}`);
+  },
+  fileWindow: (bid: string, fid: string, startLine: number) =>
+    apiJson<FileView>(`/builds/${bid}/files/${fid}?start_line=${startLine}`),
   tree: (bid: string, path: string) =>
     apiJson<Page<TreeEntry>>(`/builds/${bid}/tree?path=${encodeURIComponent(path)}`),
   file: (bid: string, fid: string) => apiJson<FileView>(`/builds/${bid}/files/${fid}`),

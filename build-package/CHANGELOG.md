@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-11-18
+
+### Added
+
+- 05, 06: build-scoped search (`search_documents`, `GET /builds/{bid}/search`) with ranking by exact name, name prefix and weighted text, and relations carrying file IDs and lines.
+- 02: the M3 code view: an accessible line renderer with deep links, hover preview, pin, Esc and focus return, the build tabs (Overview, Code, Guide, Search, Review), and admin waivers in Review. Adopting CodeMirror 6 is recorded as open.
+
 ## [0.5.6] - 2026-11-18
 
 ### Security

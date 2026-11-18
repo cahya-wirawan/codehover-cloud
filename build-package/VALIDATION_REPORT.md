@@ -1,6 +1,13 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.6
+Date: 2026-11-18 · Package version 0.5.7
+
+0.5.7 records T14. Search integration tests cover:
+- exact-name, prefix and docstring-text hits in that order;
+- kind filters, and inert LIKE and tsquery characters;
+- excluded secrets that are never searchable (A07), and 404 for other tenants (A04).
+
+A schema-wide tenancy test requires FORCE RLS and a runtime tenant policy on every table with `workspace_id`, so new tables cannot ship without them. Frontend tests cover the build tabs, deep-linked search results, the `/` shortcut, Review with admin-only waivers, and the pinned definition card taking focus, closing on Esc and returning focus. 273 backend and 12 frontend tests pass.
 
 0.5.6 fixes the stream-slot leak: a test runs more aborted responses than the session limit allows, and every slot comes back; removing the fix makes it fail.
 
