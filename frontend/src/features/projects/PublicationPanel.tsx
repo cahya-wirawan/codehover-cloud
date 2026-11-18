@@ -68,8 +68,8 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
   const needsAck = quality.data?.requires_acknowledgment ?? false;
 
   return (
-    <section aria-labelledby="pub-title" className="mt-8 rounded-lg border border-border bg-surface p-4">
-      <h2 id="pub-title" className="text-lg font-medium">Publication</h2>
+    <section aria-labelledby="pub-title" className="page-section">
+      <h2 id="pub-title" className="section-title">Publication</h2>
       {current ? (
         <p className="mt-1">
           Published build <span className="font-mono">{current.commit_sha.slice(0, 12)}</span>,{" "}
@@ -92,7 +92,7 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
             <label className="flex max-w-md flex-col gap-1">
               Build
               <select value={chosen} onChange={(e) => { setBuildId(e.target.value); setAcknowledged(false); }}
-                className="h-9 rounded-lg border border-input-border bg-surface px-2">
+                className="field">
                 {ready.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.commit_sha.slice(0, 12)} · {new Date(b.created_at).toLocaleString()}
@@ -132,7 +132,7 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
                 <label className="mt-2 flex max-w-md flex-col gap-1">
                   Type the project name <strong>{project.name}</strong> to confirm
                   <input value={confirmation} onChange={(e) => setConfirmation(e.target.value)}
-                    className="h-9 rounded-lg border border-input-border bg-surface px-2" />
+                    className="field" />
                 </label>
               </div>
             ) : null}
@@ -144,7 +144,7 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
             ) : null}
             <button type="submit"
               disabled={publish.isPending || !chosen || Boolean(blocked) || (needsAck && !acknowledged) || (visibility === "public" && (!slug.trim() || confirmation !== project.name))}
-              className="h-10 rounded-lg bg-primary px-4 font-medium text-primary-foreground disabled:opacity-60">
+              className="btn btn-primary btn-lg">
               {current ? "Update publication" : "Publish"}
             </button>
             {publish.error ? <p role="alert" className="text-destructive">{message(publish.error, "Could not publish.")}</p> : null}
@@ -162,11 +162,11 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
             <div className="flex flex-wrap items-center gap-2">
               <span>Stop serving this site now? Readers lose access immediately.</span>
               <button type="button" onClick={() => unpublish.mutate()} disabled={unpublish.isPending}
-                className="h-9 rounded-lg border border-destructive px-3 text-destructive">Stop publishing {project.name}</button>
-              <button type="button" onClick={() => setConfirmStop(false)} className="h-9 rounded-lg border border-input-border px-3">Keep it</button>
+                className="btn btn-danger">Stop publishing {project.name}</button>
+              <button type="button" onClick={() => setConfirmStop(false)} className="btn">Keep it</button>
             </div>
           ) : (
-            <button type="button" onClick={() => setConfirmStop(true)} className="h-9 rounded-lg border border-input-border px-3">
+            <button type="button" onClick={() => setConfirmStop(true)} className="btn">
               Stop publishing…
             </button>
           )}

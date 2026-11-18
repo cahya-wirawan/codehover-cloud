@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { resetCsrfToken } from "../lib/api/client";
@@ -105,7 +105,8 @@ test("sign out sends the CSRF token and returns to the login page", async () => 
     "POST /api/v1/auth/logout": { status: 204, body: null },
   });
   const router = renderAt("/");
-  (await screen.findByRole("button", { name: "Sign out" })).click();
+  fireEvent.keyDown(await screen.findByRole("button", { name: /Account menu/ }), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
   await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
   const logout = calls.find((c) => c.key === "POST /api/v1/auth/logout");
   expect(new Headers(logout?.init?.headers).get("X-CSRF-Token")).toBe("csrf-abc");

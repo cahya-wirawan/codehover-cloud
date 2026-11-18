@@ -21,6 +21,13 @@ Use semantic CSS custom properties mapped through Tailwind; verify contrast per 
 
 Desktop shell: sidebar 232px, top bar 64px, max-width content 1440px with 24–32px gutters. Project list is a compact table with repository, build, age, visibility and next action. Primary action “Create project” or “Build documentation” appears once per context. Build overview groups timeline, spend/coverage and safe diagnostics. Viewer is resizable tree/code/details; at <1024px detail pane becomes sheet, at <768px tree is drawer. Mobile hovers open a bottom sheet via tap. Source code keeps LTR regardless of prose locale.
 
+As implemented in the design pass:
+- Owned shadcn/ui-style components in `frontend/src/components/ui/` built on Radix (`radix-ui`): Button, Badge, Input/Select/Field, DropdownMenu, AlertDialog, Tooltip, Skeleton, Section/PageHeader/EmptyState, and Sonner toasts. Resizable panes use `react-resizable-panels`.
+- Lucide icons, aria-hidden, beside words.
+- IBM Plex Sans and Mono, self-hosted through `@fontsource` (no font CDN, so the CSP stays `self`).
+- Syntax colours derived from the palette: keywords in the accent, strings in success, numbers in warning, comments muted.
+- The app shell: a 232 px sidebar with the workspace switcher and navigation, a 64 px top bar with breadcrumbs and the account menu (theme choice kept as the only stored preference), and a drawer below 1024 px.
+
 shadcn/ui primitives: Button, Dialog/AlertDialog, DropdownMenu, Tabs, Sheet, Command, Tooltip for noninteractive hints, Popover for citation previews, custom accessible pinned symbol dialog, Table, Badge, Progress, Skeleton, Sonner toast, Resizable panes. Use Lucide 16/20px icons with text labels for unfamiliar actions. Status badges combine icon + words; supported/partial/unsupported/unchecked labels are never color-only. Charts need useful axes and data table fallback; no decorative circular progress.
 
 Interaction timing 120–180ms; respect prefers-reduced-motion, no page entrance animation delaying work. Focus ring 2px primary plus offset; target size ≥24px and prefer 40px controls. Destructive dialogs describe consequence and specific project. Toasts acknowledge success; persistent problems are inline. Forms have visible labels, field-level errors and stable layout. Command shortcuts `/` search, Ctrl/Cmd+K global, Esc close, Enter pin; do not intercept typing in inputs/code selection. Empty states name the next useful action. Copywriting says “AI-generated; check cited source” and “Matched by name” precisely, without unsupported accuracy claims.

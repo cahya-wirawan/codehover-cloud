@@ -37,7 +37,7 @@ export function ReviewPanel({ buildId, canWaive }: { buildId: string; canWaive: 
 
   return (
     <section aria-labelledby="review-title" className="mt-4">
-      <h2 id="review-title" className="text-lg font-medium">Review</h2>
+      <h2 id="review-title" className="section-title">Review</h2>
       {q ? (
         <>
           <p className="mt-1">
@@ -62,7 +62,7 @@ export function ReviewPanel({ buildId, canWaive }: { buildId: string; canWaive: 
       <label className="mt-4 flex max-w-xs flex-col gap-1">
         Show claims
         <select value={status ?? ""} onChange={(e) => setStatus((e.target.value || null) as CheckStatus | null)}
-          className="h-9 rounded-lg border border-input-border bg-surface px-2">
+          className="field">
           <option value="">All</option>
           <option value="unsupported">Unsupported</option>
           <option value="partial">Partly supported</option>
@@ -71,7 +71,7 @@ export function ReviewPanel({ buildId, canWaive }: { buildId: string; canWaive: 
           <option value="supported">Supported</option>
         </select>
       </label>
-      <ul className="mt-3 divide-y divide-border rounded-lg border border-border bg-surface">
+      <ul className="mt-3 panel divide-y divide-border">
         {checks.data?.items.map((c) => {
           const waivable = canWaive && !c.waived && (c.status === "unsupported" || c.status === "partial");
           return (

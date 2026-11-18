@@ -21,7 +21,7 @@ export function ServiceStatus() {
   if (error) {
     const requestId = error instanceof ApiError ? error.requestId : null;
     return (
-      <div role="alert" className="rounded-lg border border-border bg-surface p-4">
+      <div role="alert" className="panel p-4">
         <p className="font-medium text-destructive">API unavailable</p>
         <p className="mt-1 text-muted">
           The service did not respond as expected.

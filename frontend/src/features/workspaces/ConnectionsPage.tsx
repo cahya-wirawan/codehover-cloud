@@ -1,5 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router";
+import { GitBranch, Plus } from "lucide-react";
+
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { EmptyState, PageHeader } from "../../components/ui/section";
 
 import { api } from "../../lib/api/resources";
 
@@ -25,25 +30,39 @@ export function ConnectionsPage() {
   });
 
   return (
-    <section aria-labelledby="c-title" className="max-w-2xl">
-      <h1 id="c-title" className="text-2xl font-medium">GitHub connections</h1>
-      <p className="mt-2 text-muted">
-        A connection grants this workspace read access only to repositories you can read on GitHub.
-      </p>
-      {params.get("connected") ? <p role="status" className="mt-4 text-success">GitHub connected.</p> : null}
-      {error ? <p role="alert" className="mt-4 text-destructive">{ERRORS[error] ?? ERRORS.provider}</p> : null}
-      <ul className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface">
-        {connections.data?.items.map((c) => (
-          <li key={c.id} className="flex items-center justify-between p-3">
-            <span className="font-medium">{c.account}</span>
-            <span className="text-muted">{c.status}</span>
-          </li>
-        ))}
-      </ul>
-      <button type="button" onClick={() => install.mutate()} disabled={install.isPending}
-        className="mt-4 h-10 rounded-lg bg-primary px-4 font-medium text-primary-foreground">
-        Connect GitHub
-      </button>
+    <section aria-labelledby="c-title" className="max-w-3xl">
+      <PageHeader
+        title={<span id="c-title">GitHub connections</span>}
+        description="A connection grants this workspace read access only to the repositories you choose on GitHub."
+        actions={
+          <Button variant="primary" onClick={() => install.mutate()} disabled={install.isPending}>
+            <Plus aria-hidden="true" /> Connect GitHub
+          </Button>
+        }
+      />
+      {params.get("connected") ? (
+        <p role="status" className="mb-4 text-success">
+          GitHub connected.
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="mb-4 text-destructive">
+          {ERRORS[error] ?? ERRORS.provider}
+        </p>
+      ) : null}
+      {connections.data?.items.length ? (
+        <ul className="panel divide-y divide-border">
+          {connections.data.items.map((c) => (
+            <li key={c.id} className="flex items-center gap-3 px-4 py-3">
+              <GitBranch aria-hidden="true" className="size-4 text-muted" />
+              <span className="flex-1 font-medium">{c.account}</span>
+              <Badge tone={c.status === "active" ? "success" : "warning"}>{c.status}</Badge>
+            </li>
+          ))}
+        </ul>
+      ) : connections.data ? (
+        <EmptyState title="No connections yet">Connect GitHub to choose the repositories this workspace may read.</EmptyState>
+      ) : null}
     </section>
   );
 }

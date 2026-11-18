@@ -48,18 +48,63 @@
   var main = document.getElementById("main");
   var details = document.getElementById("details");
 
-  function showSymbol(id) {
+  // The definition card floats at its name, like the hosted viewer (02 "Hover card"): hovering previews
+  // it after 200 ms, clicking pins it (a non-modal dialog with a Close button), Esc closes it.
+  var card = { anchor: null, pinned: false, openTimer: 0, closeTimer: 0 };
+  function place() {
+    if (!card.anchor || details.hidden) return;
+    var rect = card.anchor.getBoundingClientRect();
+    var width = Math.min(480, window.innerWidth - 24);
+    details.style.width = width + "px";
+    details.style.left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)) + "px";
+    var below = window.innerHeight - rect.bottom;
+    if (below < 260 && rect.top > below) {
+      details.style.top = "";
+      details.style.bottom = (window.innerHeight - rect.top + 6) + "px";
+    } else {
+      details.style.bottom = "";
+      details.style.top = (rect.bottom + 6) + "px";
+    }
+  }
+  function hideSymbol() {
+    var anchor = card.anchor, wasPinned = card.pinned;
+    details.hidden = true;
+    details.textContent = "";
+    details.removeAttribute("role");
+    details.removeAttribute("aria-modal");
+    details.setAttribute("aria-label", "Definition details");
+    card.anchor = null;
+    card.pinned = false;
+    if (wasPinned && anchor) anchor.focus();
+  }
+  function showSymbol(id, anchor, pinned) {
     var s = symbolById[id];
     details.textContent = "";
-    if (!s) return;
-    details.appendChild(el("h2", s.name));
-    details.appendChild(el("p", s.kind + " · " + byFile[s.file_id].path + ":" + s.start_line, "muted"));
-    if (s.signature) details.appendChild(el("pre", s.signature, "code"));
-    var card = s.card || {};
-    if (card.summary) details.appendChild(el("p", card.summary));
-    if (card.details) details.appendChild(el("p", card.details, "muted"));
-    (card.params || []).forEach(function (p) { details.appendChild(el("p", p.name + " — " + p.description)); });
-    if (card.returns) details.appendChild(el("p", "Returns: " + card.returns));
+    if (!s) { hideSymbol(); return; }
+    card.anchor = anchor || main.querySelector('[data-symbol="' + id + '"]');
+    card.pinned = !!pinned;
+    details.hidden = false;
+    details.setAttribute("aria-label", s.kind + " " + s.name);
+    if (card.pinned) { details.setAttribute("role", "dialog"); details.setAttribute("aria-modal", "false"); }
+    var head = el("div", null, "card-head");
+    var title = el("h2", s.name);
+    title.tabIndex = -1;
+    head.appendChild(el("span", s.kind, "badge"));
+    head.appendChild(title);
+    if (card.pinned) {
+      var close = el("button", "Close", "close");
+      close.type = "button";
+      close.addEventListener("click", hideSymbol);
+      head.appendChild(close);
+    }
+    details.appendChild(head);
+    details.appendChild(el("p", byFile[s.file_id].path + ":" + s.start_line, "muted small"));
+    if (s.signature) details.appendChild(el("pre", s.signature, "sig"));
+    var info = s.card || {};
+    if (info.summary) details.appendChild(el("p", info.summary));
+    if (info.details) details.appendChild(el("p", info.details, "muted"));
+    (info.params || []).forEach(function (p) { details.appendChild(el("p", p.name + " — " + p.description, "small")); });
+    if (info.returns) details.appendChild(el("p", "Returns: " + info.returns, "small"));
     if (s.uses.length) {
       details.appendChild(el("h3", "Uses (matched by name)"));
       s.uses.forEach(function (target) {
@@ -67,7 +112,20 @@
         if (t) details.appendChild(linkButton(t.name, function () { go("file=" + t.file_id + "&line=" + t.start_line + "&symbol=" + t.id); }));
       });
     }
+    if (!card.anchor) details.classList.add("docked"); else details.classList.remove("docked");
+    place();
+    if (card.pinned) title.focus();
   }
+  details.hidden = true;
+  details.addEventListener("mouseenter", function () { window.clearTimeout(card.closeTimer); });
+  details.addEventListener("mouseleave", function () {
+    if (!card.pinned) card.closeTimer = window.setTimeout(hideSymbol, 150);
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !details.hidden) hideSymbol();
+  });
+  window.addEventListener("scroll", place, true);
+  window.addEventListener("resize", place);
 
   function showFile(id, line, end, symbol) {
     var f = byFile[id];
@@ -88,8 +146,18 @@
         // Only the identifier is the control, so its visible text is part of its name (WCAG 2.5.3).
         var at = nameAt(text, s.name);
         var label = "Explain " + s.kind + " " + s.name;
-        var b = linkButton(at < 0 ? text : s.name, function () { showSymbol(s.id); });
+        var b = linkButton(at < 0 ? text : s.name, function () { showSymbol(s.id, b, true); });
         b.classList.add("def");
+        b.setAttribute("data-symbol", s.id);
+        b.setAttribute("aria-haspopup", "dialog");
+        b.addEventListener("mouseenter", function () {
+          window.clearTimeout(card.closeTimer);
+          if (!card.pinned) card.openTimer = window.setTimeout(function () { showSymbol(s.id, b, false); }, 200);
+        });
+        b.addEventListener("mouseleave", function () {
+          window.clearTimeout(card.openTimer);
+          if (!card.pinned) card.closeTimer = window.setTimeout(hideSymbol, 150);
+        });
         b.setAttribute("aria-label", at < 0 ? text.trim() + ": " + label : label);
         if (at >= 0) row.appendChild(document.createTextNode(text.slice(0, at)));
         row.appendChild(b);
@@ -101,7 +169,8 @@
     });
     main.appendChild(pre);
     if (line) { var target = document.getElementById("L" + line); if (target) target.scrollIntoView({ block: "center" }); }
-    if (symbol) showSymbol(symbol);
+    if (symbol) showSymbol(symbol, null, true);
+    else hideSymbol();
   }
 
   // Index of the first whole-word occurrence of name in text, or -1.
@@ -116,6 +185,7 @@
   var CITATION = /\[\[([0-9a-f-]{36}):(\d+)-(\d+)\]\]/g;
   function showGuide(slug) {
     var page = data.guide.filter(function (p) { return p.slug === slug; })[0];
+    hideSymbol();
     main.textContent = "";
     if (!page) { main.appendChild(el("p", "Page not in this export.")); return; }
     var prose = el("div", null, "prose");

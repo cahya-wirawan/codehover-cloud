@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { routes } from "../../app/routes";
@@ -49,7 +49,7 @@ test("ready build shows stages, file tree, source and a definition card", async 
     },
   });
   renderAt("/p/p1/builds/b1");
-  expect(await screen.findByText(/acquire: Done/)).toBeInTheDocument();
+  expect(await screen.findByRole("list", { name: "Stages" })).toHaveTextContent(/acquire: Done/);
   fireEvent.click(await screen.findByRole("link", { name: "Code" }));
   fireEvent.click(await screen.findByRole("button", { name: "app.py" }));
   const trigger = await screen.findByRole("button", { name: "Explain function main" });
@@ -57,9 +57,10 @@ test("ready build shows stages, file tree, source and a definition card", async 
   expect(trigger).toHaveTextContent(/^main$/);
   expect(document.getElementById("L1")).toHaveTextContent(/^1def main\(\):$/);
   fireEvent.click(trigger);
-  const card = await screen.findByRole("dialog", { name: "function main" });
-  expect(card).toHaveTextContent("Entry point.");
-  expect(card).toHaveTextContent("helper · util.py · matched by name");
+  const card = await screen.findByRole("dialog", { name: "function main" }); // floats at the name
+  await waitFor(() => expect(card).toHaveTextContent("Entry point."));
+  expect(within(card).getByRole("button", { name: "helper" })).toBeInTheDocument();
+  expect(card).toHaveTextContent("util.py · matched by name");
   await waitFor(() => expect(screen.getByRole("heading", { name: "main" })).toHaveFocus()); // pinning moves focus
   fireEvent.keyDown(card, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

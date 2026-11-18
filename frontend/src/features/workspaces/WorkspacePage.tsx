@@ -2,11 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { ConfirmDeletion } from "../../components/ConfirmDeletion";
-import { SupportAccessPanel } from "./SupportAccessPanel";
+import { FolderGit2, GitBranch, Plus } from "lucide-react";
 
+import { ConfirmDeletion } from "../../components/ConfirmDeletion";
+import { Button } from "../../components/ui/button";
+import { Field, Input, Select } from "../../components/ui/input";
+import { EmptyState, PageHeader, Section } from "../../components/ui/section";
+import { Skeleton } from "../../components/ui/skeleton";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
+import { SupportAccessPanel } from "./SupportAccessPanel";
 
 export function WorkspacePage() {
   const { wid = "" } = useParams();
@@ -39,67 +44,122 @@ export function WorkspacePage() {
   });
 
   return (
-    <section aria-labelledby="w-title" className="max-w-3xl">
-      <div className="flex items-center justify-between">
-        <h1 id="w-title" className="text-2xl font-medium">Projects</h1>
-        <Link to={`/w/${wid}/connections`} className="text-primary underline">GitHub connections</Link>{" "}
-        · <Link to={`/w/${wid}/audit`} className="text-primary underline">Audit log</Link>
-      </div>
-      <ul className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface">
-        {projects.data?.items.map((p) => (
-          <li key={p.id} className="flex items-center justify-between p-3">
-            <Link to={`/p/${p.id}`} className="font-medium text-primary">{p.name}</Link>
-            <span className="font-mono text-muted">{p.owner}/{p.repository}</span>
-          </li>
-        ))}
-        {projects.data && projects.data.items.length === 0 ? <li className="p-3 text-muted">No projects yet.</li> : null}
-      </ul>
-      <h2 className="mt-8 text-lg font-medium">New project</h2>
-      {active.length === 0 ? (
-        <p className="mt-2 text-muted">Connect GitHub first to choose a repository.</p>
+    <section aria-labelledby="w-title" className="max-w-5xl">
+      <PageHeader
+        title={<span id="w-title">Projects</span>}
+        description={workspace ? `Everything ${workspace.name} has built from its repositories.` : undefined}
+      />
+      {projects.isPending ? (
+        <div className="flex flex-col gap-2" aria-hidden="true">
+          <Skeleton className="h-12" />
+          <Skeleton className="h-12" />
+        </div>
+      ) : projects.data?.items.length ? (
+        <div className="panel overflow-x-auto">
+          <table className="w-full text-left">
+            <caption className="sr-only">Projects</caption>
+            <thead>
+              <tr className="border-b border-border text-xs text-muted">
+                <th scope="col" className="px-4 py-2.5 font-medium">Project</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">Repository</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">Tracked ref</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {projects.data.items.map((p) => (
+                <tr key={p.id} className="hover:bg-surface-muted/50">
+                  <td className="px-4 py-3">
+                    <Link to={`/p/${p.id}`} className="font-medium hover:text-primary">
+                      {p.name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="flex items-center gap-1.5 font-mono text-[13px] text-muted">
+                      <FolderGit2 aria-hidden="true" className="size-4" />
+                      {p.owner}/{p.repository}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="flex items-center gap-1.5 font-mono text-[13px] text-muted">
+                      <GitBranch aria-hidden="true" className="size-4" />
+                      {p.tracked_ref}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <form
-          className="mt-3 grid gap-3 sm:grid-cols-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate();
-          }}
-        >
-          <label className="flex flex-col gap-1">
-            <span>Connection</span>
-            <select value={connectionId} onChange={(e) => setConnectionId(e.target.value)} required
-              className="h-10 rounded-lg border border-input-border bg-surface px-3">
-              <option value="">Choose…</option>
-              {active.map((c) => <option key={c.id} value={c.id}>{c.account}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span>Repository</span>
-            <select value={repositoryId} onChange={(e) => setRepositoryId(e.target.value)} required
-              className="h-10 rounded-lg border border-input-border bg-surface px-3">
-              <option value="">Choose…</option>
-              {repos.data?.items.map((r) => <option key={r.id} value={r.id}>{r.owner}/{r.name}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span>Name</span>
-            <input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)}
-              className="h-10 rounded-lg border border-input-border bg-surface px-3" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span>Address</span>
-            <input required pattern="[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?" value={slug} onChange={(e) => setSlug(e.target.value)}
-              className="h-10 rounded-lg border border-input-border bg-surface px-3" />
-          </label>
-          <button type="submit" disabled={create.isPending}
-            className="h-10 rounded-lg bg-primary px-4 font-medium text-primary-foreground sm:col-span-2">Create project</button>
-          {create.error ? (
-            <p role="alert" className="text-destructive sm:col-span-2">
-              {create.error instanceof ApiError ? create.error.message : "Could not create the project."}
-            </p>
-          ) : null}
-        </form>
+        <EmptyState title="No projects yet">
+          {active.length ? "Create one below from a connected repository." : "Connect a GitHub repository first, then create a project from it."}
+        </EmptyState>
       )}
+
+      <Section
+        title="New project"
+        description="A project follows one repository and branch; each build pins one exact commit."
+        className="mt-10"
+      >
+        {active.length === 0 ? (
+          <p className="text-muted">
+            <Link to={`/w/${wid}/connections`} className="text-primary underline underline-offset-2">
+              Connect GitHub
+            </Link>{" "}
+            to choose a repository.
+          </p>
+        ) : (
+          <form
+            className="grid gap-4 sm:grid-cols-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              create.mutate();
+            }}
+          >
+            <Field label="Connection">
+              <Select value={connectionId} onChange={(e) => setConnectionId(e.target.value)} required>
+                <option value="">Choose…</option>
+                {active.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.account}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Repository">
+              <Select value={repositoryId} onChange={(e) => setRepositoryId(e.target.value)} required>
+                <option value="">Choose…</option>
+                {repos.data?.items.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.owner}/{r.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Name">
+              <Input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field label="Address" hint="Lowercase letters, digits and hyphens.">
+              <Input
+                required
+                pattern="[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value.toLowerCase())}
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Button type="submit" variant="primary" disabled={create.isPending}>
+                <Plus aria-hidden="true" /> Create project
+              </Button>
+            </div>
+            {create.error ? (
+              <p role="alert" className="text-destructive sm:col-span-2">
+                {create.error instanceof ApiError ? create.error.message : "Could not create the project."}
+              </p>
+            ) : null}
+          </form>
+        )}
+      </Section>
       {workspace?.role === "admin" || workspace?.role === "owner" ? <SupportAccessPanel workspaceId={wid} /> : null}
       {workspace?.role === "owner" ? (
         <ConfirmDeletion

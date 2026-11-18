@@ -24,7 +24,12 @@ const PAYLOADS = [
 const HOSTILE = PAYLOADS.join(" ");
 
 function assertInert(root: ParentNode) {
-  expect(root.querySelector("script, img, svg, iframe, object, embed, style, form")).toBeNull();
+  expect(root.querySelector("script, img, iframe, object, embed, style, form")).toBeNull();
+  // The only SVGs are our own decorative icons (Lucide, hidden from assistive technology).
+  for (const svg of Array.from(root.querySelectorAll("svg"))) {
+    expect(svg.getAttribute("class") ?? "").toMatch(/\blucide\b/);
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+  }
   for (const element of Array.from(root.querySelectorAll("*"))) {
     for (const attribute of Array.from(element.attributes)) {
       expect(attribute.name.startsWith("on")).toBe(false);

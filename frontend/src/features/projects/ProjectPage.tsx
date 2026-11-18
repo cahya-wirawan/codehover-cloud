@@ -2,9 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { ConfirmDeletion } from "../../components/ConfirmDeletion";
+import { CircleCheck, FolderGit2, GitBranch, Play, RefreshCw } from "lucide-react";
+
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { EmptyState, PageHeader, Section } from "../../components/ui/section";
+import { Skeleton } from "../../components/ui/skeleton";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 import { GenerationPanel } from "./GenerationPanel";
+import { StatusBadge } from "../viewer/StatusBadge";
 import { PublicationPanel } from "./PublicationPanel";
 
 const FRESHNESS: Record<string, string> = {
@@ -37,47 +44,90 @@ export function ProjectPage() {
     },
   });
 
+  const fresh = freshness.data;
   return (
-    <section aria-labelledby="p-title" className="max-w-3xl">
-      <h1 id="p-title" className="text-2xl font-medium">{project.data?.name ?? "Project"}</h1>
-      {freshness.data ? (
-        <p className="mt-1" role="status">
-          {FRESHNESS[freshness.data.state]}
-          {freshness.data.state === "unknown" && freshness.data.last_observed_at
-            ? ` Last seen ${freshness.data.last_observed_sha?.slice(0, 12)} at ${new Date(freshness.data.last_observed_at).toLocaleString()}.`
-            : null}
-          {freshness.data.state === "update_available" && freshness.data.latest_sha
-            ? ` Latest commit ${freshness.data.latest_sha.slice(0, 12)}.`
-            : null}
-        </p>
-      ) : null}
-      {project.data ? (
-        <p className="mt-1 font-mono text-muted">
-          {project.data.owner}/{project.data.repository} · {project.data.tracked_ref}
-        </p>
-      ) : null}
-      <button type="button" onClick={() => start.mutate()} disabled={start.isPending}
-        className="mt-4 h-10 rounded-lg border border-border px-4 font-medium">
-        Free source-only build
-      </button>
-      <p className="mt-1 text-sm text-muted">Cards from docstrings and signatures; no model, no cost.</p>
+    <section aria-labelledby="p-title" className="max-w-5xl">
+      <PageHeader
+        title={<span id="p-title">{project.data?.name ?? "Project"}</span>}
+        meta={
+          project.data ? (
+            <>
+              <span className="flex items-center gap-1.5 font-mono text-[13px]">
+                <FolderGit2 aria-hidden="true" className="size-4" />
+                {project.data.owner}/{project.data.repository}
+              </span>
+              <span className="flex items-center gap-1.5 font-mono text-[13px]">
+                <GitBranch aria-hidden="true" className="size-4" />
+                {project.data.tracked_ref}
+              </span>
+              {fresh ? (
+                <Badge
+                  role="status"
+                  tone={fresh.state === "current" ? "success" : fresh.state === "update_available" ? "warning" : "neutral"}
+                  icon={fresh.state === "current" ? <CircleCheck aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
+                  title={FRESHNESS[fresh.state]}
+                >
+                  {FRESHNESS[fresh.state]}
+                  {fresh.state === "unknown" && fresh.last_observed_at
+                    ? ` Last seen ${fresh.last_observed_sha?.slice(0, 12)} at ${new Date(fresh.last_observed_at).toLocaleString()}.`
+                    : null}
+                  {fresh.state === "update_available" && fresh.latest_sha ? ` Latest commit ${fresh.latest_sha.slice(0, 12)}.` : null}
+                </Badge>
+              ) : null}
+            </>
+          ) : null
+        }
+        actions={
+          <div className="flex flex-col items-end gap-1">
+            <Button variant="primary" onClick={() => start.mutate()} disabled={start.isPending}>
+              <Play aria-hidden="true" /> Free source-only build
+            </Button>
+            <span className="text-xs text-muted">Cards from docstrings and signatures; no model, no cost.</span>
+          </div>
+        }
+      />
       {start.error ? (
-        <p role="alert" className="mt-3 text-destructive">
+        <p role="alert" className="mb-4 text-destructive">
           {start.error instanceof ApiError ? start.error.message : "Could not start the build."}
         </p>
       ) : null}
+      <Section title="Builds" description="Each build reads one exact commit. Open a ready build to browse its code and guide.">
+        {builds.data?.items.length ? (
+          <div className="panel overflow-x-auto">
+            <table className="w-full text-left">
+              <caption className="sr-only">Builds</caption>
+              <thead>
+                <tr className="border-b border-border text-xs text-muted">
+                  <th scope="col" className="px-4 py-2.5 font-medium">Commit</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Status</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Started</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {builds.data.items.map((b) => (
+                  <tr key={b.id} className="hover:bg-surface-muted/50">
+                    <td className="px-4 py-3">
+                      <Link to={`/p/${pid}/builds/${b.id}`} className="font-mono text-[13px] font-medium hover:text-primary">
+                        {b.commit_sha.slice(0, 12)}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={b.status} />
+                    </td>
+                    <td className="px-4 py-3 text-muted">{new Date(b.created_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : builds.data ? (
+          <EmptyState title="No builds yet">Start a free source-only build, or estimate one with explanations below.</EmptyState>
+        ) : (
+          <Skeleton className="h-24" />
+        )}
+      </Section>
       {project.data ? <GenerationPanel projectId={pid} workspaceId={project.data.workspace_id} /> : null}
       {project.data ? <PublicationPanel project={project.data} canPublish={role === "admin" || role === "owner"} /> : null}
-      <h2 className="mt-8 text-lg font-medium">Builds</h2>
-      <ul className="mt-3 divide-y divide-border rounded-lg border border-border bg-surface">
-        {builds.data?.items.map((b) => (
-          <li key={b.id} className="flex items-center justify-between p-3">
-            <Link to={`/p/${pid}/builds/${b.id}`} className="font-mono text-primary">{b.commit_sha.slice(0, 12)}</Link>
-            <span className="text-muted">{b.status}</span>
-          </li>
-        ))}
-        {builds.data && builds.data.items.length === 0 ? <li className="p-3 text-muted">No builds yet.</li> : null}
-      </ul>
       {project.data && (role === "admin" || role === "owner") ? (
         <ConfirmDeletion
           title="Delete project"

@@ -1,6 +1,11 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.22
+Date: 2026-11-18 · Package version 0.5.23
+
+0.5.23 records the design pass:
+- The Playwright journey passes with axe (WCAG 2.1 A/AA) on every screen in both light and dark themes. It found and fixed low-contrast line numbers.
+- Unit tests cover the floating card: it opens at the name, pinning moves focus to its heading, and Esc returns focus to the name. The XSS corpus passes for the new viewer and the export viewer; the only SVGs are aria-hidden Lucide icons.
+- Screenshots of the light and dark desktop project, build, code with hover and pinned cards, search, audit and account pages, and the 390 px phone reader, were reviewed during implementation (17's review artifacts).
 
 0.5.22 fixes two defects found by building this project's own engine package in the local demo.
 - Symbol keys collided across files: the index stage failed on `extract` defined in two modules. A regression test now builds two files that both define `main` and `Tool.run`.

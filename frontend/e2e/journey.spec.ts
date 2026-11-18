@@ -75,7 +75,7 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   await expect(page.getByText("Cost range")).toBeVisible();
   await accessible(page, "project with estimate");
   await page.getByRole("button", { name: "Start build" }).click();
-  await expect(page.getByText(/status ready/)).toBeVisible({ timeout: 90_000 }); // followed over SSE
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible({ timeout: 90_000 }); // followed over SSE
   const buildUrl = page.url();
   await accessible(page, "build overview");
 
@@ -149,7 +149,7 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   await accessible(page, "public publication");
   await visitor.reload();
   await expect(visitor.getByRole("heading", { name: "API" })).toBeVisible();
-  await expect(visitor.getByText(/public · AI-generated|public · explanations/)).toBeVisible();
+  await expect(visitor.getByText("public", { exact: true })).toBeVisible();
   await accessible(visitor, "public site");
   expect((await visitor.request.get(`/api/v1/builds/${buildUrl.split("/builds/")[1]}`)).status()).toBe(401);
 
@@ -190,7 +190,8 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   await expect(reader.getByRole("heading", { name: "API", level: 1 })).toBeVisible();
   await reader.getByRole("button", { name: "src/app.py" }).click();
   await reader.getByRole("button", { name: "Explain function main" }).click();
-  await expect(reader.getByRole("complementary", { name: "Definition details" })).toContainText("Entry point.");
+  const offlineCard = reader.getByRole("dialog", { name: "function main" }); // floats at the name, pinned
+  await expect(offlineCard).toContainText("Entry point.");
   expect(blocked).toEqual([]); // the export loads nothing from the network
   await accessible(reader, "offline export");
 

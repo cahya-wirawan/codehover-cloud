@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.23] - 2026-11-18
+
+### Changed
+
+- 02, 17: the design pass. It adds the owned shadcn/ui-style components on Radix, Lucide icons, self-hosted IBM Plex and the app shell (232 px sidebar, 64 px top bar, mobile drawer). The code viewer gains resizable tree, code and outline panes, syntax highlighting, and a floating hover card anchored at the identifier, pinned as a non-modal dialog; the offline export viewer gets the same card. Pages use tables, badges and empty states.
+- 13: the E2E journey also runs in the dark theme, so axe checks contrast in both themes.
+
 ## [0.5.22] - 2026-11-18
 
 ### Fixed

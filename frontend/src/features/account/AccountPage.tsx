@@ -55,7 +55,7 @@ export function AccountPage() {
 
   return (
     <section aria-labelledby="account-title" className="max-w-3xl">
-      <h1 id="account-title" className="text-2xl font-medium">Account</h1>
+      <h1 id="account-title" className="text-[22px] leading-8 font-semibold">Account</h1>
       {user.data ? (
         <p className="mt-1 text-muted">
           Signed in as {user.data.display_name}
@@ -69,14 +69,14 @@ export function AccountPage() {
         </p>
       ) : null}
 
-      <section aria-labelledby="data-title" className="mt-6 rounded-lg border border-border bg-surface p-4">
-        <h2 id="data-title" className="text-lg font-medium">Your data</h2>
+      <section aria-labelledby="data-title" className="page-section">
+        <h2 id="data-title" className="section-title">Your data</h2>
         <p className="mt-1">
           Download your profile, sign-in methods, workspaces, projects and the builds you requested as JSON. Source
           and explanations are exported per build from its Overview.
         </p>
         <button type="button" onClick={() => download.mutate()} disabled={download.isPending}
-          className="mt-3 h-10 rounded-lg border border-input-border px-4 font-medium">
+          className="mt-3 btn btn-lg">
           Download my data
         </button>
         {download.error && !needsSignIn ? (

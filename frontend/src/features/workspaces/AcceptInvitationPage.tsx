@@ -24,7 +24,7 @@ export function AcceptInvitationPage() {
 
   return (
     <section aria-labelledby="inv-title" className="max-w-xl">
-      <h1 id="inv-title" className="text-2xl font-medium">Joining workspace</h1>
+      <h1 id="inv-title" className="text-[22px] leading-8 font-semibold">Joining workspace</h1>
       {error ? <p role="alert" className="mt-3 text-destructive">{error}</p> : <p role="status" className="mt-3 text-muted">Checking your invitation…</p>}
     </section>
   );

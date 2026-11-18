@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
+import { Button } from "../../components/ui/button";
+import { Field, Input } from "../../components/ui/input";
+import { EmptyState, PageHeader, Section } from "../../components/ui/section";
+import { Skeleton } from "../../components/ui/skeleton";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 
@@ -12,49 +17,77 @@ export function WorkspacesPage() {
   const [slug, setSlug] = useState("");
   const create = useMutation({
     mutationFn: () => api.createWorkspace(name.trim(), slug.trim()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["workspaces"] }),
+    onSuccess: async () => {
+      setName("");
+      setSlug("");
+      await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+    },
   });
 
   return (
-    <section aria-labelledby="ws-title" className="max-w-2xl">
-      <h1 id="ws-title" className="text-2xl font-medium">Workspaces</h1>
-      <p className="mt-2 text-muted">Everyone in a workspace can see all of its projects.</p>
-      {isPending ? <p role="status" className="mt-4 text-muted">Loading…</p> : null}
-      <ul className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface">
-        {data?.items.map((w) => (
-          <li key={w.id} className="flex items-center justify-between p-3">
-            <Link to={`/w/${w.id}`} className="font-medium text-primary">{w.name}</Link>
-            <span className="text-muted">{w.role}</span>
-          </li>
-        ))}
-        {data && data.items.length === 0 ? <li className="p-3 text-muted">No workspaces yet. Create one below.</li> : null}
-      </ul>
-      <form
-        className="mt-6 flex flex-wrap items-end gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          create.mutate();
-        }}
-      >
-        <label className="flex flex-col gap-1">
-          <span>Name</span>
-          <input required minLength={2} maxLength={80} value={name} onChange={(e) => setName(e.target.value)}
-            className="h-10 rounded-lg border border-input-border bg-surface px-3" />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span>Address</span>
-          <input required pattern="[a-z0-9][a-z0-9-]{1,46}[a-z0-9]" value={slug} onChange={(e) => setSlug(e.target.value)}
-            className="h-10 rounded-lg border border-input-border bg-surface px-3" />
-        </label>
-        <button type="submit" disabled={create.isPending} className="h-10 rounded-lg bg-primary px-4 font-medium text-primary-foreground">
-          Create workspace
-        </button>
-      </form>
-      {create.error ? (
-        <p role="alert" className="mt-3 text-destructive">
-          {create.error instanceof ApiError ? create.error.message : "Could not create the workspace."}
-        </p>
+    <section aria-labelledby="ws-title" className="max-w-3xl">
+      <PageHeader
+        title={<span id="ws-title">Workspaces</span>}
+        description="A workspace holds projects and the people who can read them. Everyone in a workspace sees all of its projects."
+      />
+      {isPending ? (
+        <div className="flex flex-col gap-2" aria-hidden="true">
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+        </div>
       ) : null}
+      {data && data.items.length === 0 ? (
+        <EmptyState title="No workspaces yet">Create your first workspace below, then connect a repository to it.</EmptyState>
+      ) : null}
+      {data?.items.length ? (
+        <ul className="panel divide-y divide-border">
+          {data.items.map((w) => (
+            <li key={w.id}>
+              <Link to={`/w/${w.id}`} className="group flex items-center gap-3 px-4 py-3 hover:bg-surface-muted/60">
+                <span aria-hidden="true" className="grid size-8 place-items-center rounded-[6px] bg-surface-muted font-semibold">
+                  {w.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{w.name}</span>
+                  <span className="block truncate font-mono text-xs text-muted">{w.slug}</span>
+                </span>
+                <span className="text-xs text-muted capitalize">{w.role}</span>
+                <ChevronRight aria-hidden="true" className="size-4 text-muted group-hover:text-foreground" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <Section title="New workspace" className="mt-10">
+        <form
+          className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create.mutate();
+          }}
+        >
+          <Field label="Name">
+            <Input required minLength={2} maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Address" hint="Lowercase letters, digits and hyphens; used in links.">
+            <Input
+              required
+              pattern="[a-z0-9][a-z0-9-]{1,46}[a-z0-9]"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value.toLowerCase())}
+              placeholder="my-team"
+            />
+          </Field>
+          <Button type="submit" variant="primary" disabled={create.isPending} className="sm:mb-[22px]">
+            Create workspace
+          </Button>
+        </form>
+        {create.error ? (
+          <p role="alert" className="mt-3 text-destructive">
+            {create.error instanceof ApiError ? create.error.message : "Could not create the workspace."}
+          </p>
+        ) : null}
+      </Section>
     </section>
   );
 }
