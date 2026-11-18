@@ -85,10 +85,15 @@
       row.appendChild(el("span", String(n), "num"));
       var s = defs[n];
       if (s) {
-        var b = linkButton(text, function () { showSymbol(s.id); });
+        // Only the identifier is the control, so its visible text is part of its name (WCAG 2.5.3).
+        var at = nameAt(text, s.name);
+        var label = "Explain " + s.kind + " " + s.name;
+        var b = linkButton(at < 0 ? text : s.name, function () { showSymbol(s.id); });
         b.classList.add("def");
-        b.setAttribute("aria-label", "Explain " + s.kind + " " + s.name);
+        b.setAttribute("aria-label", at < 0 ? text.trim() + ": " + label : label);
+        if (at >= 0) row.appendChild(document.createTextNode(text.slice(0, at)));
         row.appendChild(b);
+        if (at >= 0) row.appendChild(document.createTextNode(text.slice(at + s.name.length)));
       } else {
         row.appendChild(document.createTextNode(text));
       }
@@ -97,6 +102,15 @@
     main.appendChild(pre);
     if (line) { var target = document.getElementById("L" + line); if (target) target.scrollIntoView({ block: "center" }); }
     if (symbol) showSymbol(symbol);
+  }
+
+  // Index of the first whole-word occurrence of name in text, or -1.
+  function nameAt(text, name) {
+    var word = /[\w$]/;
+    for (var i = name ? text.indexOf(name) : -1; i >= 0; i = text.indexOf(name, i + 1)) {
+      if ((i === 0 || !word.test(text[i - 1])) && !word.test(text[i + name.length] || "")) return i;
+    }
+    return -1;
   }
 
   var CITATION = /\[\[([0-9a-f-]{36}):(\d+)-(\d+)\]\]/g;

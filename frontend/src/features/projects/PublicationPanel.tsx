@@ -75,7 +75,7 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
           Published build <span className="font-mono">{current.commit_sha.slice(0, 12)}</span>,{" "}
           {current.visibility === "public" ? <strong>public</strong> : "private to this workspace"}
           {current.public_slug ? (
-            <> at <Link className="text-primary" to={`/sites/${current.public_slug}`}>/sites/{current.public_slug}</Link></>
+            <> at <Link className="text-primary underline" to={`/sites/${current.public_slug}`}>/sites/{current.public_slug}</Link></>
           ) : null}
           .
         </p>

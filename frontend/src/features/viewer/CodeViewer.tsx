@@ -7,6 +7,17 @@ import type { Related, SymbolView, TreeEntry, ViewerSource } from "../../lib/api
 const WINDOW = 500; // the API returns at most 500 lines per request (06)
 const HOVER_DELAY_MS = 200; // 02 "Component contracts"
 
+/** Split a definition line around the first whole-word occurrence of its name, or null when the name is
+ * not on the line (unusual syntax); source text is never altered. */
+function splitAtName(text: string, name: string): [string, string] | null {
+  if (name === "") return null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`(^|[^\\w$])${escaped}(?![\\w$])`).exec(text);
+  if (!match) return null;
+  const at = match.index + (match[1] ?? "").length;
+  return [text.slice(0, at), text.slice(at + name.length)];
+}
+
 function Tree({ source, path, onOpen, current }: { source: ViewerSource; path: string; onOpen: (entry: TreeEntry) => void; current: string | null }) {
   const { data } = useQuery({ queryKey: ["tree", source.key, path], queryFn: () => source.tree(path) });
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -184,19 +195,26 @@ export function CodeViewer({ source }: { source: ViewerSource }) {
                 const number = view.data.start_line + index;
                 const symbol = view.data.symbols.find((s) => s.start_line === number);
                 const highlighted = line !== null && end !== null && number >= line && number <= end;
+                // Only the identifier is the control, so its visible text is part of its name (WCAG 2.5.3).
+                const parts = symbol ? splitAtName(text, symbol.name) : null;
+                const label = symbol ? `Explain ${symbol.kind} ${symbol.name}` : "";
                 return (
                   <div key={number} id={`L${number}`} className={highlighted ? "bg-surface-muted" : undefined}>
                     <span aria-hidden="true" className="inline-block w-12 select-none pr-3 text-right text-muted">{number}</span>
                     {symbol ? (
-                      <button type="button" className="text-left underline decoration-dotted underline-offset-4"
-                        ref={(el) => { if (el) triggers.current.set(symbol.id, el); }}
-                        aria-label={`Explain ${symbol.kind} ${symbol.name}`}
-                        aria-expanded={pinned === symbol.id}
-                        onMouseEnter={() => { hoverTimer.current = window.setTimeout(() => setPreview(symbol.id), HOVER_DELAY_MS); }}
-                        onMouseLeave={() => window.clearTimeout(hoverTimer.current)}
-                        onClick={() => pin(symbol.id)}>
-                        {text}
-                      </button>
+                        <>
+                          {parts?.[0]}
+                          <button type="button" className="text-left underline decoration-dotted underline-offset-4"
+                            ref={(el) => { if (el) triggers.current.set(symbol.id, el); }}
+                            aria-label={parts ? label : `${text.trim()}: ${label}`}
+                            aria-expanded={pinned === symbol.id}
+                            onMouseEnter={() => { hoverTimer.current = window.setTimeout(() => setPreview(symbol.id), HOVER_DELAY_MS); }}
+                            onMouseLeave={() => window.clearTimeout(hoverTimer.current)}
+                            onClick={() => pin(symbol.id)}>
+                            {parts ? symbol.name : text}
+                          </button>
+                          {parts?.[1]}
+                        </>
                     ) : (
                       text
                     )}

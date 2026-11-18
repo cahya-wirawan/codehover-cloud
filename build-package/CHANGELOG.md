@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-11-18
+
+### Added
+
+- 13: the critical journey as automated for M3, with axe on every screen; project deletion joins it with purge in M4.
+
+### Changed
+
+- 02: a definition's trigger is its identifier, not the whole line, so visible text is part of the accessible name (WCAG 2.5.3), in the viewer and the offline export.
+
 ## [0.5.12] - 2026-11-18
 
 ### Added

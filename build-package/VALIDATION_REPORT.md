@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.12
+Date: 2026-11-18 · Package version 0.5.13
+
+0.5.13 records the M3 exit criterion "accessible full E2E". One Playwright journey runs in the installed Chrome against the real API with fake Google and GitHub, and aborts any request outside the app:
+- sign-in, workspace, project, snapshot with the exclusion summary, estimate and a replay build followed over SSE;
+- code with a pinned card and Esc, guide with claims, and review;
+- a private publish read by an invited member, with another tenant and an anonymous reader shown "Site not found";
+- public opt-in with the typed name, anonymous reading, and withdrawal;
+- a ZIP export read offline with every network request blocked (none attempted).
+
+axe (WCAG 2.1 A/AA) runs on twelve screens and found three real issues, now fixed: definition buttons whose visible line was not in their name (viewer and export), and links distinguished by colour alone. It passes three runs in a row. Project deletion is not yet in the journey (M4).
 
 0.5.12 adds freshness and the audit log.
 - Freshness: integration tests move through never-built, current, a cached observation, update-available after the branch moves, and `unknown` with the last observation when GitHub is unreachable (A23). Strangers get 404.

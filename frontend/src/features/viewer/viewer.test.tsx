@@ -52,7 +52,11 @@ test("ready build shows stages, file tree, source and a definition card", async 
   expect(await screen.findByText(/acquire: Done/)).toBeInTheDocument();
   fireEvent.click(await screen.findByRole("link", { name: "Code" }));
   fireEvent.click(await screen.findByRole("button", { name: "app.py" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Explain function main" }));
+  const trigger = await screen.findByRole("button", { name: "Explain function main" });
+  // WCAG 2.5.3: the control is the identifier, and the source line around it is unchanged.
+  expect(trigger).toHaveTextContent(/^main$/);
+  expect(document.getElementById("L1")).toHaveTextContent(/^1def main\(\):$/);
+  fireEvent.click(trigger);
   const card = await screen.findByRole("dialog", { name: "function main" });
   expect(card).toHaveTextContent("Entry point.");
   expect(card).toHaveTextContent("helper · util.py · matched by name");

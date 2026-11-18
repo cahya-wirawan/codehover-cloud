@@ -135,6 +135,54 @@ jobs:
           CANARY_SECRETS: canary-session-${{ github.run_id }},canary-model-${{ github.run_id }},canary-vite-${{ github.run_id }}
         run: npm run check:env
 
+  e2e:
+    name: Accessible end-to-end journey (Playwright, axe)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: codehover_ddl
+          POSTGRES_PASSWORD: ci-ddl-password
+          POSTGRES_DB: codehover
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U codehover_ddl -d codehover"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPASSWORD: ci-ddl-password
+      MIGRATION_DATABASE_URL: postgresql+psycopg://codehover_ddl:ci-ddl-password@localhost:5432/codehover
+      TEST_MIGRATION_DATABASE_URL: postgresql+psycopg://codehover_ddl:ci-ddl-password@localhost:5432/codehover
+      TEST_DATABASE_URL: postgresql+psycopg://app_runtime:ci-runtime-password@localhost:5432/codehover
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: |
+          cd backend && uv venv --python "$PYTHON_VERSION" .venv && uv pip sync --require-hashes requirements-dev.lock
+          cd ../frontend && npm ci --no-audit --no-fund
+      - name: Bootstrap database roles and migrate
+        working-directory: backend
+        run: |
+          POSTGRES_USER=codehover_ddl POSTGRES_DB=codehover APP_DB_PASSWORD=ci-runtime-password APP_SYSTEM_DB_PASSWORD=ci-system-password sh ../deployment/init-db.sh
+          .venv/bin/alembic upgrade head
+      - name: Journey (the runner's installed Google Chrome; fake Google and GitHub, no external requests)
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Keep the trace of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-results
+          path: frontend/test-results/
+          retention-days: 7
+
   compose-smoke:
     name: Images build and stack starts
     runs-on: ubuntu-24.04

@@ -51,6 +51,7 @@ cd backend && uv venv --python 3.13 .venv && uv pip sync --require-hashes requir
 .venv/bin/pytest -m integration          # needs TEST_MIGRATION_DATABASE_URL / TEST_DATABASE_URL on a PG18 DB bootstrapped by deployment/init-db.sh; refuses to run while stack workers/dispatcher/scheduler are connected to that DB
 .venv/bin/python -m app.openapi_export   # regenerate contracts/openapi.json after API changes (CI checks drift)
 cd frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build && npm run check:env
+cd frontend && npm run test:e2e           # Playwright + axe journey; same TEST_* URLs as integration, installed Chrome
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
 cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \
   && docker compose --env-file .env -f compose.yaml --profile app up -d --build   # http://localhost:8080
