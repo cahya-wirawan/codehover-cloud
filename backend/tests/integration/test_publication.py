@@ -350,6 +350,21 @@ async def test_an_operator_suspension_is_not_lifted_by_republishing(
     assert (
         ddl("SELECT suspended_reason FROM publications WHERE project_id = :p", p=project)[0][0] == "operator"
     )
+    # Unpublishing would delete the takedown along with the row, letting a fresh publish skip it.
+    withdraw = await unsafe(
+        owner,
+        "DELETE",
+        f"/api/v1/projects/{project}/publication",
+        headers={"If-Match": first.headers["etag"]},
+    )
+    assert withdraw.status_code == 409 and withdraw.json()["error"]["code"] == "SUSPENDED_BY_OPERATOR"
+    import sqlalchemy as sa
+
+    with pytest.raises(sa.exc.IntegrityError):  # the database refuses the delete too
+        ddl("DELETE FROM publications WHERE project_id = :p", p=project)
+    assert (
+        ddl("SELECT suspended_reason FROM publications WHERE project_id = :p", p=project)[0][0] == "operator"
+    )
 
 
 async def test_a_concurrent_revoke_cannot_slip_past_the_access_check(

@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-11-18
+
+### Security
+
+- 06: an admin could unpublish an operator-suspended publication, which deleted the takedown with the row, and then publish afresh. Unpublishing such a publication is now refused, by the service and by a database trigger (migration 0012). Found by automated security review of 0.5.9.
+
 ## [0.5.9] - 2026-11-18
 
 ### Security

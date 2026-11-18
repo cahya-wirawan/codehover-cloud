@@ -210,7 +210,8 @@ async def unpublish(db: AsyncSession, member: Member, project_id: UUID, if_match
     existing = (
         await db.execute(
             text(
-                "SELECT build_id, visibility, version FROM publications WHERE workspace_id = :w AND project_id = :p FOR UPDATE"
+                "SELECT build_id, visibility, version, suspended_reason FROM publications"
+                " WHERE workspace_id = :w AND project_id = :p FOR UPDATE"
             ),
             {"w": member.workspace_id, "p": project_id},
         )
@@ -218,6 +219,9 @@ async def unpublish(db: AsyncSession, member: Member, project_id: UUID, if_match
     if existing is None:
         raise ApiError(404, "NOT_PUBLISHED", "This project is not published.")
     await _check_precondition(existing, if_match)
+    if existing.suspended_reason == "operator":
+        # The takedown lives on this row; removing it would let a new publication skip it (0012).
+        raise ApiError(409, "SUSPENDED_BY_OPERATOR", "This site was suspended by an operator.")
     await db.execute(
         text("DELETE FROM publications WHERE workspace_id = :w AND project_id = :p"),
         {"w": member.workspace_id, "p": project_id},

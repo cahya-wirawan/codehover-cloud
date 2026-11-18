@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.9
+Date: 2026-11-18 · Package version 0.5.10
+
+0.5.10: unpublishing an operator-suspended publication is refused by the API (409) and by the database trigger (IntegrityError). Removing the service check makes the test fail.
 
 0.5.9 hardens publication.
 - A suspended workspace or deleted project stops delivery, and reactivation restores it.
