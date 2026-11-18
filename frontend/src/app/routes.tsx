@@ -2,6 +2,7 @@ import type { RouteObject } from "react-router";
 
 import { AccountPage } from "../features/account/AccountPage";
 import { LoginPage } from "../features/auth/LoginPage";
+import { PrivacyPage, SupportPage, TermsPage } from "../features/legal/LegalPages";
 import { OpsPage } from "../features/ops/OpsPage";
 import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
@@ -16,6 +17,7 @@ import {
 import { AcceptInvitationPage } from "../features/workspaces/AcceptInvitationPage";
 import { AuditPage } from "../features/workspaces/AuditPage";
 import { ConnectionsPage } from "../features/workspaces/ConnectionsPage";
+import { UsagePage } from "../features/workspaces/UsagePage";
 import { WorkspacePage } from "../features/workspaces/WorkspacePage";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
 import { AppShell } from "./AppShell";
@@ -35,6 +37,10 @@ export const routes: RouteObject[] = [
       { path: "w/:wid", element: <WorkspacePage /> },
       { path: "w/:wid/connections", element: <ConnectionsPage /> },
       { path: "w/:wid/audit", element: <AuditPage /> },
+      { path: "w/:wid/usage", element: <UsagePage /> },
+      { path: "privacy", element: <PrivacyPage /> },
+      { path: "terms", element: <TermsPage /> },
+      { path: "support", element: <SupportPage /> },
       { path: "p/:pid", element: <ProjectPage /> },
       {
         path: "p/:pid/builds/:bid",

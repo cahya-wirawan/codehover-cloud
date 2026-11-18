@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.storage import ObjectStore
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
+from app.modules.billing import service as billing
 from app.modules.projects import quality
 from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
@@ -78,6 +79,7 @@ async def publish(
     confirmation: str | None,
     acknowledge_partial: bool,
     if_match: str | None,
+    billing_enforced: bool = False,
 ) -> dict[str, Any]:
     target = (
         await db.execute(
@@ -140,6 +142,14 @@ async def publish(
         raise ApiError(409, "SUSPENDED_BY_OPERATOR", "This site was suspended by an operator.")
     if project.status != "active" or project.access_revoked_at is not None:
         raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub before publishing this project.")
+    hosting = await billing.state(db, member.workspace_id, enforced=billing_enforced)
+    if hosting.hosting_suspended:
+        # Only the billing sync lifts a billing suspension; republishing must not (security review).
+        raise ApiError(
+            409,
+            "SUSPENDED_FOR_BILLING",
+            "Sites are offline until the plan is in good standing. Reading and export continue.",
+        )
     # FOR SHARE also orders this against the retention sweep, which locks the build before purging it.
     still_ready = (
         await db.execute(

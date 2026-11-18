@@ -26,7 +26,7 @@
 - [ ] Metrics/alerts, queue limits, provider budgets and kill switch exercised.
 - [ ] PG18 backup/PITR plus object recovery drill meet target; rollback documented.
 - [ ] GitHub revocation/rename/transfer lifecycle and publication suspension tested.
-- [ ] Checkout, portal, signature verification, webhook ordering, renewals, refunds and daily reconciliation pass before charging customers.
+- [ ] Checkout, portal, signature verification, webhook ordering, renewals, refunds and daily reconciliation pass before charging customers. (M5: the payment failure matrix passes against a replayed provider; repeat it against Stripe test mode in staging.)
 - [ ] Terms, billing/tax/cancellation/support and incident procedures reviewed.
 - [ ] Production TLS/secret manager/storage IAM/egress controls configured; management ports private.
 - [ ] Release tagged `vX.Y.Z`; the bump is at least the change class CI computed from the OpenAPI diff, schema compatibility and replay fixtures (document 23).

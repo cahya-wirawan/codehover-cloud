@@ -1,6 +1,61 @@
+import { useQuery } from "@tanstack/react-query";
 import { isRouteErrorResponse, Link, useRouteError } from "react-router";
 
 import { ServiceStatus } from "../features/status/ServiceStatus";
+import { api, formatUsd } from "../lib/api/resources";
+
+const PLAN_NOTES: Record<string, string> = {
+  trial: "Try it on one repository.",
+  pro: "For one developer and their repositories.",
+  team: "For a team sharing private sites.",
+};
+
+/** The plans (11): what each includes. Prices, currency and taxes are shown by the payment provider. */
+function Plans() {
+  const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 5 * 60_000, retry: false });
+  if (!meta.data) return null;
+  return (
+    <section aria-labelledby="plans-title" className="mt-16 border-t border-border pt-8">
+      <h2 id="plans-title" className="section-title">
+        Plans
+      </h2>
+      <p className="mt-2 max-w-[64ch] text-muted">
+        Private repositories on every plan. Each plan includes a monthly budget for model use at the model
+        provider&apos;s cost; reading, search and published sites never use it, and nothing is charged beyond the plan.
+      </p>
+      <div className="mt-6 grid gap-px overflow-hidden rounded-[var(--radius-overlay)] border border-border bg-border md:grid-cols-3">
+        {meta.data.plans.map((plan) => (
+          <div key={plan.key} className="bg-surface p-5">
+            <h3 className="font-semibold">{plan.name}</h3>
+            <p className="mt-1 text-muted">{PLAN_NOTES[plan.key]}</p>
+            <p className="mt-4">
+              <span className="font-mono text-[20px] font-medium">{formatUsd(plan.allowance_micro_usd)}</span>
+              <span className="text-muted">
+                {plan.key === "trial" ? ` of model use, once, for ${meta.data.trial_days} days` : " of model use each month"}
+              </span>
+            </p>
+            <ul className="mt-3 flex flex-col gap-1 text-[13px] text-muted">
+              <li>
+                {plan.seats} {plan.seats === 1 ? "seat" : "seats"}, {plan.projects}{" "}
+                {plan.projects === 1 ? "project" : "projects"}
+              </li>
+              <li>
+                {plan.active_builds} {plan.active_builds === 1 ? "build" : "builds"} at a time, {plan.storage_gib} GiB
+              </li>
+            </ul>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[13px] text-muted">
+        Choose a plan from a workspace&apos;s Plan and usage page. See the{" "}
+        <Link to="/terms" className="text-primary underline underline-offset-2">
+          terms
+        </Link>{" "}
+        for renewal and cancellation.
+      </p>
+    </section>
+  );
+}
 
 const SAMPLE = [
   ["kw", "def "],
@@ -89,6 +144,7 @@ export function HomePage() {
           ))}
         </ol>
       </section>
+      <Plans />
     </div>
   );
 }

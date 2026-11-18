@@ -14,7 +14,7 @@ Use pytest/pytest-asyncio for domain and integration tests, actual PostgreSQL 18
 | AI eval | 50+ definitions/30+ claims; incorrect citations; injection; ambiguous links; absent checker; malformed JSON | 100% deterministic span validity; report semantic precision/recall/CI |
 | viewer UI | tree, pinned card, used-by, source ranges, search, guide citations, skipped coverage | Exact build and navigation semantics |
 | security | tar traversal/symlinks/bomb; XSS source/Markdown/Mermaid; SSRF redirects; token/body log leakage | No exploit in corpus; resource cap enforced |
-| billing | duplicate/out-of-order/forged webhook; checkout return without payment; dispute/refund/reconcile | Entitlements only from validated authoritative state |
+| billing | duplicate/out-of-order/forged/stale webhook; checkout return without payment (A20); payment failed → past due → recovery; cancel at period end; ended and long past due suspend hosting; dispute/refund; reconcile after a dropped webhook or provider outage; metadata naming another workspace; trial once; plan limits; subscribed workspace deletion (`tests/integration/test_billing.py`, `FakeStripe` over `httpx.MockTransport`) | Entitlements only from validated authoritative state |
 | offline/network | SSE disconnect/cursor reset/polling; expired session mid-view; network loss before publish | No replayed write; clear stale/offline state |
 | export | ZIP offline local HTTP; no CDN; safe filenames; KB schema round-trip; authorization at download | Complete selected source/annotations only |
 | performance | 20k-symbol search fixture; 50 concurrent viewers; 2 builds/tenant contention; big source scrolling | NFR p95 targets and bounded memory |

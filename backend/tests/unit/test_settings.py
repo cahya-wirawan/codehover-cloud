@@ -84,3 +84,21 @@ def test_production_app_refuses_to_start_without_object_storage() -> None:
 
     with pytest.raises(RuntimeError, match="S3 storage must be configured"):
         create_app(make_settings(app_env=Environment.PRODUCTION, public_origin="https://app.example.test"))
+
+
+def test_blank_optional_values_mean_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The env template ships `STRIPE_SECRET_KEY=` and friends: blank is unset, not an empty credential."""
+    for name in (
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "ANTHROPIC_API_KEY",
+        "STRIPE_PRICE_PRO",
+        "SUPPORT_EMAIL",
+    ):
+        monkeypatch.setenv(name, "")
+    settings = make_settings()
+    assert settings.stripe_secret_key is None and settings.stripe_webhook_secret is None
+    assert settings.anthropic_api_key is None and settings.stripe_price_pro is None
+    assert settings.support_email is None
+    assert make_settings(stripe_secret_key=SecretStr("  ")).stripe_secret_key is None
+    assert make_settings(stripe_price_pro="price_1").stripe_price_pro == "price_1"

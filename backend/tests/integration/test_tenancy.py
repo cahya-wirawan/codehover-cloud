@@ -398,6 +398,59 @@ def test_the_runtime_cannot_grant_itself_operations_rights(world: World, runtime
     assert runtime.one("SELECT app_private.is_operator()") is False
 
 
+def test_billing_rows_are_tenant_scoped_and_trials_are_owner_only(world: World, runtime: Db) -> None:
+    """0022: customers and subscriptions follow the tenant policy; a webhook's customer resolves to its
+    workspace without exposing rows; only an owner starts the one trial, and never by writing grants."""
+    customer_a, customer_b = f"cus_a{secrets.token_hex(6)}", f"cus_b{secrets.token_hex(6)}"
+    for tenant, customer in ((world.a, customer_a), (world.b, customer_b)):
+        runtime.context(workspace=tenant.workspace, user=tenant.user)
+        runtime.run(
+            "INSERT INTO billing_customers(workspace_id, provider_customer_id) VALUES (:w, :c)",
+            w=tenant.workspace,
+            c=customer,
+        )
+        runtime.run(
+            "INSERT INTO subscriptions(workspace_id, provider_subscription_id, provider_customer_id, plan_key,"
+            " status) VALUES (:w, :s, :c, 'pro', 'active')",
+            w=tenant.workspace,
+            s=f"sub_{secrets.token_hex(6)}",
+            c=customer,
+        )
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert (
+        runtime.one("SELECT count(*) FROM billing_customers WHERE workspace_id = :w", w=world.b.workspace)
+        == 0
+    )
+    assert runtime.one("SELECT count(*) FROM subscriptions WHERE workspace_id = :w", w=world.b.workspace) == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO subscriptions(workspace_id, provider_subscription_id, provider_customer_id, plan_key, status)"
+        " VALUES (:w, :s, :c, 'team', 'active')",
+        w=world.b.workspace,
+        s=f"sub_{secrets.token_hex(6)}",
+        c=customer_b,
+    )
+    # Only the dispute flag is writable on a customer; the mapping to a workspace is fixed.
+    expect(
+        runtime,
+        DENIED,
+        "UPDATE billing_customers SET provider_customer_id = 'cus_x' WHERE workspace_id = :w",
+        w=world.a.workspace,
+    )
+    expect(runtime, DENIED, "DELETE FROM subscriptions WHERE workspace_id = :w", w=world.a.workspace)
+    runtime.context()
+    assert runtime.one("SELECT app_private.billing_workspace(:c)", c=customer_b) == world.b.workspace
+    assert runtime.one("SELECT app_private.billing_workspace('cus_nobody')") is None
+    assert runtime.one("SELECT count(*) FROM billing_customers") == 0  # the resolver exposes no rows
+
+    # world.b's owner cannot start a trial in world.a, and world.a has a subscription: no trial there either.
+    runtime.context(workspace=world.a.workspace, user=world.b.user)
+    expect(runtime, DENIED, "SELECT app_private.start_trial(:w, 1, 1)", w=world.a.workspace)
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT app_private.start_trial(:w, 1, 1)", w=world.a.workspace) is None
+
+
 @needs_system
 def test_system_role_can_expire_a_lease(world: World, system: Db) -> None:
     # Lease, then expire it the way the reconciler will: state and lease_until change together (CHECK).

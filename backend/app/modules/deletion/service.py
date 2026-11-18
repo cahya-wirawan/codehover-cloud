@@ -128,6 +128,21 @@ async def delete_project(db: AsyncSession, member: Member, project_id: UUID, con
 
 # ---------------------------------------------------------------- workspace
 async def _delete_workspace(db: AsyncSession, member: Member) -> Tombstone:
+    subscribed = (
+        await db.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM subscriptions WHERE workspace_id = :w"
+                " AND status IN ('trialing', 'active', 'past_due', 'unpaid', 'paused', 'incomplete'))"
+            ),
+            {"w": member.workspace_id},
+        )
+    ).scalar_one()
+    if subscribed:  # 11: deleting never silently keeps charging; cancel in the portal first
+        raise ApiError(
+            409,
+            "SUBSCRIPTION_ACTIVE",
+            "This workspace has a subscription. Cancel it in billing before deleting the workspace.",
+        )
     await db.execute(
         text(
             "UPDATE workspaces SET status = 'deleting', deleted_at = now(), updated_at = now() WHERE id = :w"

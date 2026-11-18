@@ -24,6 +24,7 @@ from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION
 from app.engine.catalog import Catalog
 from app.engine.generate import CITATION
 from app.jobs import store as jobs
+from app.modules.billing import service as billing
 from app.modules.projects import estimates, quality
 from app.modules.usage import ledger
 from app.modules.workspaces.access import Member, Reader
@@ -188,7 +189,7 @@ async def start_generation_build(
         raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub to build this project.")
     if approved.snapshot_status != "scanned":
         raise ApiError(409, "SNAPSHOT_NOT_READY", "This snapshot is not available for building.")
-    account = await _admit(db, settings, member)
+    account = await _admit(db, settings, member, generation=True)
     requested_cap = min(account.available_micro_usd, approved.high_micro_usd) if cap is None else cap
     if requested_cap > account.available_micro_usd:
         await db.rollback()
@@ -221,14 +222,23 @@ async def start_generation_build(
     return await get_build(db, member, build_id)
 
 
-async def _admit(db: AsyncSession, settings: Settings, member: Member) -> ledger.Account:
-    """Lock the period's usage account: serializes reservations and the workspace active-build limit."""
+async def _admit(
+    db: AsyncSession, settings: Settings, member: Member, *, generation: bool = False
+) -> ledger.Account:
+    """Lock the period's usage account: serializes reservations and the workspace active-build limit.
+    Generation builds also need billing in good standing (11: not past due, no open dispute)."""
     paused = (await db.execute(text("SELECT builds_paused FROM platform_settings"))).scalar_one_or_none()
     if paused:  # the operator kill switch (22): reads stay available, new builds wait
         await db.rollback()
         raise ApiError(
             503, "BUILDS_PAUSED", "New builds are paused by the operators; reading works.", retryable=True
         )
+    if generation:
+        try:
+            await billing.require_generation(db, member.workspace_id)
+        except ApiError:
+            await db.rollback()
+            raise
     account = await ledger.current_account(
         db, member.workspace_id, settings.generation_allowance_micro_usd, lock=True
     )
@@ -238,7 +248,7 @@ async def _admit(db: AsyncSession, settings: Settings, member: Member) -> ledger
             {"w": member.workspace_id},
         )
     ).scalar_one()
-    limit = settings.max_active_builds_per_workspace
+    limit = await billing.active_build_limit(db, settings, member.workspace_id)
     if active >= limit:
         await db.rollback()
         raise ApiError(

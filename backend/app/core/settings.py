@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     rate_limit_estimates_per_hour: int = Field(default=10, ge=1)
     rate_limit_acquisitions_per_hour: int = Field(default=10, ge=1)
     rate_limit_builds_per_day: int = Field(default=20, ge=1)
+    rate_limit_billing_per_hour: int = Field(default=20, ge=1)
     # Comma-separated networks whose X-Forwarded-For is believed (the ingress proxy only, 22).
     trusted_proxies: str = ""
     # Internal Prometheus port per process (12); 0 disables it. Never routed by the gateway.
@@ -83,10 +84,50 @@ class Settings(BaseSettings):
 
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
+    # Stripe price IDs per plan key (11): only configured plans can be bought.
+    stripe_price_pro: str | None = None
+    stripe_price_team: str | None = None
+    # Paid launch: workspaces need a plan (or trial) to create projects and invite members (11). Off for the beta.
+    billing_enforced: bool = False
+    # Shown on the support, privacy and terms pages.
+    operator_name: str = "codehover-cloud"
+    support_email: str | None = None
 
     def configured_providers(self) -> frozenset[str]:
         """Providers whose catalog models can run: replay always, others only with credentials."""
         return frozenset({"replay"} | ({"anthropic"} if self.anthropic_api_key is not None else set()))
+
+    @field_validator(
+        "migration_database_url",
+        "amqp_url",
+        "rabbitmq_management_url",
+        "google_client_id",
+        "google_client_secret",
+        "github_oauth_client_id",
+        "github_oauth_client_secret",
+        "github_app_id",
+        "github_app_slug",
+        "github_app_client_id",
+        "github_app_client_secret",
+        "github_app_private_key_file",
+        "github_webhook_secret",
+        "anthropic_api_key",
+        "model_catalog_file",
+        "stripe_secret_key",
+        "stripe_webhook_secret",
+        "stripe_price_pro",
+        "stripe_price_team",
+        "support_email",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """`KEY=` in an env file means "not configured", never an empty credential."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        if isinstance(value, SecretStr) and not value.get_secret_value().strip():
+            return None
+        return value
 
     @field_validator("trusted_proxies")
     @classmethod

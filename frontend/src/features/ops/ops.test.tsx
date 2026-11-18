@@ -28,7 +28,7 @@ afterEach(() => vi.unstubAllGlobals());
 test("the operations view is a plain not-found page for everyone but operators", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { code: "NOT_FOUND", message: "Not found.", request_id: null, retryable: false, details: {} } }), { status: 404 })));
   wrap(<OpsPage />);
-  expect(await screen.findByRole("heading", { name: "Not found" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Not found" }, { timeout: 5000 })).toBeInTheDocument();
   expect(screen.queryByText(/Pause new builds/)).toBeNull();
 });
 

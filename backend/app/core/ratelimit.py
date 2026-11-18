@@ -41,6 +41,7 @@ def policies(settings: Settings) -> dict[str, Policy]:
         "estimate": Policy("estimate", settings.rate_limit_estimates_per_hour, 3600),
         "acquire": Policy("acquire", settings.rate_limit_acquisitions_per_hour, 3600),
         "build": Policy("build", settings.rate_limit_builds_per_day, 86400),
+        "billing": Policy("billing", settings.rate_limit_billing_per_hour, 3600),
     }
 
 

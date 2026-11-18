@@ -13,6 +13,7 @@ from sqlalchemy import text
 from app.core.errors import ApiError
 from app.core.pagination import Position, clamp_limit, decode_cursor, encode_cursor
 from app.core.settings import Settings
+from app.modules.billing import service as billing
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
 from app.modules.workspaces import service
 from app.modules.workspaces.access import ReadMember, Role, WriteMember, require_role
@@ -175,6 +176,7 @@ async def create_invitation(
     body: InvitationCreate, request: Request, db: Db, member: WriteMember
 ) -> InvitationCreated:
     require_role(member, "admin")
+    await billing.require_capacity(db, request.app.state.settings, member.workspace_id, "seats")
     created = await service.invite(db, member, body.email, body.role)
     return InvitationCreated(
         id=created.id,

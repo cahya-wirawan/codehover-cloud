@@ -25,7 +25,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -468,6 +468,7 @@ class WebhookReceipt(Base):
     state: Mapped[str] = mapped_column(Text, server_default=text("'received'"))
     received_at: Mapped[datetime] = ts(default_now=True)
     processed_at: Mapped[datetime | None] = ts(nullable=True)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 # ---------------------------------------------------------------- generation (0007)
@@ -669,6 +670,8 @@ class EntitlementGrant(Base):
     granted_by: Mapped[UUID] = ref("users.id")
     created_at: Mapped[datetime] = ts(default_now=True)
     revoked_at: Mapped[datetime | None] = ts(nullable=True)
+    kind: Mapped[str] = mapped_column(Text, server_default=text("'manual'"))
+    once: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 class SupportGrant(Base):
@@ -689,3 +692,34 @@ class RateLimit(Base):
     bucket: Mapped[str] = mapped_column(Text, primary_key=True)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     count: Mapped[int] = mapped_column(Integer)
+
+
+# ---------------------------------------------------------------- billing (0022)
+class BillingCustomer(Base):
+    __tablename__ = "billing_customers"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    provider: Mapped[str] = mapped_column(Text, server_default=text("'stripe'"))
+    provider_customer_id: Mapped[str] = mapped_column(Text)
+    disputed_at: Mapped[datetime | None] = ts(nullable=True)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    open_disputes: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
+    dispute_lost_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    provider_subscription_id: Mapped[str] = mapped_column(Text)
+    provider_customer_id: Mapped[str] = mapped_column(Text)
+    plan_key: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    current_period_start: Mapped[datetime | None] = ts(nullable=True)
+    current_period_end: Mapped[datetime | None] = ts(nullable=True)
+    cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    ended_at: Mapped[datetime | None] = ts(nullable=True)
+    past_due_since: Mapped[datetime | None] = ts(nullable=True)
+    synced_at: Mapped[datetime] = ts(default_now=True)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    updated_at: Mapped[datetime] = ts(default_now=True)
