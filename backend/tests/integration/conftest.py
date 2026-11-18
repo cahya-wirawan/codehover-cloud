@@ -207,3 +207,29 @@ async def client(idp: FakeIdP, migrated: None) -> AsyncIterator[httpx.AsyncClien
         yield c
     await mock_http.aclose()
     await app.state.engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_live_workers_on_the_test_database() -> None:
+    """Live workers (e.g. a running Compose stack on the same database) consume test notifications and
+    make job tests flaky. Fail fast with a clear message instead."""
+    if not MIGRATION_URL:
+        return
+    with engine(MIGRATION_URL).connect() as conn:
+        live = (
+            conn.execute(
+                sa.text(
+                    "SELECT DISTINCT application_name FROM pg_stat_activity"
+                    " WHERE datname = current_database()"
+                    " AND application_name IN ('codehover-worker', 'codehover-dispatcher', 'codehover-scheduler')"
+                )
+            )
+            .scalars()
+            .all()
+        )
+    if live:
+        pytest.exit(
+            f"Live codehover processes are connected to the test database ({', '.join(sorted(live))}). "
+            "Stop them (docker compose ... stop worker dispatcher scheduler) or use a separate database.",
+            returncode=2,
+        )

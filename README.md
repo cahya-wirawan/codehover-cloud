@@ -50,6 +50,8 @@ TEST_SYSTEM_DATABASE_URL=postgresql+psycopg://app_system:systempw@localhost:5432
   .venv/bin/pytest -m integration
 ```
 
+The test database must not be shared with a running worker, dispatcher or scheduler: they would claim the tests' outbox rows and tasks. The suite refuses to start when such processes are connected (`codehover-worker`, `codehover-dispatcher`, `codehover-scheduler` in `pg_stat_activity`). Against the Compose database, stop them first with `docker compose --env-file .env -f compose.yaml --profile app stop worker dispatcher scheduler`, or use a separate database.
+
 To run the API locally:
 1. Apply migrations with the DDL role: `MIGRATION_DATABASE_URL=... .venv/bin/alembic upgrade head`.
 2. Start the server with the runtime role: `DATABASE_URL=... SESSION_SECRET=... APP_ENCRYPTION_KEY=... .venv/bin/uvicorn app.main:app --reload`.

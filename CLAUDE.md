@@ -46,7 +46,7 @@ Application (details and single-test examples in `README.md`):
 ```bash
 cd backend && uv venv --python 3.13 .venv && uv pip sync --require-hashes requirements-dev.lock
 .venv/bin/ruff format . && .venv/bin/ruff check . && .venv/bin/mypy && .venv/bin/pytest -m "not integration"
-.venv/bin/pytest -m integration          # needs TEST_MIGRATION_DATABASE_URL / TEST_DATABASE_URL on a PG18 DB bootstrapped by deployment/init-db.sh
+.venv/bin/pytest -m integration          # needs TEST_MIGRATION_DATABASE_URL / TEST_DATABASE_URL on a PG18 DB bootstrapped by deployment/init-db.sh; refuses to run while stack workers/dispatcher/scheduler are connected to that DB
 .venv/bin/python -m app.openapi_export   # regenerate contracts/openapi.json after API changes (CI checks drift)
 cd frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build && npm run check:env
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
