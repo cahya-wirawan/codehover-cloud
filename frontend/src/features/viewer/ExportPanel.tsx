@@ -1,6 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { Braces, Download, FileArchive, Loader2 } from "lucide-react";
+
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Section } from "../../components/ui/section";
 import { ApiError } from "../../lib/api/client";
 import { api, type ExportJob } from "../../lib/api/resources";
 
@@ -24,36 +29,41 @@ export function ExportPanel({ buildId, canExport }: { buildId: string; canExport
   if (!canExport) return null;
 
   return (
-    <section aria-labelledby="export-title" className="mt-6 rounded-lg border border-border bg-surface p-4">
-      <h2 id="export-title" className="font-medium">Export</h2>
-      <p className="mt-1 text-sm text-muted">
-        Exports contain this build's source code and explanations. Downloaded copies cannot be recalled.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {(Object.keys(FORMAT) as ExportJob["format"][]).map((format) => (
-          <button key={format} type="button" onClick={() => start.mutate(format)} disabled={start.isPending}
-            className="h-9 rounded-lg border border-input-border px-3">
-            {FORMAT[format]}
-          </button>
-        ))}
-      </div>
+    <Section
+      title="Export"
+      description="Exports contain this build's source code and explanations. Downloaded copies cannot be recalled."
+      actions={(Object.keys(FORMAT) as ExportJob["format"][]).map((format) => (
+        <Button key={format} onClick={() => start.mutate(format)} disabled={start.isPending}>
+          {format === "static_zip" ? <FileArchive aria-hidden="true" /> : <Braces aria-hidden="true" />}
+          {FORMAT[format]}
+        </Button>
+      ))}
+    >
       {start.error ? (
-        <p role="alert" className="mt-2 text-destructive">{start.error instanceof ApiError ? start.error.message : "Could not export."}</p>
-      ) : null}
-      {current ? (
-        <p role="status" className="mt-3">
-          {FORMAT[current.format]}:{" "}
-          {current.status === "pending" ? "being prepared…" : null}
-          {current.status === "failed" ? "failed; try again." : null}
-          {current.status === "ready" && !current.expired ? (
-            <a className="text-primary underline" href={api.exportDownloadUrl(current.id)}>Download</a>
-          ) : null}
-          {current.expired || current.status === "expired" ? "expired; request a new export." : null}
-          {current.status === "ready" && current.expires_at && !current.expired
-            ? ` (available until ${new Date(current.expires_at).toLocaleString()})`
-            : null}
+        <p role="alert" className="text-destructive">
+          {start.error instanceof ApiError ? start.error.message : "Could not export."}
         </p>
       ) : null}
-    </section>
+      {current ? (
+        <p role="status" className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{FORMAT[current.format]}:</span>{" "}
+          {current.status === "pending" ? (
+            <Badge icon={<Loader2 aria-hidden="true" className="motion-safe:animate-spin" />}>being prepared…</Badge>
+          ) : null}
+          {current.status === "failed" ? <Badge tone="destructive">failed; try again.</Badge> : null}
+          {current.status === "ready" && !current.expired ? (
+            <Button asChild variant="primary" size="sm">
+              <a href={api.exportDownloadUrl(current.id)}>
+                <Download aria-hidden="true" /> Download
+              </a>
+            </Button>
+          ) : null}
+          {current.expired || current.status === "expired" ? <Badge>expired; request a new export.</Badge> : null}
+          {current.status === "ready" && current.expires_at && !current.expired ? (
+            <span className="text-muted">available until {new Date(current.expires_at).toLocaleString()}</span>
+          ) : null}
+        </p>
+      ) : null}
+    </Section>
   );
 }

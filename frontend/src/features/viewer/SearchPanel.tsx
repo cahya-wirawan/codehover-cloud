@@ -66,18 +66,18 @@ export function SearchPanel({ source, base }: { source: ViewerSource; base: stri
         <label className="flex flex-col gap-1">
           Kind
           <select value={kind ?? ""} onChange={(e) => setParams(new URLSearchParams({ q: query, ...(e.target.value ? { kind: e.target.value } : {}) }))}
-            className="h-9 rounded-lg border border-input-border bg-surface px-2">
+            className="field">
             <option value="">All</option>
             <option value="symbol">Definitions</option>
             <option value="file">Files</option>
             <option value="guide">Guide pages</option>
           </select>
         </label>
-        <button type="submit" className="h-9 rounded-lg border border-input-border px-3">Search</button>
+        <button type="submit" className="btn">Search</button>
       </form>
       {results.data ? (
         results.data.items.length ? (
-          <ol className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface" aria-label="Results">
+          <ol className="mt-4 panel divide-y divide-border" aria-label="Results">
             {results.data.items.map((hit) => (
               <li key={`${hit.kind}-${hit.ref_id}`} className="p-3">
                 <Link to={target(hit, base)} className="font-mono text-primary">{hit.name}</Link>{" "}

@@ -2,6 +2,9 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams } from "react-router";
 
+import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/input";
+import { EmptyState, PageHeader } from "../../components/ui/section";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 
@@ -26,31 +29,66 @@ export function AuditPage() {
     getNextPageParam: (last) => last.next_cursor,
   });
   const denied = log.error instanceof ApiError && log.error.status === 403;
+  const events = log.data?.pages.flatMap((page) => page.items) ?? [];
   return (
-    <section aria-labelledby="audit-title" className="max-w-4xl">
-      <h1 id="audit-title" className="text-2xl font-medium">Audit log</h1>
-      {denied ? <p className="mt-2 text-muted">Only workspace admins can read the audit log.</p> : null}
-      <label className="mt-4 flex max-w-xs flex-col gap-1">
-        Show
-        <select value={action} onChange={(e) => setAction(e.target.value)} className="h-9 rounded-lg border border-input-border bg-surface px-2">
-          {FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </label>
-      <table className="mt-4 w-full border-collapse text-left">
-        <thead><tr className="border-b border-border text-muted"><th className="py-2">When</th><th>Who</th><th>What</th><th>Details</th></tr></thead>
-        <tbody>
-          {log.data?.pages.flatMap((page) => page.items).map((e) => (
-            <tr key={e.id} className="border-b border-border align-top">
-              <td className="py-2 pr-3 whitespace-nowrap">{new Date(e.created_at).toLocaleString()}</td>
-              <td className="pr-3">{e.actor_name ?? "system"}</td>
-              <td className="pr-3 font-mono">{e.action}</td>
-              <td className="font-mono text-sm text-muted">{JSON.stringify(e.metadata)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <section aria-labelledby="audit-title" className="max-w-5xl">
+      <PageHeader
+        title={<span id="audit-title">Audit log</span>}
+        description="Changes to members, connections, builds, publications, exports and deletion, newest first."
+        actions={
+          <label className="flex items-center gap-2 text-[13px]">
+            Show
+            <Select value={action} onChange={(e) => setAction(e.target.value)} className="w-48">
+              {FILTERS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </label>
+        }
+      />
+      {denied ? <p className="text-muted">Only workspace admins can read the audit log.</p> : null}
+      {events.length ? (
+        <div className="panel overflow-x-auto">
+          <table className="w-full text-left">
+            <caption className="sr-only">Audit events</caption>
+            <thead>
+              <tr className="border-b border-border text-xs text-muted">
+                <th scope="col" className="px-4 py-2.5 font-medium">When</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">Who</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">What</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">Details</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {events.map((e) => (
+                <tr key={e.id} className="align-top">
+                  <td className="px-4 py-3 whitespace-nowrap text-muted">{new Date(e.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{e.actor_name ?? "system"}</td>
+                  <td className="px-4 py-3 font-mono text-[13px] whitespace-nowrap">{e.action}</td>
+                  <td className="px-4 py-3">
+                    <dl className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+                      {Object.entries(e.metadata).map(([key, value]) => (
+                        <div key={key} className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted">{key.replaceAll("_", " ")}</dt>
+                          <dd className="min-w-0 truncate font-mono">{typeof value === "string" ? value : JSON.stringify(value)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : log.data && !denied ? (
+        <EmptyState title="No events yet" />
+      ) : null}
       {log.hasNextPage ? (
-        <button type="button" onClick={() => void log.fetchNextPage()} className="mt-3 h-9 rounded-lg border border-input-border px-3">Older events</button>
+        <Button className="mt-4" onClick={() => void log.fetchNextPage()}>
+          Older events
+        </Button>
       ) : null}
     </section>
   );

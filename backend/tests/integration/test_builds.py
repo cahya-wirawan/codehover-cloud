@@ -346,3 +346,57 @@ async def test_lost_message_is_renotified(
         "SELECT count(*) FROM outbox WHERE aggregate_id = :t AND published_at IS NULL", t=envelope.task_id
     )
     assert pending[0][0] == 1
+
+
+def tarball_of(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for path, content in files.items():
+            data = content.encode()
+            info = tarfile.TarInfo(f"octo-api-c0ffee/{path}")
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+async def test_names_repeated_across_files_index_as_separate_symbols(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """0021: keys are unique per file; `main` in two files must not fail the index stage."""
+    owner, _ws, project = await setup_project(client, idp, github)
+    repeated = {
+        "a/cli.py": 'def main():\n    """Run a."""\n    return 1\n\n\nclass Tool:\n    def run(self):\n        return 1\n',
+        "b/cli.py": 'def main():\n    """Run b."""\n    return 2\n\n\nclass Tool:\n    def run(self):\n        return 2\n',
+    }
+    for repo_id in list(github.tarballs):
+        github.tarballs[repo_id] = tarball_of(repeated)
+    build = (await start(owner, project)).json()["id"]
+    await drive(client.app, build)  # type: ignore[attr-defined]
+    assert (await owner.get(f"/api/v1/builds/{build}")).json()["status"] == "ready"
+    rows = ddl("SELECT symbol_key, count(*) FROM symbols WHERE build_id = :b GROUP BY 1 ORDER BY 1", b=build)
+    assert sorted((k, n) for k, n in rows) == [("Tool", 2), ("Tool.run", 2), ("main", 2)]
+
+
+async def test_a_failing_apply_retries_instead_of_holding_the_lease(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stage whose writes fail is a transient failure (retried in SQL), never a task left leased."""
+    owner, _ws, project = await setup_project(client, idp, github)
+    build = (await start(owner, project)).json()["id"]
+    from app.jobs import stages
+
+    original = stages.HANDLERS["acquire"]
+
+    async def breaking(rt: Any, claimed: Any) -> Any:
+        await original(rt, claimed)
+
+        async def apply(_db: Any) -> None:
+            raise RuntimeError("write failed")
+
+        return apply
+
+    monkeypatch.setitem(stages.HANDLERS, "acquire", breaking)
+    outcomes = await drive(client.app, build, rounds=1)  # type: ignore[attr-defined]
+    assert outcomes == ["retry_wait"]
+    state = ddl("SELECT state, error_code, lease_until FROM build_tasks WHERE build_id = :b", b=build)[0]
+    assert state == ("retry_wait", "internal_RuntimeError", None)

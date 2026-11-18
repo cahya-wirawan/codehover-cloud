@@ -1,45 +1,160 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, FileCode2, FileX2, Folder, FolderOpen } from "lucide-react";
+import { Highlight, type Token } from "prism-react-renderer";
+import { Popover } from "radix-ui";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { useSearchParams } from "react-router";
 
-import type { Related, SymbolView, TreeEntry, ViewerSource } from "../../lib/api/resources";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
+import type { Related, TreeEntry, ViewerSource } from "../../lib/api/resources";
+import { cn } from "../../lib/cn";
+import { useMediaQuery } from "../../lib/useMediaQuery";
+import { SymbolCard } from "./SymbolCard";
 
 const WINDOW = 500; // the API returns at most 500 lines per request (06)
-const HOVER_DELAY_MS = 200; // 02 "Component contracts"
+const HOVER_DELAY_MS = 200; // 02 "Hover card": pointer open delay
+const LEAVE_DELAY_MS = 150; // time to move the pointer from the name into the card
+const NO_THEME = { plain: {}, styles: [] }; // colours come from CSS classes, so both themes work
 
-/** Split a definition line around the first whole-word occurrence of its name, or null when the name is
- * not on the line (unusual syntax); source text is never altered. */
-function splitAtName(text: string, name: string): [string, string] | null {
+const LANGUAGES: Record<string, string> = {
+  py: "python",
+  ts: "tsx",
+  tsx: "tsx",
+  js: "jsx",
+  jsx: "jsx",
+  mjs: "jsx",
+  json: "json",
+  md: "markdown",
+  yml: "yaml",
+  yaml: "yaml",
+  go: "go",
+  rs: "rust",
+};
+
+function languageOf(path: string): string {
+  return LANGUAGES[path.split(".").pop()?.toLowerCase() ?? ""] ?? "plain";
+}
+
+/** The first whole-word occurrence of a definition's name on its line, or null (unusual syntax); the
+ * source text is never altered. */
+function nameRange(text: string, name: string): [number, number] | null {
   if (name === "") return null;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = new RegExp(`(^|[^\\w$])${escaped}(?![\\w$])`).exec(text);
   if (!match) return null;
   const at = match.index + (match[1] ?? "").length;
-  return [text.slice(0, at), text.slice(at + name.length)];
+  return [at, at + name.length];
 }
 
-function Tree({ source, path, onOpen, current }: { source: ViewerSource; path: string; onOpen: (entry: TreeEntry) => void; current: string | null }) {
-  const { data } = useQuery({ queryKey: ["tree", source.key, path], queryFn: () => source.tree(path) });
+function tokenClass(token: Token): string | undefined {
+  const types = token.types.filter((t) => t !== "plain");
+  return types.length ? `token ${types.join(" ")}` : undefined;
+}
+
+/** A line's highlighted tokens, with the definition's name replaced by its control. */
+function renderTokens(tokens: Token[], range: [number, number] | null, name: (cls: string | undefined) => ReactNode) {
+  const out: ReactNode[] = [];
+  let position = 0;
+  tokens.forEach((token, index) => {
+    const start = position;
+    const end = position + token.content.length;
+    position = end;
+    const cls = tokenClass(token);
+    if (!range || end <= range[0] || start >= range[1]) {
+      out.push(
+        <span key={index} className={cls}>
+          {token.content}
+        </span>,
+      );
+      return;
+    }
+    const before = Math.max(range[0], start) - start;
+    const after = Math.min(range[1], end) - start;
+    if (before > 0) out.push(<span key={`${index}a`} className={cls}>{token.content.slice(0, before)}</span>);
+    if (start <= range[0]) out.push(<Fragment key={`${index}n`}>{name(cls)}</Fragment>);
+    if (after < token.content.length) out.push(<span key={`${index}b`} className={cls}>{token.content.slice(after)}</span>);
+  });
+  return out;
+}
+
+function Tree({
+  source,
+  path,
+  depth,
+  onOpen,
+  current,
+}: {
+  source: ViewerSource;
+  path: string;
+  depth: number;
+  onOpen: (entry: TreeEntry) => void;
+  current: string | null;
+}) {
+  const { data, isPending } = useQuery({ queryKey: ["tree", source.key, path], queryFn: () => source.tree(path) });
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  if (isPending) {
+    return (
+      <div className="flex flex-col gap-2 px-3 py-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-24" />
+      </div>
+    );
+  }
+  const indent = { paddingLeft: `${8 + depth * 14}px` };
   return (
-    <ul className="pl-3">
+    <ul>
       {data?.items.map((entry) =>
         entry.type === "dir" ? (
           <li key={entry.path}>
-            <button type="button" aria-expanded={open[entry.path] ?? false} className="text-left"
-              onClick={() => setOpen((o) => ({ ...o, [entry.path]: !o[entry.path] }))}>
-              <span aria-hidden="true">{open[entry.path] ? "▾" : "▸"}</span> {entry.name}
+            <button
+              type="button"
+              aria-expanded={open[entry.path] ?? false}
+              style={indent}
+              className="flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[13px] hover:bg-surface-muted"
+              onClick={() => setOpen((o) => ({ ...o, [entry.path]: !o[entry.path] }))}
+            >
+              {open[entry.path] ? (
+                <ChevronDown aria-hidden="true" className="size-3.5 text-muted" />
+              ) : (
+                <ChevronRight aria-hidden="true" className="size-3.5 text-muted" />
+              )}
+              {open[entry.path] ? (
+                <FolderOpen aria-hidden="true" className="size-4 text-muted" />
+              ) : (
+                <Folder aria-hidden="true" className="size-4 text-muted" />
+              )}
+              <span className="truncate">{entry.name}</span>
             </button>
-            {open[entry.path] ? <Tree source={source} path={entry.path} onOpen={onOpen} current={current} /> : null}
+            {open[entry.path] ? (
+              <Tree source={source} path={entry.path} depth={depth + 1} onOpen={onOpen} current={current} />
+            ) : null}
           </li>
         ) : (
           <li key={entry.path}>
-            <button type="button" className="text-left text-primary disabled:text-muted"
+            <button
+              type="button"
+              style={{ paddingLeft: `${28 + depth * 14}px` }}
+              className={cn(
+                "flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[13px] hover:bg-surface-muted disabled:text-muted disabled:hover:bg-transparent",
+                current === entry.file_id && "bg-primary/10 font-medium text-primary hover:bg-primary/10",
+              )}
               aria-current={current === entry.file_id ? "page" : undefined}
               disabled={entry.status !== "selected" && entry.status !== "unsupported"}
-              title={entry.reason ?? undefined} onClick={() => onOpen(entry)}>
-              {entry.name}
-              {entry.status === "blocked" || entry.status === "excluded" ? " (excluded)" : ""}
+              title={entry.reason ?? undefined}
+              onClick={() => onOpen(entry)}
+            >
+              {entry.status === "blocked" || entry.status === "excluded" ? (
+                <FileX2 aria-hidden="true" className="size-4 shrink-0" />
+              ) : (
+                <FileCode2 aria-hidden="true" className="size-4 shrink-0 text-muted" />
+              )}
+              <span className="truncate">{entry.name}</span>
+              {entry.status === "blocked" || entry.status === "excluded" ? (
+                <span className="ml-auto text-xs"> (excluded)</span>
+              ) : null}
             </button>
           </li>
         ),
@@ -48,88 +163,34 @@ function Tree({ source, path, onOpen, current }: { source: ViewerSource; path: s
   );
 }
 
-function provenanceLabel(card: SymbolView["card"]): string {
-  const generator = (card as { provenance?: { generator?: string } }).provenance?.generator;
-  if (generator === "model") return "AI-generated; check the cited source.";
-  if (generator === "replay-fallback") return "No valid model explanation; derived from the source only.";
-  return "Derived from the source only (replay).";
-}
-
-function Relations({ title, items, onFollow }: { title: string; items: Related[]; onFollow: (r: Related) => void }) {
+function Pane({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <>
-      <h4 className="mt-3 font-medium">{title}</h4>
-      <ul className="text-muted">
-        {items.map((r) => (
-          <li key={`${r.id}`}>
-            <button type="button" className="text-left text-primary underline-offset-2 hover:underline"
-              onClick={() => onFollow(r)} disabled={!r.file_id}>
-              {r.name}
-            </button>{" "}
-            · {r.path} · matched by name{r.ambiguous ? " (ambiguous: one of several definitions with this name)" : ""}
-          </li>
-        ))}
-        {items.length === 0 ? <li>None found.</li> : null}
-      </ul>
-    </>
+    <section aria-label={title} className={cn("flex h-full min-h-0 flex-col", className)}>
+      {children}
+    </section>
   );
 }
 
-function SymbolCard({
-  source, symbolId, pinned, onClose, onFollow,
-}: { source: ViewerSource; symbolId: string; pinned: boolean; onClose: () => void; onFollow: (r: Related) => void }) {
-  const { data } = useQuery({ queryKey: ["symbol", source.key, symbolId], queryFn: () => source.symbol(symbolId) });
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (pinned && data) heading.current?.focus();
-  }, [pinned, data]);
-  if (!data) return <p role="status" className="text-muted">Loading…</p>;
-  const card = data.card as SymbolView["card"] & { returns?: string; details?: string };
+function ResizeHandle() {
   return (
-    <article
-      role={pinned ? "dialog" : undefined}
-      aria-modal={pinned ? false : undefined}
-      aria-label={`${data.kind} ${data.name}`}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-      className="max-h-[60vh] max-w-[480px] overflow-auto rounded-lg border border-border bg-surface p-3"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <h3 ref={heading} tabIndex={-1} className="font-mono font-medium">{data.name}</h3>
-        {pinned ? (
-          <button type="button" onClick={onClose} className="rounded border border-border px-2 text-sm">Close</button>
-        ) : null}
-      </div>
-      <p className="text-muted">{data.kind} · {data.path}:{data.start_line}</p>
-      {data.signature ? <pre className="mt-2 overflow-x-auto font-mono text-[13px]">{data.signature}</pre> : null}
-      <p className="mt-2">{card.summary}</p>
-      {card.details ? <p className="mt-2 whitespace-pre-wrap text-muted">{card.details}</p> : null}
-      {card.params?.length ? (
-        <dl className="mt-2">
-          {card.params.map((p) => (
-            <div key={p.name}><dt className="inline font-mono">{p.name}</dt> <dd className="inline text-muted">— {p.description}</dd></div>
-          ))}
-        </dl>
-      ) : null}
-      {card.returns ? <p className="mt-2"><span className="font-medium">Returns:</span> {card.returns}</p> : null}
-      {card.notes ? <p className="mt-2 text-muted">{card.notes}</p> : null}
-      <p className="mt-2 text-sm text-muted">{provenanceLabel(data.card)}</p>
-      <Relations title="Uses" items={data.uses} onFollow={onFollow} />
-      <Relations title="Used by" items={data.used_by} onFollow={onFollow} />
-    </article>
+    <Separator className="group relative w-px bg-border outline-none data-[separator=active]:bg-primary">
+      <span className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/20 group-focus-visible:bg-primary/30" />
+    </Separator>
   );
 }
 
-/** Three panes: tree, source, details (02 S11). File, line range and pinned symbol live in the URL. */
+/** Three panes: tree, source, outline (02 S11). File, line range and pinned symbol live in the URL; the
+ * definition card floats at its name (02 "Hover card"). */
 export function CodeViewer({ source }: { source: ViewerSource }) {
   const [params, setParams] = useSearchParams();
+  const wide = useMediaQuery("(min-width: 1024px)");
   const fileId = params.get("file");
   const line = Number(params.get("line") ?? "0") || null;
   const end = Number(params.get("end") ?? "0") || line;
   const pinned = params.get("symbol");
   const [preview, setPreview] = useState<string | null>(null);
-  const hoverTimer = useRef<number | undefined>(undefined);
+  const openTimer = useRef<number | undefined>(undefined);
+  const closeTimer = useRef<number | undefined>(undefined);
   const triggers = useRef(new Map<string, HTMLButtonElement>());
   const start = line ? Math.max(1, line - 100) : 1;
   const [windowStart, setWindowStart] = useState<number | null>(null);
@@ -139,10 +200,31 @@ export function CodeViewer({ source }: { source: ViewerSource }) {
     queryFn: () => source.file(fileId ?? "", from),
     enabled: fileId !== null,
   });
+  const shown = pinned ?? preview;
+  // The card's anchor is whichever name is shown; floating-ui follows it through scrolling. The element is
+  // looked up when floating-ui measures (after commit), never during render.
+  const anchor = useMemo(
+    () => ({
+      current: {
+        getBoundingClientRect: () => triggers.current.get(shown ?? "")?.getBoundingClientRect() ?? new DOMRect(),
+        get contextElement() {
+          return triggers.current.get(shown ?? "");
+        },
+      },
+    }),
+    [shown],
+  );
 
   useEffect(() => {
     if (line && view.data) document.getElementById(`L${line}`)?.scrollIntoView?.({ block: "center" });
   }, [line, view.data]);
+  useEffect(
+    () => () => {
+      window.clearTimeout(openTimer.current);
+      window.clearTimeout(closeTimer.current);
+    },
+    [],
+  );
 
   const update = (next: Record<string, string | null>) => {
     const merged = new URLSearchParams(params);
@@ -152,7 +234,11 @@ export function CodeViewer({ source }: { source: ViewerSource }) {
     }
     setParams(merged);
   };
-  const pin = (id: string) => update({ symbol: id });
+  const pin = (id: string) => {
+    window.clearTimeout(openTimer.current);
+    setPreview(null);
+    update({ symbol: id });
+  };
   const unpin = () => {
     const trigger = pinned ? triggers.current.get(pinned) : undefined;
     update({ symbol: null });
@@ -161,83 +247,262 @@ export function CodeViewer({ source }: { source: ViewerSource }) {
   const follow = (r: Related) => {
     if (!r.file_id) return;
     setWindowStart(null);
+    setPreview(null);
     update({ file: r.file_id, line: String(r.start_line ?? 1), end: null, symbol: r.id });
   };
-  const shown = pinned ?? preview;
-  const last = view.data ? view.data.start_line + view.data.lines.length - 1 : 0;
-  const total = view.data?.line_count ?? last;
+  const hoverName = (id: string) => {
+    window.clearTimeout(closeTimer.current);
+    window.clearTimeout(openTimer.current);
+    if (pinned) return; // a pinned card stays until it is closed
+    openTimer.current = window.setTimeout(() => setPreview(id), preview ? 0 : HOVER_DELAY_MS);
+  };
+  const leave = () => {
+    window.clearTimeout(openTimer.current);
+    closeTimer.current = window.setTimeout(() => setPreview(null), LEAVE_DELAY_MS);
+  };
+
+  const data = view.data;
+  const last = data ? data.start_line + data.lines.length - 1 : 0;
+  const total = data?.line_count ?? last;
+  const shownSymbol = data?.symbols.find((s) => s.id === shown);
+
+  const tree = (
+    <nav aria-label="Files" className="h-full overflow-auto py-2">
+      <Tree
+        source={source}
+        path=""
+        depth={0}
+        current={fileId}
+        onOpen={(entry) => {
+          setWindowStart(null);
+          setPreview(null);
+          update({ file: entry.file_id, line: null, end: null, symbol: null });
+        }}
+      />
+    </nav>
+  );
+
+  const code = (
+    <Pane title="Source">
+      {data ? (
+        <>
+          <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
+            <p className="min-w-0 truncate font-mono text-[13px]">{data.path}</p>
+            <p className="shrink-0 text-xs text-muted">
+              Lines {data.start_line}–{last}
+              {total ? ` of ${total}` : ""}
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {data.start_line > 1 ? (
+              <Button
+                size="sm"
+                className="m-3"
+                onClick={() => setWindowStart(Math.max(1, data.start_line - WINDOW))}
+              >
+                Earlier lines
+              </Button>
+            ) : null}
+            <Highlight code={data.lines.join("\n")} language={languageOf(data.path)} theme={NO_THEME}>
+              {({ tokens }) => (
+                <pre className="min-w-max py-3 font-mono text-[13px] leading-[21px]">
+                  {tokens.map((lineTokens, index) => {
+                    const number = data.start_line + index;
+                    const text = data.lines[index] ?? "";
+                    const symbol = data.symbols.find((s) => s.start_line === number);
+                    const highlighted = line !== null && end !== null && number >= line && number <= end;
+                    // Only the identifier is the control, so its visible text is its name (WCAG 2.5.3).
+                    const range = symbol ? nameRange(text, symbol.name) : null;
+                    const label = symbol ? `Explain ${symbol.kind} ${symbol.name}` : "";
+                    const control = (cls: string | undefined, content: ReactNode) =>
+                      symbol ? (
+                        <button
+                          type="button"
+                          ref={(el) => {
+                            if (el) triggers.current.set(symbol.id, el);
+                          }}
+                          aria-label={range ? label : `${text.trim()}: ${label}`}
+                          aria-expanded={shown === symbol.id}
+                          aria-haspopup="dialog"
+                          onPointerEnter={() => hoverName(symbol.id)}
+                          onPointerLeave={leave}
+                          onClick={() => pin(symbol.id)}
+                          className={cn(
+                            cls,
+                            "cursor-pointer rounded-[3px] text-left underline decoration-annotation/60 decoration-dotted decoration-[1.5px] underline-offset-[5px] hover:bg-primary/10 hover:decoration-annotation",
+                            shown === symbol.id && "bg-primary/10 decoration-annotation decoration-solid",
+                          )}
+                        >
+                          {content}
+                        </button>
+                      ) : null;
+                    return (
+                      <div
+                        key={number}
+                        id={`L${number}`}
+                        className={cn(
+                          "flex pr-6",
+                          highlighted && "bg-primary/[0.07] shadow-[inset_2px_0_0_var(--primary)]",
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="sticky left-0 inline-block w-14 shrink-0 bg-surface pr-4 text-right text-muted select-none"
+                        >
+                          {number}
+                        </span>
+                        <span className="whitespace-pre">
+                          {symbol && !range
+                            ? control(undefined, text)
+                            : renderTokens(lineTokens, range, (cls) => control(cls, symbol?.name))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </pre>
+              )}
+            </Highlight>
+            {total && last < total ? (
+              <Button size="sm" className="m-3" onClick={() => setWindowStart(last + 1)}>
+                Later lines
+              </Button>
+            ) : null}
+          </div>
+        </>
+      ) : fileId ? (
+        <div className="flex flex-col gap-2 p-4">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      ) : (
+        <div className="grid h-full place-items-center p-8 text-center text-muted">
+          <p>
+            Choose a file to read. Underlined names open an explanation when you hover them; click to keep it open.
+          </p>
+        </div>
+      )}
+    </Pane>
+  );
+
+  const outline = (
+    <Pane title="Definition details" className="overflow-auto">
+      <div className="flex flex-col gap-4 p-4">
+        {data?.explanation?.summary ? (
+          <div>
+            <h2 className="text-xs font-medium text-muted">About this file</h2>
+            <p className="mt-1.5 leading-[22px]">{data.explanation.summary.split("\n\n")[0]}</p>
+            <p className="mt-1.5 text-xs text-muted">
+              {data.explanation.status === "generated"
+                ? "AI-generated; check the cited source"
+                : "Partly derived from the source only"}
+            </p>
+          </div>
+        ) : null}
+        <div>
+          <h2 className="text-xs font-medium text-muted">Definitions</h2>
+          {data?.symbols.length ? (
+            <ul className="mt-1.5 flex flex-col">
+              {data.symbols.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      update({ line: String(s.start_line), end: String(s.end_line ?? s.start_line), symbol: s.id });
+                    }}
+                    className={cn(
+                      "flex h-7 w-full items-center gap-2 rounded-[4px] px-1.5 text-left hover:bg-surface-muted",
+                      pinned === s.id && "bg-primary/10",
+                    )}
+                  >
+                    <span className="w-14 shrink-0 text-xs text-muted">{s.kind}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{s.name}</span>
+                    <span className="text-xs text-muted">{s.start_line}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1.5 text-muted">{data ? "No definitions in this file." : "Hover or select a definition."}</p>
+          )}
+        </div>
+      </div>
+    </Pane>
+  );
 
   return (
-    <div className="mt-4 grid gap-4 lg:grid-cols-[248px_1fr_280px]">
-      <nav aria-label="Files" className="max-h-[70vh] overflow-auto rounded-lg border border-border bg-surface py-2">
-        <Tree source={source} path="" current={fileId}
-          onOpen={(entry) => { setWindowStart(null); update({ file: entry.file_id, line: null, end: null, symbol: null }); }} />
-      </nav>
-      <section aria-label="Source" className="min-w-0 overflow-x-auto rounded-lg border border-border bg-surface">
-        {view.data ? (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <p className="font-mono text-muted">{view.data.path}</p>
-              <p className="text-sm text-muted">Lines {view.data.start_line}–{last}{total ? ` of ${total}` : ""}</p>
-            </div>
-            {view.data.explanation?.summary ? (
-              <p className="border-b border-border px-3 py-2 text-sm">
-                {view.data.explanation.summary.split("\n\n")[0]}{" "}
-                <span className="text-muted">({view.data.explanation.status === "generated" ? "AI-generated; check the cited source" : "partly derived from the source only"})</span>
-              </p>
+    <div className="mt-4 overflow-hidden rounded-[var(--radius-overlay)] border border-border bg-surface">
+      <Popover.Root
+        key={shown ?? "none"}
+        open={shownSymbol !== undefined} // its name is on screen to anchor to
+        onOpenChange={(open) => {
+          if (open) return;
+          if (pinned) unpin();
+          else setPreview(null);
+        }}
+      >
+        <Popover.Anchor virtualRef={anchor} />
+        <Popover.Portal>
+          <Popover.Content
+            side="bottom"
+            align="start"
+            sideOffset={6}
+            collisionPadding={12}
+            aria-label={shownSymbol ? `${shownSymbol.kind} ${shownSymbol.name}` : "Definition"}
+            onOpenAutoFocus={(event) => event.preventDefault()} // a preview never steals focus
+            onCloseAutoFocus={(event) => event.preventDefault()} // unpin() returns focus to the name
+            onInteractOutside={(event) => {
+              if (pinned) event.preventDefault(); // a pinned card stays while the reader scrolls or selects
+            }}
+            onPointerEnter={() => window.clearTimeout(closeTimer.current)}
+            onPointerLeave={() => {
+              if (!pinned) leave();
+            }}
+            className="z-40 w-[min(480px,calc(100vw-24px))] overflow-hidden rounded-[var(--radius-overlay)] border border-border bg-surface shadow-[var(--shadow-overlay)]"
+          >
+            {shown ? (
+              <SymbolCard
+                source={source}
+                symbolId={shown}
+                pinned={pinned === shown}
+                onPin={() => pin(shown)}
+                onClose={unpin}
+                onFollow={follow}
+              />
             ) : null}
-            {view.data.start_line > 1 ? (
-              <button type="button" className="m-2 rounded border border-border px-2 text-sm"
-                onClick={() => setWindowStart(Math.max(1, view.data.start_line - WINDOW))}>Earlier lines</button>
-            ) : null}
-            <pre className="p-3 font-mono text-[13px] leading-[21px]">
-              {view.data.lines.map((text, index) => {
-                const number = view.data.start_line + index;
-                const symbol = view.data.symbols.find((s) => s.start_line === number);
-                const highlighted = line !== null && end !== null && number >= line && number <= end;
-                // Only the identifier is the control, so its visible text is part of its name (WCAG 2.5.3).
-                const parts = symbol ? splitAtName(text, symbol.name) : null;
-                const label = symbol ? `Explain ${symbol.kind} ${symbol.name}` : "";
-                return (
-                  <div key={number} id={`L${number}`} className={highlighted ? "bg-surface-muted" : undefined}>
-                    <span aria-hidden="true" className="inline-block w-12 select-none pr-3 text-right text-muted">{number}</span>
-                    {symbol ? (
-                        <>
-                          {parts?.[0]}
-                          <button type="button" className="text-left underline decoration-dotted underline-offset-4"
-                            ref={(el) => { if (el) triggers.current.set(symbol.id, el); }}
-                            aria-label={parts ? label : `${text.trim()}: ${label}`}
-                            aria-expanded={pinned === symbol.id}
-                            onMouseEnter={() => { hoverTimer.current = window.setTimeout(() => setPreview(symbol.id), HOVER_DELAY_MS); }}
-                            onMouseLeave={() => window.clearTimeout(hoverTimer.current)}
-                            onClick={() => pin(symbol.id)}>
-                            {parts ? symbol.name : text}
-                          </button>
-                          {parts?.[1]}
-                        </>
-                    ) : (
-                      text
-                    )}
-                  </div>
-                );
-              })}
-            </pre>
-            {total && last < total ? (
-              <button type="button" className="m-2 rounded border border-border px-2 text-sm"
-                onClick={() => setWindowStart(last + 1)}>Later lines</button>
-            ) : null}
-          </>
-        ) : (
-          <p className="p-3 text-muted">Choose a file to read.</p>
-        )}
-      </section>
-      <aside aria-label="Definition details">
-        {shown ? (
-          <SymbolCard source={source} symbolId={shown} pinned={pinned === shown} onClose={unpin} onFollow={follow} />
-        ) : (
-          <p className="text-muted">Hover or select a definition.</p>
-        )}
-      </aside>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+      {wide ? (
+        // The group sizes itself to its parent (inline height: 100%), so the parent fixes the height.
+        <div className="h-[calc(100dvh-15rem)] min-h-[480px]">
+        <Group orientation="horizontal">
+          <Panel id="tree" defaultSize={248} minSize={180} maxSize={420} className="h-full overflow-hidden bg-surface">
+            {tree}
+          </Panel>
+          <ResizeHandle />
+          <Panel id="code" minSize={360} className="h-full overflow-hidden">
+            {code}
+          </Panel>
+          <ResizeHandle />
+          <Panel id="outline" defaultSize={280} minSize={220} maxSize={460} className="h-full overflow-hidden">
+            {outline}
+          </Panel>
+        </Group>
+        </div>
+      ) : (
+        <div className="flex flex-col divide-y divide-border">
+          <details className="group">
+            <summary className="flex h-10 cursor-pointer items-center gap-2 px-4 text-[13px] font-medium">
+              <Folder aria-hidden="true" className="size-4 text-muted" /> Files
+              <Badge className="ml-auto">{data?.path ?? "none open"}</Badge>
+            </summary>
+            <div className="max-h-[50vh] overflow-auto">{tree}</div>
+          </details>
+          <div className="h-[70vh]">{code}</div>
+          {outline}
+        </div>
+      )}
     </div>
   );
 }

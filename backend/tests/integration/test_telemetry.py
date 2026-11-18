@@ -22,8 +22,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core import metrics
 from app.core.db import session_factory
 from app.core.logging import JsonFormatter, configure_logging
-from tests.integration.auth_support import FakeIdP, unsafe
-from tests.integration.conftest import RUNTIME_URL, SYSTEM_URL, engine, needs_db, needs_system
+from tests.integration.auth_support import FakeIdP, ddl, unsafe
+from tests.integration.conftest import RUNTIME_URL, SYSTEM_URL, World, engine, needs_db, needs_system
 from tests.integration.test_builds import drive
 from tests.integration.test_generation import runtime_for
 from tests.integration.test_github import FakeGitHub, github  # noqa: F401
@@ -115,7 +115,7 @@ def test_metric_labels_are_bounded() -> None:
 
 
 @needs_system
-async def test_operational_gauges_are_aggregates_for_the_system_role_only() -> None:
+async def test_operational_gauges_are_aggregates_for_the_system_role_only(world: World) -> None:
     assert SYSTEM_URL
     async with session_factory(create_async_engine(SYSTEM_URL))() as db:
         values = await metrics.collect_queue_gauges(db)
@@ -133,6 +133,19 @@ async def test_operational_gauges_are_aggregates_for_the_system_role_only() -> N
         "usage_drift_micro_usd",
     }
     assert all(isinstance(v, float) and v >= 0 for v in values.values())
-    assert values["usage_drift_micro_usd"] == 0  # every counter matches the ledger
+    # Drift is measured exactly: knock one account's counter off its ledger by a known amount.
+    ddl(
+        "UPDATE usage_accounts SET reserved_micro_usd = reserved_micro_usd + 1234 WHERE id = :a",
+        a=world.a.account,
+    )
+    try:
+        async with session_factory(create_async_engine(SYSTEM_URL))() as db:
+            drifted = await metrics.collect_queue_gauges(db)
+        assert drifted["usage_drift_micro_usd"] - values["usage_drift_micro_usd"] == 1234
+    finally:
+        ddl(
+            "UPDATE usage_accounts SET reserved_micro_usd = reserved_micro_usd - 1234 WHERE id = :a",
+            a=world.a.account,
+        )
     with engine(RUNTIME_URL).connect() as conn, pytest.raises(sa.exc.ProgrammingError):
         conn.execute(sa.text("SELECT * FROM app_private.ops_gauges()"))  # not a runtime privilege

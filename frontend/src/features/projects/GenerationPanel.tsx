@@ -63,8 +63,8 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
   });
 
   return (
-    <section aria-labelledby="gen-title" className="mt-8 rounded-lg border border-border bg-surface p-4">
-      <h2 id="gen-title" className="text-lg font-medium">Generate explanations and a guide</h2>
+    <section aria-labelledby="gen-title" className="page-section">
+      <h2 id="gen-title" className="section-title">Generate explanations and a guide</h2>
       {usage.data ? (
         <p className="mt-1 text-muted">
           Generation allowance this month: {formatUsd(usage.data.available_micro_usd)} available of{" "}
@@ -85,7 +85,7 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
             </p>
           ) : null}
           <button type="button" onClick={() => acquire.mutate()} disabled={acquire.isPending}
-            className="mt-2 h-9 rounded-lg border border-border px-3">
+            className="mt-2 btn">
             {current ? "Use latest commit" : "Take snapshot"}
           </button>
           {acquire.error ? <p role="alert" className="mt-2 text-destructive">{errorText(acquire.error, "Could not take a snapshot.")}</p> : null}
@@ -96,7 +96,7 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
               Model preset
-              <select value={chosenPreset} onChange={(e) => setPreset(e.target.value)} className="h-9 rounded-lg border border-border bg-surface px-2">
+              <select value={chosenPreset} onChange={(e) => setPreset(e.target.value)} className="field">
                 {presets.data?.items.map((p) => (
                   <option key={p.name} value={p.name}>{p.name}</option>
                 ))}
@@ -106,7 +106,7 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
             <label className="flex flex-col gap-1">
               Maximum files
               <input type="number" min={1} max={500} value={maxFiles} onChange={(e) => setMaxFiles(Number(e.target.value))}
-                className="h-9 rounded-lg border border-border bg-surface px-2" />
+                className="field" />
             </label>
             <label className="flex flex-col gap-1">
               Include (one glob per line)
@@ -121,12 +121,12 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
             <label className="flex flex-col gap-1">
               Guide pages
               <input type="number" min={1} max={8} value={pages} onChange={(e) => setPages(Number(e.target.value))}
-                className="h-9 rounded-lg border border-border bg-surface px-2" />
+                className="field" />
             </label>
           </div>
           <button type="button" onClick={() => quote.mutate()}
             disabled={quote.isPending || current?.status !== "scanned" || !chosenPreset}
-            className="mt-3 h-9 rounded-lg border border-border px-3">
+            className="mt-3 btn">
             Estimate
           </button>
           {quote.error ? <p role="alert" className="mt-2 text-destructive">{errorText(quote.error, "Could not estimate.")}</p> : null}
@@ -155,10 +155,10 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
               Spending cap in USD (empty: the lower of the estimate's high bound and your remaining allowance)
               <input inputMode="decimal" value={capDollars} onChange={(e) => setCapDollars(e.target.value)}
                 placeholder={formatUsd(estimate.cost_micro_usd.high).slice(1)}
-                className="h-9 rounded-lg border border-border bg-surface px-2" />
+                className="field" />
             </label>
             <button type="button" onClick={() => start.mutate()} disabled={start.isPending}
-              className="mt-3 h-10 rounded-lg bg-primary px-4 font-medium text-primary-foreground">
+              className="mt-3 btn btn-primary btn-lg">
               Start build
             </button>
             {start.error ? <p role="alert" className="mt-2 text-destructive">{errorText(start.error, "Could not start the build.")}</p> : null}

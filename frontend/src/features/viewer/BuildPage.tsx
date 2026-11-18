@@ -2,33 +2,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router";
 
+import { Ban, RotateCcw } from "lucide-react";
+
+import { Button } from "../../components/ui/button";
+import { PageHeader } from "../../components/ui/section";
+import { Skeleton } from "../../components/ui/skeleton";
 import { ApiError } from "../../lib/api/client";
+import { cn } from "../../lib/cn";
 import { api, type Build, buildSource, formatUsd, TERMINAL } from "../../lib/api/resources";
 import { CodeViewer } from "./CodeViewer";
 import { ExportPanel } from "./ExportPanel";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { SearchPanel } from "./SearchPanel";
+import { StageIcon, StatusBadge } from "./StatusBadge";
+import { stateLabel } from "./status-labels";
 import { pollInterval, streamingSupported, useBuildEvents } from "./useBuildEvents";
-
-const STATE_LABEL: Record<string, string> = {
-  pending: "Pending",
-  leased: "Running",
-  succeeded: "Done",
-  skipped: "Reused",
-  retry_wait: "Waiting to retry",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  queued: "queued",
-  running: "running",
-  ready: "ready",
-  failed: "failed",
-  cancelled: "cancelled",
-  budget_exhausted: "stopped: spending cap reached",
-};
 
 interface BuildContext {
   build: Build;
@@ -73,64 +62,88 @@ export function BuildPage() {
   const base = `/p/${pid}/builds/${bid}`;
   const error = cancel.error ?? retry.error;
   const tab = ({ isActive }: { isActive: boolean }) =>
-    `rounded-lg px-3 py-1 ${isActive ? "bg-surface-muted font-medium" : "text-muted hover:text-foreground"}`;
+    cn(
+      "-mb-px border-b-2 px-1 pb-2.5 text-[13px] font-medium transition-colors duration-150",
+      isActive ? "border-primary text-foreground" : "border-transparent text-muted hover:text-foreground",
+    );
 
+  if (!data) {
+    return (
+      <section aria-label="Build" className="flex flex-col gap-3">
+        <p role="status" className="sr-only">Loading build…</p>
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-96" />
+      </section>
+    );
+  }
   return (
     <section aria-labelledby="b-title">
-      <h1 id="b-title" className="text-2xl font-medium">Build</h1>
-      {data ? (
-        <>
-          <p className="mt-1 text-muted">
-            Commit <span className="font-mono">{data.commit_sha.slice(0, 12)}</span> · status{" "}
-            <strong className={data.status === "failed" || data.status === "budget_exhausted" ? "text-destructive" : ""}>
-              {STATUS_LABEL[data.status] ?? data.status}
-            </strong>
-            {data.cancel_requested_at && !terminal ? " · cancelling after the current step" : null}
-            {data.rejection_code ? <> · rejected by safety scan ({data.rejection_code})</> : null}
-          </p>
-          {data.content_purged_at ? (
-            <p role="status" className="mt-1">
-              Retention removed this build&apos;s explanations and guide on{" "}
-              {new Date(data.content_purged_at).toLocaleDateString()}; start a new build to read it again.
-            </p>
-          ) : null}
-          {generation ? (
-            <p className="mt-1 text-muted">
-              Spent {formatUsd(data.usage.settled_micro_usd)} of a {formatUsd(data.usage.cap_micro_usd)} cap
-              {data.usage.reserved_micro_usd ? ` · ${formatUsd(data.usage.reserved_micro_usd)} still held` : ""}
-            </p>
-          ) : null}
-          <div className="mt-3 flex gap-2">
+      <PageHeader
+        title={
+          <span id="b-title">
+            Build <span className="font-mono text-[18px] font-normal text-muted">{data.commit_sha.slice(0, 12)}</span>
+          </span>
+        }
+        meta={
+          <>
+            <StatusBadge status={data.status} />
+            <span>Started {new Date(data.created_at).toLocaleString()}</span>
+            {data.cancel_requested_at && !terminal ? <span>Cancelling after the current step</span> : null}
+            {data.rejection_code ? <span className="text-destructive">Rejected by the safety scan ({data.rejection_code})</span> : null}
+            {generation ? (
+              <span>
+                Spent {formatUsd(data.usage.settled_micro_usd)} of a {formatUsd(data.usage.cap_micro_usd)} cap
+                {data.usage.reserved_micro_usd ? `, ${formatUsd(data.usage.reserved_micro_usd)} still held` : ""}
+              </span>
+            ) : null}
+          </>
+        }
+        actions={
+          <>
             {!terminal && !data.cancel_requested_at ? (
-              <button type="button" onClick={() => cancel.mutate()} disabled={cancel.isPending}
-                className="h-9 rounded-lg border border-input-border px-3">Cancel build</button>
+              <Button onClick={() => cancel.mutate()} disabled={cancel.isPending}>
+                <Ban aria-hidden="true" /> Cancel build
+              </Button>
             ) : null}
             {terminal ? (
-              <button type="button" onClick={() => retry.mutate()} disabled={retry.isPending}
-                className="h-9 rounded-lg border border-input-border px-3">Retry as a new build</button>
+              <Button onClick={() => retry.mutate()} disabled={retry.isPending}>
+                <RotateCcw aria-hidden="true" /> Retry as a new build
+              </Button>
             ) : null}
-          </div>
-          {error ? (
-            <p role="alert" className="mt-2 text-destructive">
-              {error instanceof ApiError ? error.message : "The request failed."}
-            </p>
-          ) : null}
-          <nav aria-label="Build sections" className="mt-4 flex flex-wrap gap-1 border-b border-border pb-2">
-            <NavLink end to={base} className={tab}>Overview</NavLink>
-            {data.status === "ready" ? (
-              <>
-                <NavLink to={`${base}/code`} className={tab}>Code</NavLink>
-                {generation ? <NavLink to={`${base}/guide`} className={tab}>Guide</NavLink> : null}
-                <NavLink to={`${base}/search`} className={tab}>Search</NavLink>
-                {generation ? <NavLink to={`${base}/review`} className={tab}>Review</NavLink> : null}
-              </>
-            ) : null}
-          </nav>
-          <Outlet context={{ build: data, base, generation, canWaive: role === "admin" || role === "owner", canExport: role !== undefined && role !== "viewer" } satisfies BuildContext} />
-        </>
-      ) : (
-        <p role="status" className="mt-3 text-muted">Loading build…</p>
-      )}
+          </>
+        }
+      />
+      {data.content_purged_at ? (
+        <p role="status" className="mb-4 rounded-[var(--radius-control)] border border-warning/40 bg-warning/10 px-3 py-2">
+          Retention removed this build&apos;s explanations and guide on {new Date(data.content_purged_at).toLocaleDateString()};
+          start a new build to read it again.
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="mb-4 text-destructive">
+          {error instanceof ApiError ? error.message : "The request failed."}
+        </p>
+      ) : null}
+      <nav aria-label="Build sections" className="flex flex-wrap gap-6 border-b border-border">
+        <NavLink end to={base} className={tab}>Overview</NavLink>
+        {data.status === "ready" ? (
+          <>
+            <NavLink to={`${base}/code`} className={tab}>Code</NavLink>
+            {generation ? <NavLink to={`${base}/guide`} className={tab}>Guide</NavLink> : null}
+            <NavLink to={`${base}/search`} className={tab}>Search</NavLink>
+            {generation ? <NavLink to={`${base}/review`} className={tab}>Review</NavLink> : null}
+          </>
+        ) : null}
+      </nav>
+      <Outlet
+        context={{
+          build: data,
+          base,
+          generation,
+          canWaive: role === "admin" || role === "owner",
+          canExport: role !== undefined && role !== "viewer",
+        } satisfies BuildContext}
+      />
     </section>
   );
 }
@@ -138,24 +151,43 @@ export function BuildPage() {
 export function BuildOverview() {
   const { build, canExport } = useBuild();
   return (
-    <>
-      <ol className="mt-4 flex flex-wrap gap-2" aria-label="Stages">
-        {build.stages.map((s) => (
-          <li key={s.stage} className="rounded-lg border border-border bg-surface px-3 py-1">
-            {s.stage}: {STATE_LABEL[s.state] ?? s.state}
-            {s.error_code ? <span className="text-destructive"> ({s.error_code})</span> : null}
+    <div className="mt-6 flex flex-col gap-8">
+      <ol aria-label="Stages" className="flex flex-wrap items-center gap-y-3">
+        {build.stages.map((s, index) => (
+          <li key={s.stage} className="flex items-center">
+            {index ? <span aria-hidden="true" className="mx-3 h-px w-8 bg-border" /> : null}
+            <span className="flex items-center gap-2">
+              <StageIcon state={s.state} />
+              <span className="font-medium">{s.stage}</span>
+              <span className="text-muted">
+                <span className="sr-only">: </span>
+                {stateLabel(s.state)}
+              </span>
+              {s.error_code ? <span className="font-mono text-xs text-destructive">{s.error_code}</span> : null}
+            </span>
           </li>
         ))}
       </ol>
       {build.status === "ready" ? (
         <>
-          <p className="mt-4 text-muted">
-            {build.counts.files} files · {build.counts.symbols} definitions · prompts {build.prompt_version}
-          </p>
+          <dl className="grid max-w-2xl grid-cols-3 gap-6">
+            {(
+              [
+                ["Files", build.counts.files],
+                ["Definitions", build.counts.symbols],
+                ["Prompt set", build.prompt_version],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-xs text-muted">{label}</dt>
+                <dd className="mt-1 text-[20px] leading-7 font-semibold tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
           <ExportPanel buildId={build.id} canExport={canExport} />
         </>
       ) : null}
-    </>
+    </div>
   );
 }
 

@@ -15,8 +15,14 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-destructive: var(--destructive);
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --color-ring: var(--ring);
+  --color-annotation: var(--annotation);
+  /* IBM Plex: one family made for technical documentation; self-hosted (the CSP allows no font CDNs). */
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --shadow-overlay: var(--overlay-shadow);
+  --radius-control: 6px;
+  --radius-overlay: 8px;
 }
 
 @layer base {
@@ -28,13 +34,64 @@
     line-height: 20px;
   }
   :focus-visible {
-    outline: 2px solid var(--primary);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.01em;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 22%, transparent);
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/* Syntax colours for the code viewer (prism-react-renderer token types). */
+@layer components {
+  .token.keyword, .token.builtin, .token.important, .token.boolean { color: var(--syntax-keyword); }
+  .token.string, .token.char, .token.template-string, .token.attr-value { color: var(--syntax-string); }
+  .token.number, .token.constant { color: var(--syntax-number); }
+  .token.comment, .token.prolog, .token.doctype { color: var(--syntax-comment); font-style: italic; }
+  .token.function, .token.class-name { color: var(--syntax-function); font-weight: 500; }
+  .token.punctuation, .token.operator { color: var(--syntax-punctuation); }
+}
+
+/* Shared control styles for pages not yet built from components/ui (same look as Button and Input). */
+@layer components {
+  .btn {
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] border border-input-border bg-surface px-3.5 font-medium text-foreground transition-colors duration-150 hover:bg-surface-muted disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-transparent bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+  .btn-danger {
+    @apply border-destructive text-destructive hover:bg-destructive/10;
+  }
+  .btn-sm {
+    @apply h-8 px-3 text-[13px];
+  }
+  .btn-lg {
+    @apply h-10 px-4;
+  }
+  .field {
+    @apply h-9 rounded-[var(--radius-control)] border border-input-border bg-surface px-3 text-foreground placeholder:text-muted;
+  }
+  .panel {
+    @apply rounded-[var(--radius-overlay)] border border-border bg-surface;
+  }
+  .page-section {
+    @apply mt-10 border-t border-border pt-6;
+  }
+  .section-title {
+    @apply text-[15px] font-semibold;
   }
 }

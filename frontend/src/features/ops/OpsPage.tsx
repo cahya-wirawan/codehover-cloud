@@ -10,8 +10,8 @@ function failure(error: unknown, fallback: string) {
   ) : null;
 }
 
-const input = "h-9 rounded-lg border border-input-border bg-surface px-2";
-const button = "h-9 rounded-lg border border-input-border px-3 font-medium";
+const input = "field";
+const button = "btn";
 
 /** S21 operations (02): counts, IDs and codes only. Tenant content needs that workspace's support grant. */
 export function OpsPage() {
@@ -65,7 +65,7 @@ export function OpsPage() {
   if (summary.error) {
     return (
       <section aria-labelledby="ops-title">
-        <h1 id="ops-title" className="text-2xl font-medium">Not found</h1>
+        <h1 id="ops-title" className="text-[22px] leading-8 font-semibold">Not found</h1>
       </section>
     );
   }
@@ -77,11 +77,11 @@ export function OpsPage() {
 
   return (
     <section aria-labelledby="ops-title" className="max-w-4xl space-y-6">
-      <h1 id="ops-title" className="text-2xl font-medium">Operations</h1>
+      <h1 id="ops-title" className="text-[22px] leading-8 font-semibold">Operations</h1>
       <p className="text-muted">Identifiers, states and counts only. Reading a workspace needs its admins' support grant.</p>
 
-      <section aria-labelledby="queue-title" className="rounded-lg border border-border bg-surface p-4">
-        <h2 id="queue-title" className="text-lg font-medium">Job system</h2>
+      <section aria-labelledby="queue-title" className="panel p-4">
+        <h2 id="queue-title" className="section-title">Job system</h2>
         {data ? (
           <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
             {Object.entries(data.queue).map(([key, value]) => (
@@ -102,8 +102,8 @@ export function OpsPage() {
         )}
       </section>
 
-      <section aria-labelledby="pause-title" className="rounded-lg border border-border bg-surface p-4">
-        <h2 id="pause-title" className="text-lg font-medium">New builds</h2>
+      <section aria-labelledby="pause-title" className="panel p-4">
+        <h2 id="pause-title" className="section-title">New builds</h2>
         <p className="mt-1" role="status">
           {data?.builds_paused ? <strong>Paused: {data.paused_reason}</strong> : "Accepting new builds."} Reading always works.
         </p>
@@ -119,8 +119,8 @@ export function OpsPage() {
         {failure(pause.error, "Could not change the switch.")}
       </section>
 
-      <section aria-labelledby="build-title" className="rounded-lg border border-border bg-surface p-4">
-        <h2 id="build-title" className="text-lg font-medium">Build diagnostics</h2>
+      <section aria-labelledby="build-title" className="panel p-4">
+        <h2 id="build-title" className="section-title">Build diagnostics</h2>
         <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={submit(() => lookup.mutate())}>
           <label className="flex flex-col gap-1">
             Build ID
@@ -163,8 +163,8 @@ export function OpsPage() {
         ) : null}
       </section>
 
-      <section aria-labelledby="takedown-title" className="rounded-lg border border-border bg-surface p-4">
-        <h2 id="takedown-title" className="text-lg font-medium">Site takedown</h2>
+      <section aria-labelledby="takedown-title" className="panel p-4">
+        <h2 id="takedown-title" className="section-title">Site takedown</h2>
         <p className="mt-1 text-sm text-muted">Stops the project's site at once; its admins cannot lift or unpublish it. Recorded in the workspace's audit log.</p>
         <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={submit(() => takedown.mutate(true))}>
           <label className="flex flex-col gap-1">
@@ -184,8 +184,8 @@ export function OpsPage() {
         {failure(takedown.error, "No publication to change.")}
       </section>
 
-      <section aria-labelledby="grant-title" className="rounded-lg border border-border bg-surface p-4">
-        <h2 id="grant-title" className="text-lg font-medium">Entitlements</h2>
+      <section aria-labelledby="grant-title" className="panel p-4">
+        <h2 id="grant-title" className="section-title">Entitlements</h2>
         <p className="mt-1 text-sm text-muted">Extra generation allowance for the closed beta, for every month the grant overlaps.</p>
         <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={submit(() => grant.mutate())}>
           <label className="flex flex-col gap-1">
@@ -224,8 +224,8 @@ export function OpsPage() {
         ) : null}
       </section>
 
-      <section aria-labelledby="events-title" className="rounded-lg border border-border bg-surface p-4">
-        <h2 id="events-title" className="text-lg font-medium">Operator log</h2>
+      <section aria-labelledby="events-title" className="panel p-4">
+        <h2 id="events-title" className="section-title">Operator log</h2>
         <ul className="mt-2 divide-y divide-border text-sm">
           {events.data?.items.map((e) => (
             <li key={e.id} className="py-1">

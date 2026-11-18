@@ -15,6 +15,8 @@ export default defineConfig({
     // Installed Google Chrome; set PW_CHANNEL="" to use Playwright's bundled Chromium instead.
     ...(process.env.PW_CHANNEL === "" ? {} : { channel: process.env.PW_CHANNEL ?? "chrome" }),
     trace: "retain-on-failure",
+    // PW_COLOR_SCHEME=dark repeats the journey (and its axe checks) in the dark theme.
+    colorScheme: process.env.PW_COLOR_SCHEME === "dark" ? "dark" : "light",
   },
   webServer: {
     command: `npm run build && cd ../backend && .venv/bin/python -m tests.e2e.server --port ${PORT}`,

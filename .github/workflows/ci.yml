@@ -188,6 +188,9 @@ jobs:
       - name: Journey (the runner's installed Google Chrome; fake Google and GitHub, no external requests)
         working-directory: frontend
         run: npm run test:e2e
+      - name: Journey again in the dark theme (axe contrast in both themes, 17)
+        working-directory: frontend
+        run: PW_COLOR_SCHEME=dark npm run test:e2e
       - name: Keep the trace of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

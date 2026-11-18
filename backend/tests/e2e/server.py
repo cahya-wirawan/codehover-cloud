@@ -86,6 +86,7 @@ def build(port: int) -> FastAPI:
     app = create_app(settings)
     idp = FakeIdP()
     gh = FakeGitHub(idp)
+    app.state.e2e_fakes = (idp, gh)  # the demo (tests/e2e/demo.py) extends them
     provider_http = httpx.AsyncClient(transport=httpx.MockTransport(idp.handler))
     app.state.oauth_providers = {"google": GoogleProvider(CLIENT_ID, "g-secret", provider_http)}
     app.state.github_app = GitHubApp(

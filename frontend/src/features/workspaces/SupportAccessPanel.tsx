@@ -22,8 +22,8 @@ export function SupportAccessPanel({ workspaceId }: { workspaceId: string }) {
   const active = grants.data?.items.filter((g) => g.active) ?? [];
 
   return (
-    <section aria-labelledby="support-title" className="mt-8 rounded-lg border border-border bg-surface p-4">
-      <h2 id="support-title" className="text-lg font-medium">Support access</h2>
+    <section aria-labelledby="support-title" className="page-section">
+      <h2 id="support-title" className="section-title">Support access</h2>
       <p className="mt-1">
         Lets the codehover operators read this workspace's projects, builds and sites to help you. They cannot change
         anything, access ends automatically, and every reading session appears in the audit log.
@@ -37,7 +37,7 @@ export function SupportAccessPanel({ workspaceId }: { workspaceId: string }) {
                 {g.granted_by_name ? ` (granted by ${g.granted_by_name})` : ""}
               </span>
               <button type="button" onClick={() => revoke.mutate(g.id)} disabled={revoke.isPending}
-                className="h-8 rounded-lg border border-input-border px-3">End access now</button>
+                className="btn btn-sm">End access now</button>
             </li>
           ))}
         </ul>
@@ -47,7 +47,7 @@ export function SupportAccessPanel({ workspaceId }: { workspaceId: string }) {
       <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); grant.mutate(); }}>
         <label className="flex flex-col gap-1">
           Hours
-          <select value={hours} onChange={(e) => setHours(e.target.value)} className="h-9 rounded-lg border border-input-border bg-surface px-2">
+          <select value={hours} onChange={(e) => setHours(e.target.value)} className="field">
             {["1", "4", "24", "72"].map((h) => <option key={h} value={h}>{h}</option>)}
           </select>
         </label>
@@ -56,7 +56,7 @@ export function SupportAccessPanel({ workspaceId }: { workspaceId: string }) {
           <input required minLength={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)}
             className="h-9 w-72 rounded-lg border border-input-border bg-surface px-2" />
         </label>
-        <button type="submit" disabled={grant.isPending} className="h-9 rounded-lg border border-input-border px-3 font-medium">
+        <button type="submit" disabled={grant.isPending} className="btn">
           Grant support access
         </button>
       </form>
