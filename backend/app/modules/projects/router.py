@@ -52,7 +52,7 @@ async def build_writer(build_id: UUID, db: Db, principal: CsrfPrincipal) -> Memb
 
 async def _limit(request: Request, policy: str, member: Member) -> None:
     """Workspace-wide quotas (06): estimates and acquisitions per hour, build starts per day."""
-    await ratelimit.hit(request.app.state.sessions, _settings(request), policy, str(member.workspace_id))
+    await ratelimit.hit(request.app.state.rate_sessions, _settings(request), policy, str(member.workspace_id))
 
 
 ProjectReader = Annotated[Member, Depends(project_reader)]

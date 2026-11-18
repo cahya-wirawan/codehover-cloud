@@ -127,7 +127,7 @@ async def optional_principal(request: Request, db: Db) -> Principal | None:
             text("UPDATE sessions SET last_seen_at = now() WHERE id = :id"), {"id": row.session_id}
         )
         await db.commit()
-    await ratelimit.hit(request.app.state.sessions, settings, "user", str(row.user_id))
+    await ratelimit.hit(request.app.state.rate_sessions, settings, "user", str(row.user_id))
     await set_context(db, user_id=row.user_id)  # user scope for the rest of the request transaction
     return Principal(row.user_id, row.session_id, token, row.csrf_hash, row.reauthenticated_at)
 

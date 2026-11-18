@@ -4,6 +4,15 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.19] - 2026-11-18
+
+### Security
+
+- 06: rate-limit hits now run on a dedicated small connection pool. On the request pool, each authenticated request held one connection while waiting for a second, so a full pool could deadlock against itself.
+- 06: IPv6 clients are counted per /64, so rotating addresses within one allocation no longer escapes the per-address limits; IPv4-mapped addresses count as IPv4.
+
+Both were found by automated security review of 0.5.18.
+
 ## [0.5.18] - 2026-11-18
 
 ### Added

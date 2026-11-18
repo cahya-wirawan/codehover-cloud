@@ -39,7 +39,7 @@ def address() -> str:
     return (
         f"203.0.113.{secrets.randbelow(250) + 1}"
         if secrets.randbelow(2)
-        else f"2001:db8::{secrets.token_hex(2)}"
+        else f"2001:db8:{secrets.token_hex(2)}:{secrets.token_hex(2)}::1"  # distinct /64s
     )
 
 

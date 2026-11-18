@@ -14,13 +14,18 @@ from app.core.settings import Settings
 
 
 def create_engine(
-    settings: Settings, *, url: str | None = None, application_name: str = "api"
+    settings: Settings,
+    *,
+    url: str | None = None,
+    application_name: str = "api",
+    pool_size: int | None = None,
+    max_overflow: int | None = None,
 ) -> AsyncEngine:
     """Create the process engine. Connections are opened lazily, so construction never touches the DB."""
     return create_async_engine(
         url or settings.database_url.get_secret_value(),
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
+        pool_size=settings.db_pool_size if pool_size is None else pool_size,
+        max_overflow=settings.db_max_overflow if max_overflow is None else max_overflow,
         pool_timeout=settings.db_pool_timeout_seconds,
         pool_pre_ping=True,
         connect_args={"application_name": f"codehover-{application_name}", "connect_timeout": 5},

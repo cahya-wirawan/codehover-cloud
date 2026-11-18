@@ -80,16 +80,29 @@ async def hit(
 
 
 def client_address(request: Request, settings: Settings) -> str:
+    """The rate-limit subject for the client: its address, or its /64 for IPv6 (security review of
+    0.5.18: one client controls a whole /64, so per-address IPv6 buckets would be trivial to evade)."""
     peer = request.client.host if request.client else ""
     forwarded = request.headers.get("x-forwarded-for", "")
     networks = [n.strip() for n in settings.trusted_proxies.split(",") if n.strip()]
     if forwarded and _trusted(peer, networks):
         candidate = forwarded.split(",")[-1].strip()  # the address our own proxy appended (overwrote)
-        try:
-            return str(ipaddress.ip_address(candidate))
-        except ValueError:
-            return peer
-    return peer
+        subject = _subject(candidate)
+        if subject is not None:
+            return subject
+    return _subject(peer) or peer
+
+
+def _subject(value: str) -> str | None:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return str(address.ipv4_mapped)
+    if address.version == 6:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
 
 
 def _trusted(peer: str, networks: list[str]) -> bool:

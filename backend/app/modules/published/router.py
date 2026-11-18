@@ -51,7 +51,7 @@ class Site:
 async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: OptionalPrincipal) -> Site:
     settings = request.app.state.settings
     await ratelimit.hit(
-        request.app.state.sessions, settings, "public", ratelimit.client_address(request, settings)
+        request.app.state.rate_sessions, settings, "public", ratelimit.client_address(request, settings)
     )
     found = (
         await db.execute(

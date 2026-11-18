@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.18
+Date: 2026-11-18 · Package version 0.5.19
+
+0.5.19 fixes two review findings in the rate limiter. Hits run on their own pool. A unit test checks that IPv6 subjects collapse to their /64 and that mapped IPv4 is plain IPv4, also for the direct peer. The integration tests pass three runs in a row with distinct /64s per simulated client.
 
 0.5.18 records shared rate limits (`test_rate_limits.py`, `tests/unit/test_ratelimit.py`):
 - a user's sixth request in a minute at a limit of 5 gets 429 with a consistent `Retry-After`, while another user is unaffected;

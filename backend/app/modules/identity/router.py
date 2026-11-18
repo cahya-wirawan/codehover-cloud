@@ -106,7 +106,7 @@ async def start(
     settings = _settings(request)
     try:
         await ratelimit.hit(
-            request.app.state.sessions, settings, "signin", ratelimit.client_address(request, settings)
+            request.app.state.rate_sessions, settings, "signin", ratelimit.client_address(request, settings)
         )
     except ApiError:
         return _redirect(LOGIN_PAGE, error="rate_limited")  # a browser navigation: never a JSON error

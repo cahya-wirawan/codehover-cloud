@@ -111,7 +111,8 @@ As implemented in M4 (`app/core/ratelimit.py`, 0019), fixed windows are counted 
 - Over a limit, the API returns 429 `RATE_LIMITED` (retryable) with `Retry-After` and `details.retry_after_seconds`. Sign-in starts redirect to `/login?error=rate_limited` instead.
 - Policies: authenticated requests 120 per minute per user, sign-in starts 10 per minute per address, public and private site delivery 300 per minute per address, estimates and acquisitions 10 per hour per workspace, build starts and retries 20 per day per workspace. Each is configurable.
 - An idempotent replay doesn't count; a failed attempt does.
-- Client addresses come from `X-Forwarded-For` only when the peer is in `TRUSTED_PROXIES`.
+- Client addresses come from `X-Forwarded-For` only when the peer is in `TRUSTED_PROXIES`. IPv6 clients are counted per /64, and IPv4-mapped addresses as IPv4.
+- Hits run on a small connection pool of their own, never the request's pool.
 - Event stream concurrency (3 per session, 20 per workspace) is still counted per process.
 
 GitHub validates `X-Hub-Signature-256` over raw bytes in constant-time, delivery ID unique, body max 2 MiB. MVP handles installation/installation_repositories revocation and repository rename/transfer; push rebuild P1. Return success only after receipt persisted. Stripe uses SDK signature verification, event dedupe and fetching latest subscription state when event ordering is ambiguous. Both handlers reject malformed or unknown tenant associations and do not trust webhook-supplied workspace IDs.

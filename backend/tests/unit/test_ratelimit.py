@@ -32,3 +32,14 @@ def test_buckets_are_keyed_hmacs_and_bad_networks_are_refused() -> None:
     assert key != bucket(make_settings(session_secret="t" * 32), "public", "203.0.113.9")
     with pytest.raises(ValidationError):
         make_settings(trusted_proxies="everyone")
+
+
+def test_ipv6_clients_share_their_64_and_mapped_ipv4_is_plain_ipv4() -> None:
+    """Security review of 0.5.18: rotating addresses inside one /64 must not buy new buckets."""
+    trusted = make_settings(trusted_proxies="172.16.0.0/12")
+    a = client_address(request("172.18.0.5", "2001:db8:1:2::1"), trusted)
+    b = client_address(request("172.18.0.5", "2001:db8:1:2:ffff:ffff:ffff:fffe"), trusted)
+    other = client_address(request("172.18.0.5", "2001:db8:1:3::1"), trusted)
+    assert a == b == "2001:db8:1:2::/64" and other == "2001:db8:1:3::/64"
+    assert client_address(request("172.18.0.5", "::ffff:203.0.113.9"), trusted) == "203.0.113.9"
+    assert client_address(request("2001:db8:9:9::7"), make_settings()) == "2001:db8:9:9::/64"  # the peer too

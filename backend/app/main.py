@@ -125,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await http.aclose()
             await engine.dispose()
+            await limiter.dispose()
 
     interactive_docs = settings.app_env is not Environment.PRODUCTION
     app = FastAPI(
@@ -138,6 +139,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessions = session_factory(engine)
+    # Rate-limit hits run on their own small pool: a request already holds a connection of the main
+    # pool, and taking a second one from it could exhaust the pool against itself under load.
+    limiter = create_engine(settings, application_name="ratelimit", pool_size=4, max_overflow=4)
+    app.state.rate_sessions = session_factory(limiter)
     app.state.http = http
     app.state.sealer = Sealer(settings.app_encryption_key.get_secret_value())
     app.state.oauth_providers = oauth_providers(settings, http)
