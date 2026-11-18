@@ -151,9 +151,10 @@ class RepositoryConnection(Base):
     __tablename__ = "repository_connections"
     id: Mapped[UUID] = pk()
     workspace_id: Mapped[UUID] = ref("workspaces.id")
-    installation_id: Mapped[int] = mapped_column(BigInteger)
-    github_account_id: Mapped[int] = mapped_column(BigInteger)
-    github_account_login: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(Text, server_default=text("'github'"))  # github | upload (0025)
+    installation_id: Mapped[int | None] = mapped_column(BigInteger)
+    github_account_id: Mapped[int | None] = mapped_column(BigInteger)
+    github_account_login: Mapped[str | None] = mapped_column(Text)
     connected_by: Mapped[UUID] = ref("users.id")
     status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
     last_verified_at: Mapped[datetime] = ts(default_now=True)
@@ -166,7 +167,7 @@ class Repository(Base):
     id: Mapped[UUID] = pk()
     workspace_id: Mapped[UUID] = ref()
     connection_id: Mapped[UUID] = ref()
-    provider_repo_id: Mapped[int] = mapped_column(BigInteger)
+    provider_repo_id: Mapped[int | None] = mapped_column(BigInteger)  # None for uploads (0025)
     owner: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
     visibility: Mapped[str] = mapped_column(Text)
@@ -192,6 +193,10 @@ class Project(Base):
     deleted_at: Mapped[datetime | None] = ts(nullable=True)
     last_observed_sha: Mapped[str | None] = mapped_column(Text)  # 0014
     last_observed_at: Mapped[datetime | None] = ts(nullable=True)
+    push_policy: Mapped[str] = mapped_column(Text, server_default=text("'off'"))
+    push_cap_micro_usd: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    push_policy_by: Mapped[UUID | None] = ref("users.id", nullable=True)
+    push_policy_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
 
 
 class Snapshot(Base):
@@ -723,3 +728,50 @@ class Subscription(Base):
     synced_at: Mapped[datetime] = ts(default_now=True)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+# ---------------------------------------------------------------- push rebuilds (0024)
+class PushRequest(Base):
+    __tablename__ = "push_requests"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    project_id: Mapped[UUID] = ref()
+    snapshot_id: Mapped[UUID | None] = ref(nullable=True)
+    build_id: Mapped[UUID | None] = ref(nullable=True)
+    commit_sha: Mapped[str] = mapped_column(Text)
+    ref: Mapped[str] = mapped_column(Text)  # the branch; defined after the ref() columns it would shadow
+    pushes: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    first_received_at: Mapped[datetime] = ts(default_now=True)
+    due_at: Mapped[datetime] = ts()
+    state: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    outcome: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+# ---------------------------------------------------------------- own keys and batches (0026)
+class ProviderKey(Base):
+    __tablename__ = "provider_keys"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    provider: Mapped[str] = mapped_column(Text)
+    sealed_key: Mapped[bytes | None] = mapped_column(LargeBinary)
+    hint: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    verified_at: Mapped[datetime | None] = ts(nullable=True)
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class ProviderBatch(Base):
+    __tablename__ = "provider_batches"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    task_id: Mapped[UUID] = ref()
+    stage: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(Text)
+    provider_batch_id: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default=text("'submitting'"))
+    items: Mapped[list[Any]] = jsonb()
+    created_at: Mapped[datetime] = ts(default_now=True)
+    completed_at: Mapped[datetime | None] = ts(nullable=True)

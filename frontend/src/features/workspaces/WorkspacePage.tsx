@@ -38,9 +38,22 @@ export function WorkspacePage() {
       await navigate("/w", { replace: true });
     },
   });
+  const [source, setSource] = useState<"github" | "upload" | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const chosenSource = source ?? (active.length ? "github" : "upload");
   const create = useMutation({
-    mutationFn: () => api.createProject(wid, { repository_id: repositoryId, name: name.trim(), slug: slug.trim() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects", wid] }),
+    mutationFn: async () => {
+      if (chosenSource === "github") {
+        return api.createProject(wid, { repository_id: repositoryId, name: name.trim(), slug: slug.trim() });
+      }
+      const project = await api.createProject(wid, { source: "upload", name: name.trim(), slug: slug.trim() });
+      if (file) await api.uploadArchive(project.id, file);
+      return project;
+    },
+    onSuccess: async (project) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects", wid] });
+      if (chosenSource === "upload") await navigate(`/p/${project.id}`);
+    },
   });
 
   return (
@@ -98,44 +111,64 @@ export function WorkspacePage() {
 
       <Section
         title="New project"
-        description="A project follows one repository and branch; each build pins one exact commit."
+        description="A project follows one GitHub branch or an uploaded archive; each build pins one exact version."
         className="mt-10"
       >
-        {active.length === 0 ? (
-          <p className="text-muted">
-            <Link to={`/w/${wid}/connections`} className="text-primary underline underline-offset-2">
-              Connect GitHub
-            </Link>{" "}
-            to choose a repository.
-          </p>
-        ) : (
-          <form
-            className="grid gap-4 sm:grid-cols-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              create.mutate();
-            }}
-          >
-            <Field label="Connection">
-              <Select value={connectionId} onChange={(e) => setConnectionId(e.target.value)} required>
-                <option value="">Choose…</option>
-                {active.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.account}
-                  </option>
-                ))}
-              </Select>
+        <form
+          className="grid gap-4 sm:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create.mutate();
+          }}
+        >
+          <fieldset className="flex flex-wrap gap-x-5 gap-y-2 sm:col-span-2">
+            <legend className="mb-1.5 text-[13px] font-medium">Source</legend>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="source" checked={chosenSource === "github"} onChange={() => setSource("github")} />
+              A connected GitHub repository
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="source" checked={chosenSource === "upload"} onChange={() => setSource("upload")} />
+              An uploaded ZIP archive
+            </label>
+          </fieldset>
+          {chosenSource === "github" && active.length === 0 ? (
+            <p className="text-muted sm:col-span-2">
+              <Link to={`/w/${wid}/connections`} className="text-primary underline underline-offset-2">
+                Connect GitHub
+              </Link>{" "}
+              to choose a repository.
+            </p>
+          ) : null}
+          {chosenSource === "github" && active.length ? (
+            <>
+              <Field label="Connection">
+                <Select value={connectionId} onChange={(e) => setConnectionId(e.target.value)} required>
+                  <option value="">Choose…</option>
+                  {active.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.account}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Repository">
+                <Select value={repositoryId} onChange={(e) => setRepositoryId(e.target.value)} required>
+                  <option value="">Choose…</option>
+                  {repos.data?.items.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.owner}/{r.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </>
+          ) : null}
+          {chosenSource === "upload" ? (
+            <Field label="Archive (ZIP)" hint="At most 100 MiB. You can upload new versions later." className="sm:col-span-2">
+              <Input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </Field>
-            <Field label="Repository">
-              <Select value={repositoryId} onChange={(e) => setRepositoryId(e.target.value)} required>
-                <option value="">Choose…</option>
-                {repos.data?.items.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.owner}/{r.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+          ) : null}
             <Field label="Name">
               <Input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
@@ -148,7 +181,11 @@ export function WorkspacePage() {
               />
             </Field>
             <div className="sm:col-span-2">
-              <Button type="submit" variant="primary" disabled={create.isPending}>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={create.isPending || (chosenSource === "github" ? active.length === 0 : file === null)}
+              >
                 <Plus aria-hidden="true" /> Create project
               </Button>
             </div>
@@ -157,8 +194,7 @@ export function WorkspacePage() {
                 {create.error instanceof ApiError ? create.error.message : "Could not create the project."}
               </p>
             ) : null}
-          </form>
-        )}
+        </form>
       </Section>
       {workspace?.role === "admin" || workspace?.role === "owner" ? <SupportAccessPanel workspaceId={wid} /> : null}
       {workspace?.role === "owner" ? (

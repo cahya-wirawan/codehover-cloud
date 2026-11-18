@@ -146,7 +146,14 @@ def repo_map(files: list[FileInfo]) -> list[dict[str, Any]]:
     return entries
 
 
-def _cache_key(workspace_id: str, purpose: str, preset: str, prompt_version: str, inputs: Any) -> str:
+def _cache_key(
+    workspace_id: str,
+    purpose: str,
+    preset: str,
+    prompt_version: str,
+    inputs: Any,
+    audience: str = prompts.DEFAULT_VARIANT,
+) -> str:
     return digest(
         {
             "workspace": workspace_id,
@@ -155,7 +162,7 @@ def _cache_key(workspace_id: str, purpose: str, preset: str, prompt_version: str
             "prompts": prompt_version.rsplit(".", 1)[0],
             "templates": prompts.digest(prompt_version),
             "preset": preset,
-            "variant": "en-standard",
+            "variant": audience,
             "inputs": inputs,
         }
     )
@@ -178,6 +185,7 @@ def explain_request(
     model: Model,
     role: Role,
     prompt_version: str,
+    audience: str = prompts.DEFAULT_VARIANT,
     file: FileInfo,
     chunk: Chunk,
     related: list[dict[str, Any]],
@@ -221,12 +229,12 @@ def explain_request(
         role=role,
         purpose="explain",
         prompt_version=prompt_version,
-        system=prompts.system(prompt_version),
+        system=prompts.system(prompt_version, audience),
         user=user,
         schema=schema("explanation"),
         evidence=evidence,
     )
-    return Prepared(request, _cache_key(workspace_id, "explain", preset, prompt_version, inputs))
+    return Prepared(request, _cache_key(workspace_id, "explain", preset, prompt_version, inputs, audience))
 
 
 def validate_explanation(output: dict[str, Any], chunk: Chunk) -> list[str]:
@@ -266,6 +274,7 @@ def overview_request(
     model: Model,
     role: Role,
     prompt_version: str,
+    audience: str = prompts.DEFAULT_VARIANT,
     summaries: list[dict[str, Any]],
     map_entries: list[dict[str, Any]],
     readme: str,
@@ -283,13 +292,13 @@ def overview_request(
         role=role,
         purpose="overview",
         prompt_version=prompt_version,
-        system=prompts.system(prompt_version),
+        system=prompts.system(prompt_version, audience),
         user=user,
         schema=schema("overview"),
         evidence={"summaries": summaries},
     )
     inputs = {"summaries": digest(summaries), "map": digest(map_entries), "readme": digest(readme)}
-    return Prepared(request, _cache_key(workspace_id, "overview", preset, prompt_version, inputs))
+    return Prepared(request, _cache_key(workspace_id, "overview", preset, prompt_version, inputs, audience))
 
 
 def validate_overview(output: dict[str, Any], file_ids: set[str]) -> list[str]:
@@ -317,6 +326,7 @@ def plan_request(
     model: Model,
     role: Role,
     prompt_version: str,
+    audience: str = prompts.DEFAULT_VARIANT,
     commit_sha: str,
     summaries: list[dict[str, Any]],
     map_entries: list[dict[str, Any]],
@@ -339,7 +349,7 @@ def plan_request(
         role=role,
         purpose="plan",
         prompt_version=prompt_version,
-        system=prompts.system(prompt_version),
+        system=prompts.system(prompt_version, audience),
         user=user,
         schema=schema("guide-plan"),
         evidence={"files": map_entries, "bounds": list(bounds)},
@@ -350,7 +360,7 @@ def plan_request(
         "readme": digest(readme),
         "bounds": bounds,
     }
-    return Prepared(request, _cache_key(workspace_id, "plan", preset, prompt_version, inputs))
+    return Prepared(request, _cache_key(workspace_id, "plan", preset, prompt_version, inputs, audience))
 
 
 def validate_plan(
@@ -391,6 +401,7 @@ def guide_request(
     model: Model,
     role: Role,
     prompt_version: str,
+    audience: str = prompts.DEFAULT_VARIANT,
     page: dict[str, Any],
     evidence: list[dict[str, Any]],
 ) -> Prepared:
@@ -411,7 +422,7 @@ def guide_request(
         role=role,
         purpose="guide",
         prompt_version=prompt_version,
-        system=prompts.system(prompt_version),
+        system=prompts.system(prompt_version, audience),
         user=user,
         schema=schema("guide-page"),
         evidence={"page": plan, "evidence": evidence},
@@ -421,7 +432,7 @@ def guide_request(
         "evidence": [[e["file_id"], e["sha256"], e["start_line"], e["end_line"]] for e in evidence],
         "schema": schema("guide-page")["$id"],
     }
-    return Prepared(request, _cache_key(workspace_id, "guide", preset, prompt_version, inputs))
+    return Prepared(request, _cache_key(workspace_id, "guide", preset, prompt_version, inputs, audience))
 
 
 def bounded_evidence(
@@ -488,6 +499,15 @@ def markdown_problems(markdown: str) -> list[str]:
 
     walk(tokens)
     return sorted(set(problems), key=problems.index)
+
+
+def heading_text(markdown: str) -> str | None:
+    """The plain text of a page's leading level-one heading (its title)."""
+    tokens = _markdown_parser().parse(markdown)
+    if len(tokens) >= 2 and tokens[0].type == "heading_open" and tokens[0].tag == "h1" and tokens[1].children:
+        text = "".join(t.content for t in tokens[1].children if t.type in ("text", "code_inline")).strip()
+        return text or None
+    return None
 
 
 def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> list[str]:

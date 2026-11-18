@@ -33,6 +33,8 @@ from app.modules.github import router as github
 from app.modules.identity import router as identity
 from app.modules.ops import router as ops
 from app.modules.projects import router as projects
+from app.modules.providers import keys as provider_keys
+from app.modules.providers import router as providers
 from app.modules.published import router as published
 from app.modules.usage import router as usage
 from app.modules.webhooks import router as webhooks
@@ -154,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.objects = object_store(settings)
     app.state.catalog = catalog.load(settings.model_catalog_file)
     app.state.billing = billing_provider(settings, http)
+    app.state.key_verifier = provider_keys.verify_with_provider
 
     install_error_handlers(app)
     app.middleware("http")(no_store)
@@ -169,6 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(published.router)
     api.include_router(usage.router)
     api.include_router(billing.router)
+    api.include_router(providers.router)
     api.include_router(webhooks.router)
     api.include_router(deletion.router)
     api.include_router(ops.router)

@@ -156,9 +156,21 @@ async def settle_attempt(
             {"w": workspace_id, "b": build_id},
         )
     ).one()
-    if amount <= 0 or build.usage_account_id is None:
+    if amount <= 0:
         return 0
     charged = min(amount, int(build.reserved_micro_usd))  # the earmark bound makes this a no-op cap
+    if build.usage_account_id is None:
+        # An own-key build (M6, T24): the provider bills the workspace's own account, so only the build's
+        # envelope moves; no allowance account and no ledger entry. Replay builds reserve nothing.
+        if charged:
+            await db.execute(
+                text(
+                    "UPDATE builds SET reserved_micro_usd = reserved_micro_usd - :n,"
+                    " settled_micro_usd = settled_micro_usd + :n WHERE workspace_id = :w AND id = :b"
+                ),
+                {"n": charged, "w": workspace_id, "b": build_id},
+            )
+        return charged
     inserted = (
         await db.execute(
             text(
@@ -188,7 +200,7 @@ async def unresolved_holds(db: AsyncSession, workspace_id: UUID, build_id: UUID)
         await db.execute(
             text(
                 "SELECT COALESCE(sum(max_reserved_micro_usd), 0) FROM provider_attempts"
-                " WHERE workspace_id = :w AND build_id = :b AND state IN ('started', 'unknown')"
+                " WHERE workspace_id = :w AND build_id = :b AND state IN ('started', 'batched', 'unknown')"
             ),
             {"w": workspace_id, "b": build_id},
         )

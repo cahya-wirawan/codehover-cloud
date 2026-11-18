@@ -57,6 +57,12 @@ Billing incidents and recovery:
 - **Lost dispute**: the workspace cannot start generation builds until an operator clears it. Settle with the customer first, then run `python -m app.ops.billing clear-dispute <workspace-id> "<reason>"` (runtime role; audited). Open disputes still block.
 - **Wrong state for one workspace**: never edit `subscriptions` by hand; correct the subscription in Stripe, then reconcile. Manual allowance corrections are operator entitlements (audited), never ledger edits.
 
+M6 operations:
+- **Push rebuilds.** Subscribe the GitHub App to `push` events; no new permission is needed. A push request that keeps hitting a temporary limit (an active build, a workspace limit, the kill switch) is retried every minute and fails after a day. The project's push history shows each outcome.
+- **ZIP import.** Uploads go through the gateway to the API, at most 100 MiB. The gateway allows 101 MiB on the uploads route only (`nginx.conf`), and other routes keep the 2 MiB limit; a production ingress needs the same route rule.
+- **Own keys.** A workspace's key failing at the provider shows up as failed calls of that workspace's builds only, and the operator's key is never used instead. A build whose key was removed fails with `provider_key_missing`. Keys are sealed with `APP_ENCRYPTION_KEY`; rotating that key makes stored provider keys unreadable, so owners must save them again.
+- **Batches.** Each batch is a `provider_batches` row with the provider's batch ID. A batch still `in_progress` after 25 hours is abandoned at its next check, with its attempts held as `unknown`, and the stage continues synchronously.
+
 Accounting review (M5 exit). Three records stay separate:
 
 | Record | Holds | Must never |

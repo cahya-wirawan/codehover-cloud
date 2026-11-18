@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { ConfirmDeletion } from "../../components/ConfirmDeletion";
-import { CircleCheck, FolderGit2, GitBranch, Play, RefreshCw } from "lucide-react";
+import { CircleCheck, FileArchive, FolderGit2, GitBranch, Play, RefreshCw } from "lucide-react";
 
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -13,6 +13,7 @@ import { api } from "../../lib/api/resources";
 import { GenerationPanel } from "./GenerationPanel";
 import { StatusBadge } from "../viewer/StatusBadge";
 import { PublicationPanel } from "./PublicationPanel";
+import { PushPanel } from "./PushPanel";
 
 const FRESHNESS: Record<string, string> = {
   current: "Up to date with the tracked branch.",
@@ -52,15 +53,24 @@ export function ProjectPage() {
         meta={
           project.data ? (
             <>
-              <span className="flex items-center gap-1.5 font-mono text-[13px]">
-                <FolderGit2 aria-hidden="true" className="size-4" />
-                {project.data.owner}/{project.data.repository}
-              </span>
-              <span className="flex items-center gap-1.5 font-mono text-[13px]">
-                <GitBranch aria-hidden="true" className="size-4" />
-                {project.data.tracked_ref}
-              </span>
-              {fresh ? (
+              {project.data.source === "upload" ? (
+                <span className="flex items-center gap-1.5 text-[13px]">
+                  <FileArchive aria-hidden="true" className="size-4" />
+                  Uploaded archive
+                </span>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1.5 font-mono text-[13px]">
+                    <FolderGit2 aria-hidden="true" className="size-4" />
+                    {project.data.owner}/{project.data.repository}
+                  </span>
+                  <span className="flex items-center gap-1.5 font-mono text-[13px]">
+                    <GitBranch aria-hidden="true" className="size-4" />
+                    {project.data.tracked_ref}
+                  </span>
+                </>
+              )}
+              {fresh && fresh.state !== "not_tracked" ? (
                 <Badge
                   role="status"
                   tone={fresh.state === "current" ? "success" : fresh.state === "update_available" ? "warning" : "neutral"}
@@ -126,7 +136,12 @@ export function ProjectPage() {
           <Skeleton className="h-24" />
         )}
       </Section>
-      {project.data ? <GenerationPanel projectId={pid} workspaceId={project.data.workspace_id} /> : null}
+      {project.data ? (
+        <GenerationPanel projectId={pid} workspaceId={project.data.workspace_id} uploaded={project.data.source === "upload"} />
+      ) : null}
+      {project.data && project.data.source !== "upload" ? (
+        <PushPanel projectId={pid} trackedRef={project.data.tracked_ref} canChange={role === "admin" || role === "owner"} />
+      ) : null}
       {project.data ? <PublicationPanel project={project.data} canPublish={role === "admin" || role === "owner"} /> : null}
       {project.data && (role === "admin" || role === "owner") ? (
         <ConfirmDeletion

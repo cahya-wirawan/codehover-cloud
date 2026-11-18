@@ -15,6 +15,10 @@
         "output_per_mtok_micro_usd": 20000000,
         "cache_read_per_mtok_micro_usd": 200000,
         "cache_write_per_mtok_micro_usd": 5000000
+      },
+      "batch_price": {
+        "input_per_mtok_micro_usd": 2000000,
+        "output_per_mtok_micro_usd": 10000000
       }
     }
   ],

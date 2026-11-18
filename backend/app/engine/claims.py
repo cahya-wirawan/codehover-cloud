@@ -227,6 +227,7 @@ def repair_request(
     model: Model,
     role: Role,
     prompt_version: str,
+    audience: str = prompts.DEFAULT_VARIANT,
     flagged: list[tuple[Claim, str, str]],
     files: dict[str, SourceFile],
 ) -> Prepared:
@@ -247,13 +248,15 @@ def repair_request(
         role=role,
         purpose="claim_repair",
         prompt_version=prompt_version,
-        system=prompts.system(prompt_version),
+        system=prompts.system(prompt_version, audience),
         user=user,
         schema=schema("claim-repair"),
         evidence={"claims": items},
     )
     inputs = {"items": digest(items), "schema": schema("claim-repair")["$id"]}
-    return Prepared(request, _cache_key(workspace_id, "claim_repair", preset, prompt_version, inputs))
+    return Prepared(
+        request, _cache_key(workspace_id, "claim_repair", preset, prompt_version, inputs, audience)
+    )
 
 
 def validate_repair(output: dict[str, Any], flagged: list[Claim]) -> list[str]:

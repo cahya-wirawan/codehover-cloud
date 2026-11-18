@@ -121,8 +121,10 @@ def test_scope_selection_is_deterministic_and_prefers_source_over_tests() -> Non
     [
         {"include": ["../etc/**"]},
         {"include": ["/abs/**"]},
-        {"languages": ["de"]},
-        {"levels": ["expert"]},
+        {"languages": ["fr"]},  # FR-026 offers en, de and id
+        {"levels": ["casual"]},
+        {"languages": ["de", "id"]},  # one variant per build
+        {"variant_of": "not-a-build-id"},
         {"max_files": 0},
         {"guide_pages": 9},
         {"surprise": 1},
@@ -236,3 +238,13 @@ def test_example_operator_catalog_is_valid() -> None:
     preset = loaded.preset("balanced-v1")
     assert preset is not None and loaded.model(preset.writer.model).provider == "anthropic"
     assert all(m.price.input_per_mtok_micro_usd > 0 for m in loaded.models if m.provider != "replay")
+
+
+def test_variant_configs_keep_old_digests_stable() -> None:
+    plain = GenerationConfig(model_preset="replay-v2")
+    assert "variant_of" not in plain.canonical() and plain.variant == "en-standard"
+    german = GenerationConfig(model_preset="replay-v2", languages=["de"], levels=["beginner"])
+    assert german.variant == "de-beginner"
+    base = "0" * 8 + "-0000-7000-8000-" + "0" * 12
+    variant = GenerationConfig(model_preset="replay-v2", languages=["de"], variant_of=base)
+    assert variant.canonical()["variant_of"] == base

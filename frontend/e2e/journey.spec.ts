@@ -61,7 +61,7 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   expect((await page.request.post("/__e2e__/seed-github", { data: { workspace_id: wid } })).ok()).toBe(true);
   await page.goto(`/w/${wid}`);
   await page.getByLabel("Connection").selectOption({ label: "octo-org" });
-  await page.getByLabel("Repository").selectOption({ label: "octo-org/api" });
+  await page.getByRole("combobox", { name: "Repository" }).selectOption({ label: "octo-org/api" });
   await page.getByLabel("Name", { exact: true }).fill("API");
   await page.getByLabel("Address", { exact: true }).fill("api");
   await page.getByRole("button", { name: "Create project" }).click();

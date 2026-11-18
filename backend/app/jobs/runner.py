@@ -15,6 +15,7 @@ from collections.abc import Awaitable
 
 from app.core import metrics
 from app.jobs import store
+from app.jobs.batching import StageWait
 from app.jobs.envelope import TaskEnvelope
 from app.jobs.stages import HANDLERS, Runtime, StageError
 
@@ -75,6 +76,11 @@ async def _process(rt: Runtime, envelope: TaskEnvelope, seen: list[str]) -> str:
     try:
         try:
             apply = await _until_lost(HANDLERS[claimed.stage](rt, claimed), lost)
+        except StageWait as waiting:
+            async with rt.sessions() as db:
+                outcome = await store.wait(db, claimed, waiting.seconds)
+            logger.info("stage waiting", extra={**log, "seconds": waiting.seconds})
+            return outcome
         except StageError as error:
             async with rt.sessions() as db:
                 outcome = await store.fail(

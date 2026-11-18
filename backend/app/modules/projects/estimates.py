@@ -24,6 +24,7 @@ from app.engine.catalog import Catalog
 from app.engine.estimate import VALIDITY_SECONDS, GenerationConfig, ScannedFile, config_digest, estimate
 from app.engine.globs import GlobBudgetExceeded
 from app.jobs import store as jobs
+from app.modules.providers import keys as provider_keys
 from app.modules.usage import ledger
 from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
@@ -35,7 +36,8 @@ async def _source(db: AsyncSession, member: Member, project_id: UUID) -> Any:
     source = (
         await db.execute(
             text(
-                "SELECT p.tracked_ref, r.provider_repo_id, r.access_revoked_at, c.installation_id, c.status"
+                "SELECT p.tracked_ref, r.provider_repo_id, r.access_revoked_at, c.installation_id, c.status,"
+                " c.provider"
                 " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
                 " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
                 " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL"
@@ -54,6 +56,10 @@ async def resolve_commit(
     """(requested ref, exact commit SHA). Commits first: no transaction is open during the GitHub call."""
     source = await _source(db, member, project_id)
     await db.commit()
+    if source.provider == "upload":
+        raise ApiError(
+            409, "NOT_A_GITHUB_PROJECT", "This project is an uploaded archive; upload a new version."
+        )
     if source.status != "active" or source.access_revoked_at is not None:
         raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub to build this project.")
     if github is None:
@@ -190,12 +196,71 @@ async def scanned_files(db: AsyncSession, workspace_id: UUID, snapshot_id: UUID)
     return [ScannedFile(str(r[0]), r[1], r[2], int(r[3]), int(r[4])) for r in rows]
 
 
-def preset_available(catalog: Catalog, name: str, settings: Settings) -> bool:
+async def _variant_config(
+    db: AsyncSession, member: Member, project_id: UUID, snapshot_id: UUID, config: GenerationConfig
+) -> GenerationConfig:
+    """A variant (FR-026) of a ready generated build of the same project and snapshot. Its scope is the
+    base's, so it explains the same files and plans the same pages; only language, level and preset
+    are the caller's."""
+    base = (
+        await db.execute(
+            text(
+                "SELECT b.snapshot_id, b.status, e.config FROM builds b"
+                " JOIN estimates e ON e.workspace_id = b.workspace_id AND e.id = b.estimate_id"
+                " WHERE b.workspace_id = :w AND b.project_id = :p AND b.id = CAST(:b AS uuid)"
+            ),
+            {"w": member.workspace_id, "p": project_id, "b": config.variant_of},
+        )
+    ).one_or_none()
+    if base is None:
+        raise ApiError(404, "NOT_FOUND", "Base build not found in this project, or it was not generated.")
+    if base.status != "ready":
+        raise ApiError(409, "BUILD_NOT_READY", "A variant needs a ready base build.")
+    if base.snapshot_id != snapshot_id:
+        raise ApiError(422, "VARIANT_SNAPSHOT_MISMATCH", "A variant uses its base build's snapshot.")
+    original = GenerationConfig.model_validate(base.config)
+    if original.variant_of is not None:
+        raise ApiError(
+            422, "VARIANT_OF_VARIANT", "Make variants of the original build, not of another variant."
+        )
+    if original.variant == config.variant:
+        raise ApiError(
+            422, "VARIANT_UNCHANGED", "Choose another language or reader level than the base build's."
+        )
+    return config.model_copy(
+        update={
+            "include": original.include,
+            "exclude": original.exclude,
+            "max_files": original.max_files,
+            "guide_pages": original.guide_pages,
+        }
+    )
+
+
+def preset_providers(catalog: Catalog, name: str) -> set[str]:
     preset = catalog.preset(name)
     if preset is None:
-        return False
-    providers = {catalog.model(preset.writer.model).provider, catalog.model(preset.checker.model).provider}
-    return providers <= settings.configured_providers()
+        return set()
+    return {catalog.model(preset.writer.model).provider, catalog.model(preset.checker.model).provider}
+
+
+def preset_available(
+    catalog: Catalog, name: str, settings: Settings, own_keys: set[str] | None = None
+) -> bool:
+    """Every provider of the preset is configured by the operator, or (M6) the workspace has its own key."""
+    providers = preset_providers(catalog, name)
+    return bool(providers) and providers <= settings.configured_providers() | (own_keys or set())
+
+
+def own_key_usable(catalog: Catalog, name: str, own_keys: set[str]) -> bool:
+    """An own-key build needs a key for every paid provider of the preset (replay needs none)."""
+    paid = preset_providers(catalog, name) - {"replay"}
+    return bool(paid) and paid <= own_keys
+
+
+def batch_available(catalog: Catalog, name: str) -> bool:
+    preset = catalog.preset(name)
+    return preset is not None and catalog.model(preset.writer.model).batch_price is not None
 
 
 async def create_estimate(
@@ -216,11 +281,20 @@ async def create_estimate(
             "This snapshot has not finished scanning.",
             details={"status": snapshot["status"]},
         )
+    if config.variant_of is not None:
+        config = await _variant_config(db, member, project_id, snapshot_id, config)
     preset = catalog.preset(config.model_preset)
     if preset is None:
         raise ApiError(422, "PRESET_UNKNOWN", "This model preset is not in the approved catalog.")
-    if not preset_available(catalog, config.model_preset, settings):
+    own = await provider_keys.active_providers(db, member.workspace_id)
+    if not preset_available(catalog, config.model_preset, settings, own):
         raise ApiError(422, "PRESET_UNAVAILABLE", "This model preset's provider is not configured.")
+    if config.batch and not batch_available(catalog, config.model_preset):
+        raise ApiError(
+            422,
+            "BATCH_UNAVAILABLE",
+            "This preset's writer model has no batch price; estimate without batching.",
+        )
     try:
         files = await scanned_files(db, member.workspace_id, snapshot_id)
         # Bounded but CPU-bound: keep the event loop serving other requests meanwhile.

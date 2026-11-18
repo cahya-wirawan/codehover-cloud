@@ -26,6 +26,11 @@ def snapshot_prefix(workspace_id: UUID, project_id: UUID, snapshot_id: UUID) -> 
     return f"workspaces/{workspace_id}/projects/{project_id}/snapshots/{snapshot_id}/"
 
 
+def upload_key(workspace_id: UUID, project_id: UUID, snapshot_id: UUID) -> str:
+    """An uploaded repository archive (M6), under its snapshot so retention and deletion remove it too."""
+    return f"{snapshot_prefix(workspace_id, project_id, snapshot_id)}upload.zip"
+
+
 def workspace_prefix(workspace_id: UUID) -> str:
     return f"workspaces/{workspace_id}/"
 

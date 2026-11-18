@@ -1,15 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router";
 
-import { Ban, RotateCcw } from "lucide-react";
+import { Ban, Languages, RotateCcw } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { PageHeader } from "../../components/ui/section";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ApiError } from "../../lib/api/client";
 import { cn } from "../../lib/cn";
-import { api, type Build, buildSource, formatUsd, TERMINAL } from "../../lib/api/resources";
+import { api, type Build, buildSource, formatUsd, LANGUAGES, LEVELS, TERMINAL } from "../../lib/api/resources";
 import { CodeViewer } from "./CodeViewer";
 import { ExportPanel } from "./ExportPanel";
 import { GuidePanel } from "./GuidePanel";
@@ -59,6 +59,13 @@ export function BuildPage() {
   });
   const data = build.data;
   const generation = data?.estimate_id !== null && data?.estimate_id !== undefined;
+  const location = useLocation();
+  const variants = useQuery({
+    queryKey: ["variants", bid],
+    queryFn: () => api.variants(bid),
+    enabled: generation && data?.status === "ready",
+  });
+  const family = variants.data?.items ?? [];
   const base = `/p/${pid}/builds/${bid}`;
   const error = cancel.error ?? retry.error;
   const tab = ({ isActive }: { isActive: boolean }) =>
@@ -90,6 +97,12 @@ export function BuildPage() {
             <span>Started {new Date(data.created_at).toLocaleString()}</span>
             {data.cancel_requested_at && !terminal ? <span>Cancelling after the current step</span> : null}
             {data.rejection_code ? <span className="text-destructive">Rejected by the safety scan ({data.rejection_code})</span> : null}
+            {generation && data.language ? (
+              <span className="flex items-center gap-1.5">
+                <Languages aria-hidden="true" className="size-4" />
+                {LANGUAGES[data.language] ?? data.language}, {(LEVELS[data.level ?? "standard"] ?? data.level ?? "").toLowerCase()}
+              </span>
+            ) : null}
             {generation ? (
               <span>
                 Spent {formatUsd(data.usage.settled_micro_usd)} of a {formatUsd(data.usage.cap_micro_usd)} cap
@@ -100,6 +113,30 @@ export function BuildPage() {
         }
         actions={
           <>
+            {family.length > 1 ? (
+              <label className="flex items-center gap-2 text-[13px]">
+                Read in
+                <select
+                  className="field h-9 w-auto pr-8"
+                  value={bid}
+                  onChange={(e) => {
+                    // Same tab, page and file: variants share their anchors (FR-026).
+                    void navigate(location.pathname.replace(`/builds/${bid}`, `/builds/${e.target.value}`) + location.search);
+                  }}
+                >
+                  {family.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {LANGUAGES[v.language] ?? v.language} · {LEVELS[v.level] ?? v.level}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {generation && data.status === "ready" && !data.variant_of && (role === "editor" || role === "admin" || role === "owner") ? (
+              <Link to={`/p/${pid}?variant_of=${bid}&snapshot=${data.snapshot_id}`} className="btn">
+                <Languages aria-hidden="true" /> Make a variant
+              </Link>
+            ) : null}
             {!terminal && !data.cancel_requested_at ? (
               <Button onClick={() => cancel.mutate()} disabled={cancel.isPending}>
                 <Ban aria-hidden="true" /> Cancel build

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-M0 to M5 are implemented.
+M0 to M6 are implemented. In M6, SCIP was deferred by decision.
 
 - **M0–M1:** sign-in, workspaces, GitHub App connection with per-repository grants, snapshot acquisition with a safe scan, the outbox/RabbitMQ job system with fenced leases, a sandboxed tree-sitter parser, and a private viewer.
 - **M2:** the model catalog, estimates, single-envelope budget reservations, and the provider gateway. The Anthropic SDK and a deterministic replay gateway sit behind it. It adds explanation, overview, plan and guide stages, deterministic citation checks, the independent checker with one repair cycle, the quality gate and waivers, cancel and retry, and a labeled eval harness (`backend/evals/`).
@@ -22,18 +22,27 @@ M0 to M5 are implemented.
   - The plan lifecycle: past due or disputed blocks generation (402); long past due or ended suspends hosting with reason `billing`; there is a one-time trial (`app_private.start_trial`, once per workspace and per person); disputes are tracked by ID, and a lost one blocks generation until an operator clears it; plan limits apply, with `BILLING_ENFORCED` for projects and seats.
   - The Plan and usage page, plans on the start page, draft privacy/terms/support pages (`GET /meta`), the billing runbook and the accounting review (spec 22).
   - The payment failure matrix: `tests/integration/test_billing.py`, with `FakeStripe` over `httpx.MockTransport`.
+- **M6** (P1, each with its own exit gate):
+  - Push rebuilds (`projects/pushes.py`, 0024): a per-project push policy (off, snapshot or build) with a push cap, debounced `push_requests`, and work on behalf of the policy's admin. Nothing a push starts is ever published.
+  - ZIP import (`projects/uploads.py`, `acquire.extract_zip`, 0025): one `upload` connection per workspace; each content-addressed snapshot is stored under `…/snapshots/{sid}/upload.zip`.
+  - Language and level variants (prompt set 0.4.0 with the audience text): `variant_of` a ready base reuses its snapshot, scope and guide plan, so anchors match.
+  - BYOK and batch (`providers/keys.py`, `jobs/batching.py`, 0026): sealed workspace Anthropic keys and `funding: own_key` builds without the allowance; explain batches at the catalog batch price, with persisted batch IDs and `StageWait`.
+  - SCIP (T23) is deferred (spec 21).
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
 
 The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the JSON Schemas for explanations, overview, guide plan and page, claim checks and repairs, and task envelopes. Prompts live in `19_PROMPT_LIBRARY.md`.
 
-Next scope: **M6** (`14_IMPLEMENTATION_ROADMAP.md`), P1 features, each behind demand evidence: webhook rebuilds, language and level variants, sandboxed SCIP, batch/BYOK and ZIP upload. Known gaps:
+Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); candidates are SCIP (T23, after a dependency and license review), P2 hosted MCP and custom domains (T25), and per-project ACLs. Known gaps:
 - event-stream concurrency limits are still per process;
 - RPO ≤ 15 min needs a PITR drill on the managed staging database (the local drill covers the restore procedure and RTO only);
 - the load numbers come from a single local process, not staging;
 - the payment failure matrix has run only against the replayed provider, not Stripe test mode in staging;
 - the legal texts are drafts awaiting jurisdiction review;
-- owner notices are in-app only (there is no email delivery).
+- owner notices are in-app only (there is no email delivery);
+- only the explain stage is batched;
+- a published site shows one variant;
+- rotating `APP_ENCRYPTION_KEY` makes stored provider keys unreadable.
 
 Without a plan, a workspace gets `GENERATION_ALLOWANCE_MICRO_USD`; a held plan replaces it with the plan's allowance, and manual grants add to either.
 
@@ -94,6 +103,9 @@ Conventions that span files:
   - Lock order is the build row, then the task row.
   - Prompts are immutable per set in `app/engine/prompts/<X.Y.Z>/`; any text change is a new set and a new `GENERATION_PROMPT_VERSION`.
   - The checker never falls back to a heuristic for model output; any checker failure leaves claims `unchecked`.
+  - Get gateways through `generation.gateway_for`, never `rt.gateways[...]`: own-key builds use the workspace's key, looked up on every call.
+  - Writer requests carry `audience` (`_writer_request`); the checker never does. Cache keys include the variant.
+  - Batches go only through `batching.prefill`. Batched attempts are `batched`, and waiting raises `StageWait`, which does not use up an attempt.
   - Regenerate `backend/evals/reports/baseline-replay.json` after changing parser, prompts, chunking or claim extraction (CI diffs it).
 - **Engine** (`app/engine`). Repository content is parsed only inside the sandbox (`sandbox.run("app.engine.parse_worker", ...)`); add new sandboxed modules to `sandbox_exec.ALLOWED_MODULES` only. `app/engine/schemas/explanation.schema.json` must equal the spec contract (a test checks it). Object keys come only from `engine/keys.py`.
 - **Privileges and operations.**

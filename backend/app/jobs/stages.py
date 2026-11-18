@@ -25,7 +25,7 @@ from app.adapters.models.replay import ReplayGateway
 from app.adapters.storage import ObjectStore
 from app.core.tenancy import set_context
 from app.engine import ENGINE_VERSION, PARSER_VERSION, PROMPT_VERSION, sandbox, search
-from app.engine.acquire import MAX_COMPRESSED_BYTES, ArchiveRejected, extract
+from app.engine.acquire import MAX_COMPRESSED_BYTES, ArchiveRejected, extract, extract_zip
 from app.engine.catalog import Catalog
 from app.engine.catalog import builtin as builtin_catalog
 from app.engine.gateway import ModelGateway
@@ -57,6 +57,10 @@ class Runtime:
     # Provider name -> gateway. Only configured providers are present; replay is always available.
     gateways: dict[str, ModelGateway] = field(default_factory=lambda: {"replay": ReplayGateway()})
     retry_delays: tuple[float, ...] = (2.0, 8.0, 30.0)
+    # Own-key builds (M6, T24): the sealer opens a workspace's key; the factory makes its gateway.
+    sealer: Any = None
+    own_key_gateway: Any = None  # Callable[[str], ModelGateway]
+    own_key_cache: dict[Any, Any] = field(default_factory=dict)
 
 
 async def _read(rt: Runtime, claimed: Claim, sql: str, **params: Any) -> list[Any]:
@@ -73,8 +77,8 @@ def _github_error(error: GitHubError) -> StageError:
 
 # ---------------------------------------------------------------- acquire
 _SOURCE = (
-    "SELECT s.project_id, s.id AS snapshot_id, s.status, s.commit_sha, r.provider_repo_id, r.access_revoked_at,"
-    " c.installation_id, c.status AS connection_status"
+    "SELECT s.project_id, s.id AS snapshot_id, s.status, s.commit_sha, s.archive_key, r.provider_repo_id,"
+    " r.access_revoked_at, c.installation_id, c.status AS connection_status, c.provider"
     " FROM snapshots s"
     " JOIN projects p ON p.workspace_id = s.workspace_id AND p.id = s.project_id"
     " JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
@@ -98,16 +102,27 @@ async def acquire(rt: Runtime, claimed: Claim) -> Apply | None:
     row = rows[0]
     if row.status == "scanned":
         return None  # immutable snapshot already acquired (cache across builds)
-    if row.connection_status != "active" or row.access_revoked_at is not None or rt.github is None:
+    uploaded = row.provider == "upload"  # M6: the archive was uploaded and stored with the snapshot
+    if row.connection_status != "active" or row.access_revoked_at is not None:
         raise StageError("repository_access_revoked", transient=False)
+    if uploaded:
+        if row.archive_key is None:
+            raise StageError("upload_missing", transient=False)
+        archive = await rt.store.get(row.archive_key)
+    else:
+        if rt.github is None:
+            raise StageError("repository_access_revoked", transient=False)
+        try:
+            archive = await rt.github.download_tarball(
+                row.installation_id, row.provider_repo_id, row.commit_sha, MAX_COMPRESSED_BYTES
+            )
+        except GitHubError as error:
+            raise _github_error(error) from error
     try:
-        archive = await rt.github.download_tarball(
-            row.installation_id, row.provider_repo_id, row.commit_sha, MAX_COMPRESSED_BYTES
-        )
-    except GitHubError as error:
-        raise _github_error(error) from error
-    try:
-        extraction = await asyncio.to_thread(extract, io.BytesIO(archive))
+        if uploaded:
+            extraction = await asyncio.to_thread(extract_zip, archive)
+        else:
+            extraction = await asyncio.to_thread(extract, io.BytesIO(archive))
     except ArchiveRejected as rejected:
         rejection_code = (
             rejected.code

@@ -15,6 +15,7 @@ from sqlalchemy import text
 from app.core.errors import ApiError
 from app.core.settings import Settings
 from app.modules.identity.sessions import Db
+from app.modules.projects import pushes
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["webhooks"])
@@ -61,7 +62,10 @@ async def github_webhook(request: Request, db: Db) -> JSONResponse:
     state, changed = "ignored", 0
     installation_id = (payload.get("installation") or {}).get("id") if isinstance(payload, dict) else None
     status = INSTALLATION_ACTIONS.get(payload.get("action", "")) if event == "installation" else None
-    if status and isinstance(installation_id, int):
+    if event == "push":
+        changed = await pushes.record_push(db, settings, payload)  # debounced; the worker acts (FR-025)
+        state = "processed" if changed else "ignored"
+    elif status and isinstance(installation_id, int):
         changed = (
             await db.execute(
                 text("SELECT app_private.set_installation_status(:i, :s)"),

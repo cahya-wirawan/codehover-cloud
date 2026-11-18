@@ -536,6 +536,16 @@
             "title": "Id",
             "type": "string"
           },
+          "language": {
+            "default": "en",
+            "title": "Language",
+            "type": "string"
+          },
+          "level": {
+            "default": "standard",
+            "title": "Level",
+            "type": "string"
+          },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
@@ -590,6 +600,18 @@
           },
           "usage": {
             "$ref": "#/components/schemas/BuildUsage"
+          },
+          "variant_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Of"
           }
         },
         "required": [
@@ -641,6 +663,15 @@
               }
             ],
             "title": "Estimate Id"
+          },
+          "funding": {
+            "default": "allowance",
+            "enum": [
+              "allowance",
+              "own_key"
+            ],
+            "title": "Funding",
+            "type": "string"
           },
           "ref": {
             "anyOf": [
@@ -1885,7 +1916,8 @@
               "current",
               "update_available",
               "never_built",
-              "unknown"
+              "unknown",
+              "not_tracked"
             ],
             "title": "State",
             "type": "string"
@@ -1912,6 +1944,11 @@
         "additionalProperties": false,
         "description": "Build configuration (06 \"Create estimate request\"). Normalized before hashing.",
         "properties": {
+          "batch": {
+            "default": false,
+            "title": "Batch",
+            "type": "boolean"
+          },
           "exclude": {
             "default": [],
             "items": {
@@ -1981,6 +2018,18 @@
             "minLength": 1,
             "title": "Model Preset",
             "type": "string"
+          },
+          "variant_of": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f-]{36}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Of"
           }
         },
         "required": [
@@ -2311,6 +2360,90 @@
           "expires_at"
         ],
         "title": "InvitationOut",
+        "type": "object"
+      },
+      "KeyIn": {
+        "properties": {
+          "api_key": {
+            "maxLength": 512,
+            "minLength": 20,
+            "title": "Api Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key"
+        ],
+        "title": "KeyIn",
+        "type": "object"
+      },
+      "KeyList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KeyOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "KeyList",
+        "type": "object"
+      },
+      "KeyOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "provider",
+          "hint",
+          "created_at",
+          "verified_at",
+          "created_by_name"
+        ],
+        "title": "KeyOut",
         "type": "object"
       },
       "LinkResponse": {
@@ -2735,6 +2868,11 @@
       },
       "PresetOut": {
         "properties": {
+          "batch": {
+            "default": false,
+            "title": "Batch",
+            "type": "boolean"
+          },
           "checker_model": {
             "title": "Checker Model",
             "type": "string"
@@ -2753,6 +2891,11 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "own_key": {
+            "default": false,
+            "title": "Own Key",
+            "type": "boolean"
           },
           "providers": {
             "items": {
@@ -2786,13 +2929,29 @@
             "type": "string"
           },
           "repository_id": {
-            "format": "uuid",
-            "title": "Repository Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Id"
           },
           "slug": {
             "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
             "title": "Slug",
+            "type": "string"
+          },
+          "source": {
+            "default": "github",
+            "enum": [
+              "github",
+              "upload"
+            ],
+            "title": "Source",
             "type": "string"
           },
           "tracked_ref": {
@@ -2803,7 +2962,6 @@
           }
         },
         "required": [
-          "repository_id",
           "name",
           "slug"
         ],
@@ -2851,6 +3009,15 @@
           },
           "slug": {
             "title": "Slug",
+            "type": "string"
+          },
+          "source": {
+            "default": "github",
+            "enum": [
+              "github",
+              "upload"
+            ],
+            "title": "Source",
             "type": "string"
           },
           "tracked_ref": {
@@ -3045,6 +3212,170 @@
           "commit_sha"
         ],
         "title": "PublicationOut",
+        "type": "object"
+      },
+      "PushPolicyIn": {
+        "properties": {
+          "cap_micro_usd": {
+            "default": 0,
+            "maximum": 1000000000.0,
+            "minimum": 0.0,
+            "title": "Cap Micro Usd",
+            "type": "integer"
+          },
+          "policy": {
+            "enum": [
+              "off",
+              "snapshot",
+              "build"
+            ],
+            "title": "Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "title": "PushPolicyIn",
+        "type": "object"
+      },
+      "PushPolicyOut": {
+        "properties": {
+          "cap_micro_usd": {
+            "title": "Cap Micro Usd",
+            "type": "integer"
+          },
+          "policy": {
+            "title": "Policy",
+            "type": "string"
+          },
+          "set_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set By Name"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "policy",
+          "cap_micro_usd",
+          "set_by_name",
+          "version"
+        ],
+        "title": "PushPolicyOut",
+        "type": "object"
+      },
+      "PushRequestList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PushRequestOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PushRequestList",
+        "type": "object"
+      },
+      "PushRequestOut": {
+        "properties": {
+          "build_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Id"
+          },
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "first_received_at": {
+            "format": "date-time",
+            "title": "First Received At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "pushes": {
+            "title": "Pushes",
+            "type": "integer"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "commit_sha",
+          "ref",
+          "pushes",
+          "state",
+          "outcome",
+          "snapshot_id",
+          "build_id",
+          "first_received_at",
+          "updated_at"
+        ],
+        "title": "PushRequestOut",
         "type": "object"
       },
       "QualityOut": {
@@ -4324,6 +4655,55 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VariantList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VariantOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "VariantList",
+        "type": "object"
+      },
+      "VariantOut": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "language",
+          "level",
+          "base"
+        ],
+        "title": "VariantOut",
+        "type": "object"
+      },
       "WaiverIn": {
         "properties": {
           "claim_keys": {
@@ -5523,9 +5903,72 @@
         ]
       }
     },
+    "/api/v1/builds/{build_id}/variants": {
+      "get": {
+        "operationId": "build_variants_api_v1_builds__build_id__variants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Variants",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/catalog/presets": {
       "get": {
+        "description": "Signed-in users only; the catalog holds no tenant data. With `workspace_id` of a workspace the\ncaller belongs to, presets its own provider key can run are included too (M6, T24).",
         "operationId": "presets_api_v1_catalog_presets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5536,6 +5979,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Presets",
@@ -7036,6 +7489,161 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/push-policy": {
+      "get": {
+        "operationId": "get_push_policy_api_v1_projects__project_id__push_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Push Policy",
+        "tags": [
+          "projects"
+        ]
+      },
+      "put": {
+        "description": "What a push to the tracked branch does (FR-025). Admin: `build` spends the generation allowance.",
+        "operationId": "put_push_policy_api_v1_projects__project_id__push_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushPolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Push Policy",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/push-requests": {
+      "get": {
+        "operationId": "push_requests_api_v1_projects__project_id__push_requests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushRequestList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Push Requests",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/snapshots": {
       "post": {
         "operationId": "request_snapshot_api_v1_projects__project_id__snapshots_post",
@@ -7242,6 +7850,61 @@
           }
         },
         "summary": "List Snapshot Files",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/uploads": {
+      "post": {
+        "description": "A new version of an uploaded project (M6): the raw ZIP body, at most 100 MiB. Content-addressed,\nso a repeated upload of the same archive returns its existing snapshot (no Idempotency-Key needed).",
+        "operationId": "upload_archive_api_v1_projects__project_id__uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/zip": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Archive",
         "tags": [
           "projects"
         ]
@@ -8755,6 +9418,156 @@
         "summary": "Create Project",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/provider-keys": {
+      "get": {
+        "operationId": "list_keys_api_v1_workspaces__workspace_id__provider_keys_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Keys",
+        "tags": [
+          "provider keys"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/provider-keys/{provider}": {
+      "delete": {
+        "operationId": "remove_key_api_v1_workspaces__workspace_id__provider_keys__provider__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "const": "anthropic",
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Key",
+        "tags": [
+          "provider keys"
+        ]
+      },
+      "put": {
+        "operationId": "save_key_api_v1_workspaces__workspace_id__provider_keys__provider__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "const": "anthropic",
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Key",
+        "tags": [
+          "provider keys"
         ]
       }
     },

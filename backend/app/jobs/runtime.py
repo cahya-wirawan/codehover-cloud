@@ -7,6 +7,7 @@ import httpx
 from app.adapters.models.anthropic import AnthropicGateway
 from app.adapters.models.replay import ReplayGateway
 from app.core.db import create_engine, session_factory
+from app.core.security import Sealer
 from app.core.settings import Environment, Settings
 from app.engine import catalog
 from app.engine.gateway import ModelGateway
@@ -27,5 +28,7 @@ def build_runtime(settings: Settings, application_name: str) -> tuple[Runtime, h
         allow_unsandboxed=settings.app_env is not Environment.PRODUCTION,
         catalog=catalog.load(settings.model_catalog_file),
         gateways=gateways,
+        sealer=Sealer(settings.app_encryption_key.get_secret_value()),
+        own_key_gateway=AnthropicGateway,  # M6, T24: a workspace's own key, opened per build
     )
     return runtime, http

@@ -1,6 +1,27 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.24
+Date: 2026-11-19 · Package version 0.5.25
+
+0.5.25 records the M6 exit gates, one per feature, all run locally (PostgreSQL 18, SeaweedFS, replayed providers):
+- **Push rebuilds (T21)** — `tests/integration/test_pushes.py`, 6 tests.
+  - Gate: "repeated push schedules one appropriate build, never public auto-publish". A burst of three pushes becomes one build; a commit is never built twice.
+  - Tags, deleted branches, other branches, repositories and installations are ignored. Duplicate deliveries count once.
+  - Generated projects reuse their approved configuration within the push cap and wait for a person above it.
+  - Work stops, and the policy turns off, when the policy's admin loses the role. No publication is ever created.
+- **ZIP import** — a hostile-ZIP unit corpus plus `tests/integration/test_uploads.py`, 3 tests.
+  - The corpus covers traversal, drive letters, backslashes, links, encryption, compression methods, an inflated-size bomb, entry count, duplicates and oversize files.
+  - Upload, dedupe and scan work, and replay and generated builds run without GitHub. Request checks run before anything is stored.
+  - Uploaded projects refuse the GitHub-only actions.
+- **Variants (T22)** — `tests/integration/test_variants.py`, 3 tests.
+  - Gate: "citation markers/schema and variant anchor tests pass". Slugs, order, source ranges and file IDs equal the base, and every citation is deterministically valid against the same snapshot.
+  - The audience reaches only the writer, and the base plan is reused. Bad requests are refused. Unit tests cover the audience text and cache separation.
+- **Own keys and batches (T24)** — `tests/integration/test_own_keys_batch.py`, 4 tests, plus an SDK-level batch adapter test.
+  - Gate: "persisted batch IDs/keys, no silent price fallback". Keys are checked, sealed and shown only as hints. An own-key build spends on that key within its cap with the allowance untouched, and a removed key stops it.
+  - A model without a batch price cannot be batched, and the high bound stays standard.
+  - A batch persists its ID, waits without spending attempts, settles at the batch price, and falls back synchronously only for what it could not answer.
+- **Isolation:** the tenancy suite covers push requests, provider keys and provider batches. The route sweep classifies every new route. Explicit grants still match a database migrated without defaults.
+- **Frontend:** 36 Vitest tests, adding the push panel, the upload form, the variant switcher and the key panel. The E2E journey is unchanged and passes.
+- **Deferred:** SCIP (T23), by decision (21).
 
 0.5.24 records the M5 exit checks (paid launch), run locally against a replayed provider (`FakeStripe` over `httpx.MockTransport`):
 - **Payment failure matrix** (`tests/integration/test_billing.py`, 14 tests):

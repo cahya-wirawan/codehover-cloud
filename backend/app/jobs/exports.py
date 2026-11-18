@@ -172,7 +172,12 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
         "build": {
             "commit_sha": meta.commit_sha,
             "created_at": meta.created_at.isoformat(),
-            "variant": "en-standard",
+            "variant": "-".join(
+                (
+                    (meta.config.get("generation", {}).get("languages") or ["en"])[0],
+                    (meta.config.get("generation", {}).get("levels") or ["standard"])[0],
+                )
+            ),
         },
         "files": files,
         "symbols": symbols,

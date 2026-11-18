@@ -126,6 +126,22 @@ export async function apiSend(
   return response;
 }
 
+/** Unsafe request with a raw body (an uploaded archive), same CSRF and Origin rules as apiSend. */
+export async function apiUpload(path: string, body: Blob, contentType: string): Promise<Response> {
+  const token = await getCsrfToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { Accept: "application/json", "X-CSRF-Token": token, "Content-Type": contentType },
+    body,
+  });
+  if (!response.ok) {
+    if (response.status === 403) resetCsrfToken();
+    throw await parseError(response);
+  }
+  return response;
+}
+
 /** JSON GET without a parser, for responses from our own API (shapes come from the OpenAPI contract). */
 export function apiJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return apiGet(path, (value) => value as T, signal);

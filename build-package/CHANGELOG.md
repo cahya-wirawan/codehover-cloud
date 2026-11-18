@@ -4,6 +4,33 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.25] - 2026-11-19
+
+### Added
+
+- 01, 05, 06, 07, 09 (M6, T21): push rebuilds.
+  - Each project has a push policy (off, snapshot or build) and a push cap, set by an admin with an ETag. Work runs on that admin's behalf, and the policy turns off if they lose the role.
+  - Push webhooks are debounced into one request per project, the latest commit wins, and a commit is never built twice.
+  - Generated projects reuse their approved configuration within the cap; others get a replay build. Nothing a push starts is published. Migration 0024.
+  - The project page has a "Rebuild on push" panel with the push history. New optional settings are `PUSH_DEBOUNCE_SECONDS` and `PUSH_MAX_WAIT_SECONDS`, added to both deployment copies.
+- 05, 06, 07, 08, 11 (M6, T24): bring your own key and batch processing (migration 0026).
+  - Owners save one Anthropic key per workspace. It is checked with the provider, sealed and shown only as a hint. Builds can choose `funding: own_key`, which spends within the cap and never uses the plan allowance; a removed key stops the build.
+  - `batch: true` sends explain requests as one provider batch at the catalog batch price. The batch ID is persisted, the task waits without spending attempts, and anything the batch could not answer runs synchronously at the standard price.
+  - Presets report `batch` and `own_key`, and both copies of the catalog example have a batch price.
+- 21: SCIP (T23) is deferred by decision, with the review it needs recorded.
+- 01, 02, 06, 07, 19 (M6, T22): language and level variants (en/de/id × standard/beginner/expert) and prompt set 0.4.0 with the audience instruction.
+  - A variant reuses its base build's snapshot, scope and guide plan, so page and source anchors are identical, and its citations are validated against the same snapshot. The decision to write from evidence rather than translate is recorded in 19.
+  - `GET /builds/{bid}/variants` serves the build header's "Read in" switcher and "Make a variant". Exports name their variant.
+- 05, 06, 08 (M6): ZIP repository import.
+  - A project can come from an uploaded ZIP (`source: upload`), held under the workspace's one upload connection (migration 0025).
+  - Each upload is a content-addressed snapshot whose commit identifier is the archive's SHA-256. It is extracted in the worker by `extract_zip` with the tarball's limits, counting inflated bytes.
+  - Uploaded projects build their latest scanned upload and work with estimates, generation, publication and export like GitHub projects. The workspace page offers "An uploaded ZIP archive" as a source.
+
+### Changed
+
+- 22: the gateway allows 101 MiB on `/api/v1/projects/{pid}/uploads` only. Other routes keep 2 MiB. Both copies of `nginx.conf` are updated.
+- 19, 23: prompt set 0.4.0 (MINOR: the audience text). English/standard prompts read as in 0.3.0, the replay eval baseline changes only in its digest, and caches are invalidated.
+
 ## [0.5.24] - 2026-11-18
 
 ### Added

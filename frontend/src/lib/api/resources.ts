@@ -1,4 +1,4 @@
-import { API_BASE, apiGetWithEtag, apiJson, apiSend } from "./client";
+import { API_BASE, apiGetWithEtag, apiJson, apiSend, apiUpload } from "./client";
 
 export type Role = "viewer" | "editor" | "admin" | "owner";
 export interface Page<T> {
@@ -31,6 +31,7 @@ export interface Project {
   tracked_ref: string;
   owner: string;
   repository: string;
+  source?: "github" | "upload";
 }
 export interface BuildSummary {
   id: string;
@@ -50,6 +51,9 @@ export interface Build extends BuildSummary {
   retry_of_id: string | null;
   cancel_requested_at: string | null;
   prompt_version: string;
+  language?: string;
+  level?: string;
+  variant_of?: string | null;
   snapshot_status: string;
   rejection_code: string | null;
   stages: { stage: string; state: string; error_code: string | null }[];
@@ -72,6 +76,8 @@ export interface Preset {
   checker_model: string;
   providers: string[];
   data_regions: string[];
+  batch?: boolean;
+  own_key?: boolean;
 }
 export interface GenerationConfig {
   model_preset: string;
@@ -79,6 +85,10 @@ export interface GenerationConfig {
   exclude: string[];
   max_files: number;
   guide_pages: number;
+  languages?: string[];
+  levels?: string[];
+  variant_of?: string;
+  batch?: boolean;
 }
 export interface Estimate {
   id: string;
@@ -132,6 +142,40 @@ export interface BillingState {
   has_customer: boolean;
   plans: (PlanInfo & { available: boolean })[];
 }
+export type PushPolicyName = "off" | "snapshot" | "build";
+export interface PushPolicy {
+  policy: PushPolicyName;
+  cap_micro_usd: number;
+  set_by_name: string | null;
+  version: number;
+}
+export interface PushRequest {
+  id: string;
+  commit_sha: string;
+  ref: string;
+  pushes: number;
+  state: "pending" | "acquiring" | "done" | "skipped" | "failed";
+  outcome: string | null;
+  snapshot_id: string | null;
+  build_id: string | null;
+  first_received_at: string;
+  updated_at: string;
+}
+export interface ProviderKey {
+  provider: "anthropic";
+  hint: string;
+  created_at: string;
+  created_by_name: string | null;
+  verified_at: string | null;
+}
+export interface Variant {
+  id: string;
+  language: string;
+  level: string;
+  base: boolean;
+}
+export const LANGUAGES: Record<string, string> = { en: "English", de: "Deutsch", id: "Bahasa Indonesia" };
+export const LEVELS: Record<string, string> = { standard: "Standard", beginner: "Beginner", expert: "Expert" };
 export interface SiteMeta {
   operator_name: string;
   support_email: string | null;
@@ -224,7 +268,7 @@ export interface ExportJob {
 
 export interface Freshness {
   tracked_ref: string;
-  state: "current" | "update_available" | "never_built" | "unknown";
+  state: "current" | "update_available" | "never_built" | "unknown" | "not_tracked";
   reason: string | null;
   latest_sha: string | null;
   last_observed_sha: string | null;
@@ -475,14 +519,27 @@ export const api = {
   repositories: (wid: string, connectionId: string) =>
     apiJson<Page<Repository>>(`/workspaces/${wid}/repositories?connection_id=${encodeURIComponent(connectionId)}`),
   projects: (wid: string) => apiJson<Page<Project>>(`/workspaces/${wid}/projects`),
-  createProject: async (wid: string, body: { repository_id: string; name: string; slug: string }) =>
-    json<Project>(await apiSend("POST", `/workspaces/${wid}/projects`, body)),
+  createProject: async (
+    wid: string,
+    body: { repository_id: string; name: string; slug: string } | { source: "upload"; name: string; slug: string },
+  ) => json<Project>(await apiSend("POST", `/workspaces/${wid}/projects`, body)),
+  uploadArchive: async (pid: string, file: Blob) =>
+    json<Snapshot>(await apiUpload(`/projects/${pid}/uploads`, file, "application/zip")),
   project: (pid: string) => apiJson<Project>(`/projects/${pid}`),
   builds: (pid: string) => apiJson<Page<BuildSummary>>(`/projects/${pid}/builds`),
   startBuild: async (pid: string) =>
     json<Build>(await apiSend("POST", `/projects/${pid}/builds`, {}, { "Idempotency-Key": crypto.randomUUID() })),
   build: (bid: string) => apiJson<Build>(`/builds/${bid}`),
-  presets: () => apiJson<{ price_version: string; items: Preset[] }>("/catalog/presets"),
+  presets: (workspaceId?: string) =>
+    apiJson<{ price_version: string; items: Preset[] }>(
+      workspaceId ? `/catalog/presets?workspace_id=${encodeURIComponent(workspaceId)}` : "/catalog/presets",
+    ),
+  providerKeys: (wid: string) => apiJson<Page<ProviderKey>>(`/workspaces/${wid}/provider-keys`),
+  saveProviderKey: async (wid: string, apiKey: string) =>
+    json<ProviderKey>(await apiSend("PUT", `/workspaces/${wid}/provider-keys/anthropic`, { api_key: apiKey })),
+  removeProviderKey: async (wid: string) => {
+    await apiSend("DELETE", `/workspaces/${wid}/provider-keys/anthropic`);
+  },
   usage: (wid: string) => apiJson<Usage>(`/workspaces/${wid}/usage`),
   usageEntries: (wid: string) => apiJson<Page<UsageEntry>>(`/workspaces/${wid}/usage/entries?limit=20`),
   billing: (wid: string) => apiJson<BillingState>(`/workspaces/${wid}/billing`),
@@ -493,6 +550,13 @@ export const api = {
   billingPortal: async (wid: string) => json<{ url: string }>(await apiSend("POST", `/workspaces/${wid}/billing/portal`)),
   startTrial: async (wid: string) => json<BillingState>(await apiSend("POST", `/workspaces/${wid}/billing/trial`)),
   meta: () => apiJson<SiteMeta>("/meta"),
+  variants: (bid: string) => apiJson<Page<Variant>>(`/builds/${bid}/variants`),
+  pushPolicy: (pid: string) => apiGetWithEtag<PushPolicy>(`/projects/${pid}/push-policy`),
+  setPushPolicy: async (pid: string, policy: PushPolicyName, capMicroUsd: number, ifMatch: string) =>
+    json<PushPolicy>(
+      await apiSend("PUT", `/projects/${pid}/push-policy`, { policy, cap_micro_usd: capMicroUsd }, { "If-Match": ifMatch }),
+    ),
+  pushRequests: (pid: string) => apiJson<Page<PushRequest>>(`/projects/${pid}/push-requests`),
   requestSnapshot: async (pid: string) => json<Snapshot>(await apiSend("POST", `/projects/${pid}/snapshots`, {})),
   snapshot: (pid: string, sid: string) => apiJson<Snapshot>(`/projects/${pid}/snapshots/${sid}`),
   createEstimate: async (pid: string, snapshotId: string, config: GenerationConfig) =>
@@ -504,12 +568,16 @@ export const api = {
         { "Idempotency-Key": crypto.randomUUID() },
       ),
     ),
-  startFromEstimate: async (pid: string, estimateId: string, capMicroUsd: number | null) =>
+  startFromEstimate: async (pid: string, estimateId: string, capMicroUsd: number | null, ownKey = false) =>
     json<Build>(
       await apiSend(
         "POST",
         `/projects/${pid}/builds`,
-        capMicroUsd === null ? { estimate_id: estimateId } : { estimate_id: estimateId, cap_micro_usd: capMicroUsd },
+        {
+          estimate_id: estimateId,
+          ...(capMicroUsd === null ? {} : { cap_micro_usd: capMicroUsd }),
+          ...(ownKey ? { funding: "own_key" } : {}),
+        },
         { "Idempotency-Key": crypto.randomUUID() },
       ),
     ),

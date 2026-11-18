@@ -24,11 +24,13 @@ from app.core.pagination import (
     encode_path_cursor,
 )
 from app.core.settings import Settings
+from app.core.tenancy import set_context
+from app.engine.acquire import MAX_COMPRESSED_BYTES
 from app.engine.catalog import Catalog
 from app.engine.estimate import GenerationConfig
 from app.modules.billing import service as billing
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
-from app.modules.projects import estimates, events, publication, quality, service
+from app.modules.projects import estimates, events, publication, pushes, quality, service, uploads
 from app.modules.projects import exports as export_service
 from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
 
@@ -63,10 +65,19 @@ BuildReader = Annotated[Member, Depends(build_reader)]
 
 
 class ProjectCreate(BaseModel):
-    repository_id: UUID
+    source: Literal["github", "upload"] = "github"
+    repository_id: UUID | None = None  # required for GitHub projects
     name: Annotated[str, Field(min_length=1, max_length=80)]
     slug: Annotated[str, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$")]
     tracked_ref: Annotated[str, Field(max_length=255)] = ""
+
+    @model_validator(mode="after")
+    def _repository_for_github(self) -> ProjectCreate:
+        if self.source == "github" and self.repository_id is None:
+            raise ValueError("repository_id is required for a GitHub project")
+        if self.source == "upload" and self.repository_id is not None:
+            raise ValueError("an uploaded project has no repository_id")
+        return self
 
 
 class ProjectOut(BaseModel):
@@ -77,6 +88,7 @@ class ProjectOut(BaseModel):
     tracked_ref: str
     owner: str
     repository: str
+    source: Literal["github", "upload"] = "github"
 
 
 class ProjectList(BaseModel):
@@ -90,6 +102,8 @@ class BuildStart(BaseModel):
     ref: Annotated[str | None, Field(max_length=255)] = None
     estimate_id: UUID | None = None
     cap_micro_usd: Annotated[int | None, Field(ge=0, le=10**12)] = None
+    # M6, T24: `own_key` calls the provider with the workspace's own key instead of the plan allowance.
+    funding: Literal["allowance", "own_key"] = "allowance"
 
     @model_validator(mode="after")
     def _one_kind(self) -> BuildStart:
@@ -97,6 +111,8 @@ class BuildStart(BaseModel):
             raise ValueError("send either estimate_id or ref, not both")
         if self.estimate_id is None and self.cap_micro_usd is not None:
             raise ValueError("cap_micro_usd requires estimate_id")
+        if self.estimate_id is None and self.funding != "allowance":
+            raise ValueError("funding applies to generation builds")
         return self
 
 
@@ -214,6 +230,9 @@ class BuildOut(BaseModel):
     created_at: datetime
     completed_at: datetime | None
     content_purged_at: datetime | None = None  # retention removed the build's content (0016)
+    language: str = "en"  # FR-026 variants (M6)
+    level: str = "standard"
+    variant_of: UUID | None = None
     stages: list[StageOut]
     counts: dict[str, int]
     usage: BuildUsage
@@ -437,10 +456,78 @@ async def list_projects(db: Db, member: ReadMember) -> ProjectList:
 async def create_project(body: ProjectCreate, request: Request, db: Db, member: WriteMember) -> ProjectOut:
     require_role(member, "editor")
     await billing.require_capacity(db, _settings(request), member.workspace_id, "projects")
+    if body.source == "upload":
+        project_id = await uploads.create_upload_project(db, member, body.name.strip(), body.slug)
+        await db.commit()
+        await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
+        return ProjectOut(**await service.get_project(db, member, project_id))
+    assert body.repository_id is not None  # the model validator requires it
     return ProjectOut(
         **await service.create_project(
             db, member, body.repository_id, body.name.strip(), body.slug, body.tracked_ref.strip()
         )
+    )
+
+
+class PushPolicyIn(BaseModel):
+    policy: Literal["off", "snapshot", "build"]
+    cap_micro_usd: int = Field(default=0, ge=0, le=1_000_000_000)
+
+
+class PushPolicyOut(BaseModel):
+    policy: str
+    cap_micro_usd: int
+    set_by_name: str | None
+    version: int
+
+
+class PushRequestOut(BaseModel):
+    id: UUID
+    commit_sha: str
+    ref: str
+    pushes: int
+    state: str
+    outcome: str | None
+    snapshot_id: UUID | None
+    build_id: UUID | None
+    first_received_at: datetime
+    updated_at: datetime
+
+
+class PushRequestList(BaseModel):
+    items: list[PushRequestOut]
+    next_cursor: None = None
+
+
+@router.get("/projects/{project_id}/push-policy", response_model=PushPolicyOut)
+async def get_push_policy(
+    project_id: UUID, response: Response, db: Db, member: ProjectReader
+) -> PushPolicyOut:
+    policy = await pushes.get_policy(db, member, project_id)
+    response.headers["ETag"] = pushes.policy_etag(policy["version"])
+    return PushPolicyOut(**policy)
+
+
+@router.put("/projects/{project_id}/push-policy", response_model=PushPolicyOut)
+async def put_push_policy(
+    project_id: UUID,
+    body: PushPolicyIn,
+    response: Response,
+    db: Db,
+    member: ProjectWriter,
+    if_match: Annotated[str | None, Header(max_length=100)] = None,
+) -> PushPolicyOut:
+    """What a push to the tracked branch does (FR-025). Admin: `build` spends the generation allowance."""
+    require_role(member, "admin")
+    policy = await pushes.set_policy(db, member, project_id, body.policy, body.cap_micro_usd, if_match)
+    response.headers["ETag"] = pushes.policy_etag(policy["version"])
+    return PushPolicyOut(**policy)
+
+
+@router.get("/projects/{project_id}/push-requests", response_model=PushRequestList)
+async def push_requests(project_id: UUID, db: Db, member: ProjectReader) -> PushRequestList:
+    return PushRequestList(
+        items=[PushRequestOut(**r) for r in await pushes.list_requests(db, member, project_id)]
     )
 
 
@@ -478,6 +565,7 @@ async def start_build(
                 project_id,
                 body.estimate_id,
                 body.cap_micro_usd,
+                funding=body.funding,
             )
         else:
             build = await service.start_build(
@@ -497,6 +585,23 @@ async def start_build(
     response.status_code = status
     response.headers["Location"] = f"/api/v1/builds/{payload['id']}"
     return BuildOut(**payload)
+
+
+class VariantOut(BaseModel):
+    id: UUID
+    language: str
+    level: str
+    base: bool
+
+
+class VariantList(BaseModel):
+    items: list[VariantOut]
+    next_cursor: None = None
+
+
+@router.get("/builds/{build_id}/variants", response_model=VariantList)
+async def build_variants(build_id: UUID, db: Db, member: BuildReader) -> VariantList:
+    return VariantList(items=[VariantOut(**v) for v in await service.build_variants(db, member, build_id)])
 
 
 @router.get("/builds/{build_id}", response_model=BuildOut)
@@ -546,6 +651,45 @@ async def request_snapshot(
     await _limit(request, "acquire", member)
     snapshot = await estimates.request_snapshot(
         db, _github(request), _settings(request), member, project_id, body.ref
+    )
+    response.headers["Location"] = f"/api/v1/projects/{project_id}/snapshots/{snapshot['id']}"
+    return SnapshotOut(**snapshot)
+
+
+@router.post(
+    "/projects/{project_id}/uploads",
+    response_model=SnapshotOut,
+    status_code=202,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
+        }
+    },
+)
+async def upload_archive(
+    project_id: UUID, request: Request, response: Response, db: Db, member: ProjectWriter
+) -> SnapshotOut:
+    """A new version of an uploaded project (M6): the raw ZIP body, at most 100 MiB. Content-addressed,
+    so a repeated upload of the same archive returns its existing snapshot (no Idempotency-Key needed)."""
+    require_role(member, "editor")
+    if request.headers.get("content-type", "").split(";")[0].strip() not in (
+        "application/zip",
+        "application/octet-stream",
+    ):
+        raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Send the archive as application/zip.")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_COMPRESSED_BYTES:
+        raise ApiError(413, "PAYLOAD_TOO_LARGE", "Archives are limited to 100 MiB.")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_COMPRESSED_BYTES:
+            raise ApiError(413, "PAYLOAD_TOO_LARGE", "Archives are limited to 100 MiB.")
+        chunks.append(chunk)
+    await _limit(request, "acquire", member)
+    snapshot = await uploads.receive(
+        db, _objects(request), _settings(request), member, project_id, b"".join(chunks)
     )
     response.headers["Location"] = f"/api/v1/projects/{project_id}/snapshots/{snapshot['id']}"
     return SnapshotOut(**snapshot)
@@ -970,7 +1114,7 @@ async def download_export(export_id: UUID, request: Request, db: Db, member: Exp
 # ---------------------------------------------------------------- freshness
 class FreshnessOut(BaseModel):
     tracked_ref: str
-    state: Literal["current", "update_available", "never_built", "unknown"]
+    state: Literal["current", "update_available", "never_built", "unknown", "not_tracked"]
     reason: str | None
     latest_sha: str | None
     last_observed_sha: str | None

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import io
+import stat
 import tarfile
+import zipfile
+from typing import Any
 
 import pytest
 
@@ -181,3 +184,75 @@ def test_file_limit(monkeypatch: pytest.MonkeyPatch) -> None:
         ("a.py", "selected", None),
         ("b.py", "excluded", "file_limit"),
     ]
+
+
+# ---------------------------------------------------------------- uploaded ZIP archives (M6)
+def make_zip(entries: list[tuple[str, bytes]], **write: Any) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in entries:
+            archive.writestr(name, data, **write)
+    return buffer.getvalue()
+
+
+def test_zip_strips_one_shared_top_directory_only() -> None:
+    nested = acquire.extract_zip(
+        make_zip([("repo-main/src/app.py", b"x = 1\n"), ("repo-main/README.md", b"# r\n")])
+    )
+    assert sorted(e.path for e in nested.entries) == ["README.md", "src/app.py"]
+    flat = acquire.extract_zip(make_zip([("src/app.py", b"x = 1\n"), ("README.md", b"# r\n")]))
+    assert sorted(e.path for e in flat.entries) == ["README.md", "src/app.py"]
+    single = acquire.extract_zip(make_zip([("app.py", b"x = 1\n")]))
+    assert [e.path for e in single.entries] == ["app.py"] and single.entries[0].data == b"x = 1\n"
+
+
+@pytest.mark.parametrize(
+    ("name", "code"),
+    [
+        ("../evil.py", "path_traversal"),
+        ("/etc/passwd", "path_traversal"),
+        ("C:/x.py", "path_traversal"),
+        ("a\\b.py", "invalid_path"),
+    ],
+)
+def test_zip_rejects_unsafe_paths(name: str, code: str) -> None:
+    with pytest.raises(acquire.ArchiveRejected) as rejected:
+        acquire.extract_zip(make_zip([(name, b"x")]))
+    assert rejected.value.code == code
+
+
+def test_zip_skips_links_and_rejects_encrypted_and_other_compression() -> None:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        link = zipfile.ZipInfo("repo/link")
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(link, "/etc/passwd")
+        archive.writestr("repo/app.py", "x = 1\n")
+    extracted = acquire.extract_zip(buffer.getvalue())
+    assert {(e.path, e.skipped) for e in extracted.entries} == {("link", "link"), ("app.py", None)}
+
+    # zipfile never writes the encryption flag, so set it in the central directory as an encrypting tool would.
+    plain = bytearray(make_zip([("app.py", b"x")]))
+    central = plain.index(b"PK\x01\x02")
+    plain[central + 8] |= 0x1
+    with pytest.raises(acquire.ArchiveRejected, match="encrypted_entry"):
+        acquire.extract_zip(bytes(plain))
+    with pytest.raises(acquire.ArchiveRejected, match="unsupported_compression"):
+        acquire.extract_zip(make_zip([("app.py", b"x")], compress_type=zipfile.ZIP_BZIP2))
+    with pytest.raises(acquire.ArchiveRejected, match="corrupt_archive"):
+        acquire.extract_zip(b"PK\x03\x04 not really a zip")
+
+
+def test_zip_limits_count_inflated_bytes_not_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(acquire, "MAX_EXPANDED_BYTES", 1024 * 1024)
+    bomb = make_zip([("zeros.bin", b"\0" * (2 * 1024 * 1024))])
+    assert len(bomb) < 10_000  # tiny on the wire
+    with pytest.raises(acquire.ArchiveRejected, match="expanded_too_large"):
+        acquire.extract_zip(bomb)
+    monkeypatch.setattr(acquire, "MAX_ENTRIES", 3)
+    with pytest.raises(acquire.ArchiveRejected, match="too_many_entries"):
+        acquire.extract_zip(make_zip([(f"f{i}.py", b"x") for i in range(4)]))
+    with pytest.warns(UserWarning), pytest.raises(acquire.ArchiveRejected, match="duplicate_path"):
+        acquire.extract_zip(make_zip([("a.py", b"1"), ("a.py", b"2")]))
+    oversize = acquire.extract_zip(make_zip([("big.txt", b"y" * (acquire.MAX_FILE_BYTES + 1))]))
+    assert oversize.entries[0].data is None and oversize.entries[0].size == acquire.MAX_FILE_BYTES + 1

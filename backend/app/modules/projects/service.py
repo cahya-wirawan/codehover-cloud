@@ -25,7 +25,8 @@ from app.engine.catalog import Catalog
 from app.engine.generate import CITATION
 from app.jobs import store as jobs
 from app.modules.billing import service as billing
-from app.modules.projects import estimates, quality
+from app.modules.projects import estimates, quality, uploads
+from app.modules.providers import keys as provider_keys
 from app.modules.usage import ledger
 from app.modules.workspaces.access import Member, Reader
 from app.modules.workspaces.service import audit
@@ -44,6 +45,7 @@ async def create_project(
                 "SELECT r.default_branch FROM repositories r JOIN repository_connections c"
                 " ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
                 " WHERE r.workspace_id = :w AND r.id = :r AND r.access_revoked_at IS NULL AND c.status = 'active'"
+                " AND c.provider = 'github'"
             ),
             {"w": member.workspace_id, "r": repository_id},
         )
@@ -78,8 +80,10 @@ async def create_project(
 async def list_projects(db: AsyncSession, member: Member) -> list[dict[str, Any]]:
     rows = await db.execute(
         text(
-            "SELECT p.id, p.workspace_id, p.name, p.slug, p.tracked_ref, r.owner, r.name AS repository"
+            "SELECT p.id, p.workspace_id, p.name, p.slug, p.tracked_ref, r.owner, r.name AS repository,"
+            " c.provider AS source"
             " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
+            " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
             " WHERE p.workspace_id = :w AND p.deleted_at IS NULL ORDER BY p.created_at, p.id"
         ),
         {"w": member.workspace_id},
@@ -91,8 +95,10 @@ async def get_project(db: AsyncSession, member: Member, project_id: UUID) -> dic
     row = (
         await db.execute(
             text(
-                "SELECT p.id, p.workspace_id, p.name, p.slug, p.tracked_ref, r.owner, r.name AS repository"
+                "SELECT p.id, p.workspace_id, p.name, p.slug, p.tracked_ref, r.owner, r.name AS repository,"
+                " c.provider AS source"
                 " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
+                " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
                 " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL"
             ),
             {"w": member.workspace_id, "p": project_id},
@@ -114,13 +120,49 @@ async def start_build(
     *,
     retry_of: UUID | None = None,
 ) -> dict[str, Any]:
-    """M1 replay build from a ref: no estimate, zero cap, cards derived from the source only."""
+    """M1 replay build from a ref: no estimate, zero cap, cards derived from the source only. An uploaded
+    project (M6) builds its latest scanned upload; it has no refs."""
+    if await uploads.is_upload(db, member.workspace_id, project_id):
+        if ref:
+            raise ApiError(422, "REF_NOT_FOUND", "Uploaded projects have no branches; upload a new archive.")
+        latest = await uploads.latest_scanned(db, member, project_id)
+        return await start_replay_build_for(
+            db,
+            settings,
+            member,
+            project_id,
+            latest,
+            ref=uploads.UPLOAD_REF,
+            commit_sha=latest.commit_sha,
+            retry_of=retry_of,
+        )
     requested, sha = await estimates.resolve_commit(db, github, member, project_id, ref)
     snapshot = await estimates.upsert_snapshot(db, member, project_id, sha, requested)
     if snapshot.status == "rejected":
         await db.rollback()
         raise ApiError(422, "SNAPSHOT_REJECTED", "This commit was rejected by the safety scan.")
-    config = {"ref": requested, "generator": "replay-v1"}
+    return await start_replay_build_for(
+        db, settings, member, project_id, snapshot, ref=requested, commit_sha=sha, retry_of=retry_of
+    )
+
+
+async def start_replay_build_for(
+    db: AsyncSession,
+    settings: Settings,
+    member: Member,
+    project_id: UUID,
+    snapshot: Any,
+    *,
+    ref: str,
+    commit_sha: str,
+    retry_of: UUID | None = None,
+    trigger: str | None = None,
+) -> dict[str, Any]:
+    """A replay build of an upserted, not rejected snapshot (manual starts and push rebuilds)."""
+    sha = commit_sha
+    config: dict[str, Any] = {"ref": ref, "generator": "replay-v1"}
+    if trigger:
+        config["trigger"] = trigger
     digest = hashlib.sha256(json.dumps({**config, "commit": sha}, sort_keys=True).encode()).hexdigest()
     await _admit(db, settings, member)
     build_id = await _insert_build(
@@ -150,8 +192,11 @@ async def start_generation_build(
     cap: int | None,
     *,
     retry_of: UUID | None = None,
+    funding: str = "allowance",
 ) -> dict[str, Any]:
-    """Build from an approved estimate: exact snapshot and scope, cap reserved once (11, A05, A08)."""
+    """Build from an approved estimate: exact snapshot and scope, cap reserved once (11, A05, A08).
+    `funding: own_key` (M6, T24) calls the provider with the workspace's own key: the cap is required and
+    held on the build only, and the plan allowance is neither checked nor used."""
     approved = (
         await db.execute(
             text(
@@ -176,8 +221,22 @@ async def start_generation_build(
             "Refresh this estimate before building.",
             details={"estimate_id": str(estimate_id)},
         )
+    own = await provider_keys.active_providers(db, member.workspace_id)
+    if funding == "own_key":
+        if cap is None:
+            raise ApiError(422, "CAP_REQUIRED", "Set a spending cap for a build on your own key.")
+        if not estimates.own_key_usable(catalog, approved.config["model_preset"], own):
+            raise ApiError(
+                409, "NO_PROVIDER_KEY", "Add this workspace's own key for the preset's provider first."
+            )
+    elif not estimates.preset_available(catalog, approved.config["model_preset"], settings):
+        raise ApiError(
+            409,
+            "PRESET_UNAVAILABLE",
+            "This preset's provider is not configured for the plan allowance; build on your own key.",
+        )
     if approved.price_version != catalog.revision or not estimates.preset_available(
-        catalog, approved.config["model_preset"], settings
+        catalog, approved.config["model_preset"], settings, own
     ):
         raise ApiError(
             409,
@@ -191,7 +250,7 @@ async def start_generation_build(
         raise ApiError(409, "SNAPSHOT_NOT_READY", "This snapshot is not available for building.")
     account = await _admit(db, settings, member, generation=True)
     requested_cap = min(account.available_micro_usd, approved.high_micro_usd) if cap is None else cap
-    if requested_cap > account.available_micro_usd:
+    if funding != "own_key" and requested_cap > account.available_micro_usd:
         await db.rollback()
         raise ApiError(
             409,
@@ -199,11 +258,13 @@ async def start_generation_build(
             "The build cap is larger than the generation allowance left this period.",
             details={"available_micro_usd": account.available_micro_usd, "cap_micro_usd": requested_cap},
         )
-    config = {
+    config: dict[str, Any] = {
         "generation": approved.config,
         "catalog": catalog.revision,
         "estimate_id": str(estimate_id),
     }
+    if funding == "own_key":
+        config["funding"] = "own_key"
     build_id = await _insert_build(
         db,
         member,
@@ -214,10 +275,16 @@ async def start_generation_build(
         prompt_version=GENERATION_PROMPT_VERSION,
         cap=requested_cap,
         estimate_id=estimate_id,
-        account_id=account.id,
+        account_id=None if funding == "own_key" else account.id,
         retry_of=retry_of,
     )
-    await ledger.reserve_build(db, member.workspace_id, account, build_id, requested_cap)
+    if funding == "own_key":  # the envelope lives on the build only (no allowance account)
+        await db.execute(
+            text("UPDATE builds SET reserved_micro_usd = :n WHERE workspace_id = :w AND id = :b"),
+            {"n": requested_cap, "w": member.workspace_id, "b": build_id},
+        )
+    else:
+        await ledger.reserve_build(db, member.workspace_id, account, build_id, requested_cap)
     await _schedule(db, member, build_id, scanned=True, commit_sha=approved.commit_sha)
     return await get_build(db, member, build_id)
 
@@ -332,7 +399,7 @@ async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[st
                 "SELECT b.id, b.project_id, b.snapshot_id, b.estimate_id, b.retry_of_id, b.status, b.created_at,"
                 " b.completed_at, b.cancel_requested_at, b.content_purged_at,"
                 " b.engine_version, b.prompt_version, b.cap_micro_usd, b.reserved_micro_usd, b.settled_micro_usd,"
-                " s.commit_sha, s.status AS snapshot_status, s.rejection_code"
+                " s.commit_sha, s.status AS snapshot_status, s.rejection_code, b.config->'generation' AS generation"
                 " FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
                 " WHERE b.workspace_id = :w AND b.id = :b"
             ),
@@ -361,8 +428,12 @@ async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[st
     ).one()
     build = dict(row._mapping)
     usage = {k: build.pop(k) for k in ("cap_micro_usd", "reserved_micro_usd", "settled_micro_usd")}
+    generation = build.pop("generation") or {}
     return {
         **build,
+        "language": (generation.get("languages") or ["en"])[0],
+        "level": (generation.get("levels") or ["standard"])[0],
+        "variant_of": generation.get("variant_of"),
         "usage": usage,
         "stages": [dict(s._mapping) for s in stages],
         "counts": {"files": counts.files, "symbols": counts.symbols},
@@ -660,7 +731,8 @@ async def retry_build(
     original = (
         await db.execute(
             text(
-                "SELECT b.project_id, b.snapshot_id, b.estimate_id, b.status, b.config, e.snapshot_id AS estimate_snapshot"
+                "SELECT b.project_id, b.snapshot_id, b.estimate_id, b.status, b.config, b.cap_micro_usd,"
+                " e.snapshot_id AS estimate_snapshot"
                 " FROM builds b LEFT JOIN estimates e ON e.workspace_id = b.workspace_id AND e.id = :e"
                 " WHERE b.workspace_id = :w AND b.id = :b"
             ),
@@ -673,20 +745,34 @@ async def retry_build(
         raise ApiError(409, "BUILD_ACTIVE", "This build is still running.")
     if "generation" not in original.config:
         await db.commit()
-        snapshot_ref = (
+        snapshot = (
             await db.execute(
-                text("SELECT commit_sha FROM snapshots WHERE workspace_id = :w AND id = :s"),
+                text("SELECT id, status, commit_sha FROM snapshots WHERE workspace_id = :w AND id = :s"),
                 {"w": member.workspace_id, "s": original.snapshot_id},
             )
-        ).scalar_one()
+        ).one()
+        if await uploads.is_upload(db, member.workspace_id, original.project_id):  # no ref to resolve (M6)
+            return await start_replay_build_for(
+                db,
+                settings,
+                member,
+                original.project_id,
+                snapshot,
+                ref=uploads.UPLOAD_REF,
+                commit_sha=snapshot.commit_sha,
+                retry_of=build_id,
+            )
         return await start_build(
-            db, github, settings, member, original.project_id, snapshot_ref, retry_of=build_id
+            db, github, settings, member, original.project_id, snapshot.commit_sha, retry_of=build_id
         )
     chosen = estimate_id or original.estimate_id
     if estimate_id is not None and original.estimate_snapshot != original.snapshot_id:
         raise ApiError(422, "ESTIMATE_MISMATCH", "The estimate must be for this build's snapshot.")
+    funding = original.config.get("funding", "allowance")
+    if funding == "own_key" and cap is None:
+        cap = int(original.cap_micro_usd)  # an own-key retry keeps its cap unless a new one is given
     return await start_generation_build(
-        db, catalog, settings, member, original.project_id, chosen, cap, retry_of=build_id
+        db, catalog, settings, member, original.project_id, chosen, cap, retry_of=build_id, funding=funding
     )
 
 
@@ -766,7 +852,7 @@ async def freshness(
             text(
                 "SELECT p.tracked_ref, p.last_observed_sha, p.last_observed_at,"
                 " p.last_observed_at > now() - make_interval(secs => :ttl) AS recent,"
-                " r.provider_repo_id, r.access_revoked_at, c.installation_id, c.status,"
+                " r.provider_repo_id, r.access_revoked_at, c.installation_id, c.status, c.provider,"
                 " (SELECT s.commit_sha FROM publications pub JOIN builds b ON b.workspace_id = pub.workspace_id AND b.id = pub.build_id"
                 "   JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
                 "   WHERE pub.workspace_id = p.workspace_id AND pub.project_id = p.id) AS published_sha,"
@@ -783,6 +869,17 @@ async def freshness(
     if row is None:
         raise ApiError(404, "NOT_FOUND", "Project not found.")
     await db.commit()
+    if row.provider == "upload":  # an uploaded archive has no upstream to compare with (M6)
+        return {
+            "tracked_ref": row.tracked_ref,
+            "state": "not_tracked",
+            "reason": None,
+            "latest_sha": None,
+            "last_observed_sha": None,
+            "last_observed_at": None,
+            "published_sha": row.published_sha,
+            "latest_ready_sha": row.latest_ready_sha,
+        }
     observed_sha, observed_at, reason = row.last_observed_sha, row.last_observed_at, None
     if not row.recent:
         if row.status != "active" or row.access_revoked_at is not None or github is None:
@@ -823,3 +920,30 @@ async def freshness(
         "published_sha": row.published_sha,
         "latest_ready_sha": row.latest_ready_sha,
     }
+
+
+async def build_variants(db: AsyncSession, member: Reader, build_id: UUID) -> list[dict[str, Any]]:
+    """The ready variants of a build's family (FR-026): its base and every ready variant of that base,
+    so a reader can switch language or level and stay on the same page or file."""
+    family = (
+        await db.execute(
+            text(
+                "SELECT COALESCE(CAST(b.config->'generation'->>'variant_of' AS uuid), b.id) AS base"
+                " FROM builds b WHERE b.workspace_id = :w AND b.id = :b"
+            ),
+            {"w": member.workspace_id, "b": build_id},
+        )
+    ).scalar_one_or_none()
+    if family is None:
+        raise ApiError(404, "NOT_FOUND", "Build not found.")
+    rows = await db.execute(
+        text(
+            "SELECT b.id, COALESCE(b.config->'generation'->'languages'->>0, 'en') AS language,"
+            " COALESCE(b.config->'generation'->'levels'->>0, 'standard') AS level, b.id = :base AS base"
+            " FROM builds b WHERE b.workspace_id = :w AND b.status = 'ready' AND b.content_purged_at IS NULL"
+            " AND (b.id = :base OR b.config->'generation'->>'variant_of' = CAST(:base AS text))"
+            " ORDER BY (b.id = :base) DESC, b.created_at"
+        ),
+        {"w": member.workspace_id, "base": family},
+    )
+    return [dict(r._mapping) for r in rows]
