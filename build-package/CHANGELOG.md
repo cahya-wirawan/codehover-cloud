@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-11-18
+
+### Security
+
+- 06: an event-stream slot was released only by the response body's generator, which never runs when the client disconnects before the first byte. Repeated aborted requests could leak slots until a workspace's members could no longer stream. Release is now idempotent and tied to the response lifecycle. Found by automated security review of T13.
+
 ## [0.5.5] - 2026-11-18
 
 ### Added

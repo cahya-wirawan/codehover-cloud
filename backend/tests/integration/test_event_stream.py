@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 import httpx
@@ -123,3 +124,30 @@ def test_stream_limits_per_session_and_workspace() -> None:
         events.StreamSlot(uuid4(), workspace).__enter__()
     for slot in [*slots, *others]:
         slot.__exit__()
+
+
+async def test_a_response_that_never_streams_still_releases_its_slot() -> None:
+    """A client that disconnects before the body starts must not leak a slot (the generator's finally
+    never runs in that case)."""
+    from uuid import uuid4
+
+    session, workspace = uuid4(), uuid4()
+
+    async def never_iterated() -> Any:
+        yield "x"  # pragma: no cover - the transport fails before iterating
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        raise OSError("client went away")  # the very first send fails
+
+    for _ in range(events.PER_SESSION + 2):
+        slot = events.StreamSlot(session, workspace).__enter__()
+        response = events.SlotResponse(never_iterated(), slot, media_type="text/event-stream")
+        # Starlette may surface the failed send as OSError, ClientDisconnect or an exception group.
+        with contextlib.suppress(Exception):
+            await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+    assert not any(key.endswith(str(session)) for key in events._open)  # every slot was released
+    slot.__exit__()  # a second release is a no-op, never negative
+    assert not any(key.endswith(str(workspace)) for key in events._open)

@@ -8,7 +8,6 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
@@ -750,8 +749,9 @@ async def build_events(
         finally:
             slot.__exit__()
 
-    return StreamingResponse(
+    return events.SlotResponse(
         body(),
+        slot,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )

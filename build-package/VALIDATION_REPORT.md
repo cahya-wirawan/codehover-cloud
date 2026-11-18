@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.5
+Date: 2026-11-18 · Package version 0.5.6
+
+0.5.6 fixes the stream-slot leak: a test runs more aborted responses than the session limit allows, and every slot comes back; removing the fix makes it fail.
 
 0.5.5 adds the SSE build stream. Integration tests cover:
 - history replay and resume from Last-Event-ID;

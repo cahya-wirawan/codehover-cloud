@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -46,6 +47,7 @@ class StreamSlot:
 
     def __init__(self, session_id: UUID, workspace_id: UUID) -> None:
         self.keys = (f"s:{session_id}", f"w:{workspace_id}")
+        self.held = False
 
     def __enter__(self) -> StreamSlot:
         session_key, workspace_key = self.keys
@@ -53,13 +55,33 @@ class StreamSlot:
             raise ApiError(429, "STREAM_LIMIT", "Too many open event streams.", retryable=True)
         for key in self.keys:
             _open[key] += 1
+        self.held = True
         return self
 
     def __exit__(self, *exc: object) -> None:
+        """Idempotent: the response and the generator may both release."""
+        if not self.held:
+            return
+        self.held = False
         for key in self.keys:
             _open[key] -= 1
             if _open[key] <= 0:
                 del _open[key]
+
+
+class SlotResponse(StreamingResponse):
+    """Releases its stream slot when the response ends however it ends, including a client that
+    disconnects before the body is ever iterated (the generator's `finally` would not run then)."""
+
+    def __init__(self, content: AsyncIterator[str], slot: StreamSlot, **kwargs: Any) -> None:
+        super().__init__(content, **kwargs)
+        self.slot = slot
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.slot.__exit__()
 
 
 def frame(sequence: int, event_type: str, payload: dict[str, Any]) -> str:
