@@ -15,6 +15,7 @@ from app.adapters.github.app import GitHubApp
 from app.adapters.oauth import OAuthProvider
 from app.adapters.oauth.github import GitHubProvider
 from app.adapters.oauth.google import GoogleProvider
+from app.adapters.storage import MemoryObjectStore, ObjectStore, S3ObjectStore
 from app.api import health
 from app.core.db import create_engine, session_factory
 from app.core.errors import install_error_handlers
@@ -24,6 +25,8 @@ from app.core.security import Sealer
 from app.core.settings import Environment, Settings, get_settings
 from app.modules.github import router as github
 from app.modules.identity import router as identity
+from app.modules.projects import router as projects
+from app.modules.webhooks import router as webhooks
 from app.modules.workspaces import router as workspaces
 
 API_PREFIX = "/api/v1"
@@ -43,6 +46,16 @@ def oauth_providers(settings: Settings, http: httpx.AsyncClient) -> dict[str, OA
             settings.github_oauth_client_id, settings.github_oauth_client_secret.get_secret_value(), http
         )
     return providers
+
+
+def object_store(settings: Settings) -> ObjectStore:
+    if not settings.s3_endpoint_url:
+        if settings.app_env is Environment.PRODUCTION:
+            raise RuntimeError("S3 storage must be configured in production")
+        return MemoryObjectStore()
+    from app.ops.bootstrap import s3_client
+
+    return S3ObjectStore(s3_client(settings), settings.s3_bucket)
 
 
 def github_app(settings: Settings, http: httpx.AsyncClient) -> GitHubApp | None:
@@ -110,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sealer = Sealer(settings.app_encryption_key.get_secret_value())
     app.state.oauth_providers = oauth_providers(settings, http)
     app.state.github_app = github_app(settings, http)
+    app.state.objects = object_store(settings)
 
     install_error_handlers(app)
     app.middleware("http")(no_store)
@@ -120,6 +134,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(identity.router)
     api.include_router(workspaces.router)
     api.include_router(github.router)
+    api.include_router(projects.router)
+    api.include_router(webhooks.router)
     app.include_router(api)
     return app
 

@@ -1,0 +1,67 @@
+"""Process one notification: claim, run the stage with a lease heartbeat, settle (04).
+
+The queue message is only a hint: everything is re-read from SQL. Duplicates and stale notifications
+claim nothing. The caller acknowledges the message after this returns; nothing is ever requeued by the
+broker, retries are scheduled in SQL and re-notified by the reconciler.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+
+from app.jobs import store
+from app.jobs.envelope import TaskEnvelope
+from app.jobs.stages import HANDLERS, Runtime, StageError
+
+logger = logging.getLogger("app.jobs")
+
+
+async def _heartbeat(rt: Runtime, claimed: store.Claim, lost: asyncio.Event) -> None:
+    while True:
+        await asyncio.sleep(store.HEARTBEAT_SECONDS)
+        async with rt.sessions() as db:
+            if not await store.heartbeat(db, claimed):
+                lost.set()
+                return
+
+
+async def process(rt: Runtime, envelope: TaskEnvelope) -> str:
+    """Returns an outcome label for logs and tests."""
+    async with rt.sessions() as db:
+        claimed = await store.claim(db, envelope)
+    if claimed is None:
+        return "not_runnable"
+    log = {"task_id": str(claimed.task_id), "stage": claimed.stage, "attempt": claimed.attempt}
+    if claimed.attempt > store.MAX_ATTEMPTS:  # a task that keeps killing workers
+        async with rt.sessions() as db:
+            await store.fail(db, claimed, "attempts_exhausted", transient=False)
+        return "failed"
+    lost = asyncio.Event()
+    beat = asyncio.create_task(_heartbeat(rt, claimed, lost))
+    try:
+        try:
+            apply = await HANDLERS[claimed.stage](rt, claimed)
+        except StageError as error:
+            async with rt.sessions() as db:
+                outcome = await store.fail(
+                    db, claimed, error.code, transient=error.transient, apply=error.apply
+                )
+            logger.warning("stage failed", extra={**log, "error": error.code, "outcome": outcome})
+            return outcome
+        except Exception as error:  # unexpected: retry within the budget, never crash the consumer
+            logger.exception("stage crashed", extra=log)
+            async with rt.sessions() as db:
+                return await store.fail(db, claimed, f"internal_{type(error).__name__}", transient=True)
+        async with rt.sessions() as db:
+            await store.complete(db, claimed, apply)
+        logger.info("stage completed", extra=log)
+        return "completed"
+    except store.LeaseLost:
+        logger.warning("lease lost; result discarded", extra=log)
+        return "lease_lost"
+    finally:
+        beat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beat

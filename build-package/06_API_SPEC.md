@@ -42,7 +42,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/projects/{pid}/snapshots/{sid}/files` | cursor,status → metadata | Member; content requires viewer endpoint |
 | POST `/projects/{pid}/estimates` | snapshot_id, config → estimate | Editor; scan/config bounded |
 | GET `/projects/{pid}/estimates/{eid}` | none → estimate | Member |
-| GET/POST `/projects/{pid}/builds` | estimate_id, cap_micro_usd → build | Viewer list; editor start |
+| GET/POST `/projects/{pid}/builds` | estimate_id, cap_micro_usd → build (M1 replay builds: `ref`, zero cap; estimates arrive in M2) | Viewer list; editor start; `Idempotency-Key` required; second active build → 409 `BUILD_ACTIVE`; unknown ref → 422 `REF_NOT_FOUND`; reuses the immutable snapshot of an already-scanned commit |
 | GET `/builds/{bid}` | none → states,counts,usage,quality | Member |
 | POST `/builds/{bid}/cancel` | reason optional → updated build | Editor; idempotent cancellation |
 | POST `/builds/{bid}/retry` | valid estimate_id → new build | Editor; same SHA/config unless new estimate specifies otherwise |

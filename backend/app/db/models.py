@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     DateTime,
+    Double,
     ForeignKey,
     Integer,
     LargeBinary,
@@ -280,6 +281,7 @@ class BuildTask(Base):
     error_code: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+    notified_at: Mapped[datetime | None] = ts(nullable=True)  # last queue notification (0005)
 
 
 class BuildEvent(Base):
@@ -379,3 +381,49 @@ class IdempotencyKey(Base):
     response_body: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = ts(default_now=True)
     expires_at: Mapped[datetime] = ts()
+
+
+# ---------------------------------------------------------------- engine output and webhooks (0005)
+class Symbol(Base):
+    __tablename__ = "symbols"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    source_file_id: Mapped[UUID] = ref()
+    symbol_key: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    parent_key: Mapped[str | None] = mapped_column(Text)
+    start_line: Mapped[int] = mapped_column(Integer)
+    end_line: Mapped[int] = mapped_column(Integer)
+    start_column: Mapped[int] = mapped_column(Integer)
+    end_column: Mapped[int] = mapped_column(Integer)
+    signature: Mapped[str | None] = mapped_column(Text)
+    rank: Mapped[float] = mapped_column(Double, server_default=text("0"))
+    card: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
+
+
+class ReferenceEdge(Base):
+    __tablename__ = "reference_edges"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    from_symbol_id: Mapped[UUID | None] = ref(nullable=True)
+    to_symbol_id: Mapped[UUID] = ref()
+    source_file_id: Mapped[UUID] = ref()
+    line: Mapped[int] = mapped_column(Integer)
+    column: Mapped[int] = mapped_column("column", Integer)
+    resolution: Mapped[str] = mapped_column(Text)
+    ambiguity_group: Mapped[str | None] = mapped_column(Text)
+
+
+class WebhookReceipt(Base):
+    __tablename__ = "webhook_receipts"
+    id: Mapped[UUID] = pk()
+    provider: Mapped[str] = mapped_column(Text)
+    provider_event_id: Mapped[str] = mapped_column(Text)
+    event_type: Mapped[str] = mapped_column(Text)
+    payload_digest: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default=text("'received'"))
+    received_at: Mapped[datetime] = ts(default_now=True)
+    processed_at: Mapped[datetime | None] = ts(nullable=True)

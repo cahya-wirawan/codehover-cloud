@@ -67,3 +67,14 @@ async def write_member(workspace_id: UUID, db: Db, principal: CsrfPrincipal) -> 
 
 ReadMember = Annotated[Member, Depends(read_member)]
 WriteMember = Annotated[Member, Depends(write_member)]
+
+
+async def resource_member(kind: str, resource_id: UUID, db: Db, principal: Principal) -> Member:
+    """Flat routes (/projects/{id}, /builds/{id}): resolve the owning workspace, then require membership.
+    Unknown resources and resources in workspaces the caller does not belong to are both 404 (05)."""
+    from app.core.tenancy import resource_workspace
+
+    workspace_id = await resource_workspace(db, kind, resource_id)  # type: ignore[arg-type]
+    if workspace_id is None:
+        raise ApiError(404, "NOT_FOUND", "Not found.")
+    return await _member(workspace_id, db, principal)

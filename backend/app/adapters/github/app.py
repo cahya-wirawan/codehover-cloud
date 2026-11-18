@@ -10,11 +10,12 @@ Endpoints are fixed; repositories are addressed by numeric ID so renames cannot 
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 from joserfc import jwt
@@ -198,6 +199,40 @@ class GitHubApp:
                 if isinstance(item.get("name"), str) and isinstance(sha, str):
                     refs.append(Ref(item["name"], kind, sha))
         return refs
+
+    async def resolve_ref(self, installation_id: int, repo_id: int, ref: str) -> str:
+        """Exact commit SHA for a branch, tag or SHA (01 FR-004)."""
+        token = await self.installation_token(installation_id)
+        body = await self._get_json(f"{API}/repositories/{repo_id}/commits/{quote(ref, safe='')}", token)
+        sha = body.get("sha") if isinstance(body, dict) else None
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", sha):
+            raise GitHubError("ref_not_found", 404)
+        return sha
+
+    async def download_tarball(self, installation_id: int, repo_id: int, sha: str, max_bytes: int) -> bytes:
+        """The commit's tarball. GitHub answers with a redirect; only codeload.github.com over HTTPS is
+        followed, without the installation token, and the body is capped while streaming (08 SSRF)."""
+        token = await self.installation_token(installation_id)
+        response = await self._http.get(
+            f"{API}/repositories/{repo_id}/tarball/{sha}",
+            headers={**API_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        if response.status_code not in (301, 302, 307, 308):
+            raise GitHubError("tarball_unavailable", response.status_code)
+        target = httpx.URL(response.headers.get("location", ""))
+        if target.scheme != "https" or target.host != "codeload.github.com":
+            raise GitHubError("tarball_redirect_rejected")
+        chunks: list[bytes] = []
+        total = 0
+        async with self._http.stream("GET", target) as download:
+            if download.status_code != 200:
+                raise GitHubError("tarball_unavailable", download.status_code)
+            async for chunk in download.aiter_bytes():
+                total += len(chunk)
+                if total > max_bytes:
+                    raise GitHubError("tarball_too_large")
+                chunks.append(chunk)
+        return b"".join(chunks)
 
     # ---------------------------------------------------------------- transport
     async def _get_json(self, url: str, token: str, *, page: int | None = None) -> Any:

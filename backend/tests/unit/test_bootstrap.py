@@ -10,6 +10,7 @@ from pydantic import SecretStr
 
 from app.ops.bootstrap import (
     DEAD_LETTER_EXCHANGE,
+    DEAD_LETTER_QUEUE,
     WORK_POLICY_NAME,
     BrokerTarget,
     broker_target,
@@ -75,9 +76,12 @@ def test_broker_policy_declares_dlx_and_policy() -> None:
         ensure_broker_policy(client, target)
     assert [(m, p) for m, p, _ in calls] == [
         ("PUT", f"/api/exchanges/codehover/{DEAD_LETTER_EXCHANGE}"),
+        ("PUT", f"/api/queues/codehover/{DEAD_LETTER_QUEUE}"),
+        ("POST", f"/api/bindings/codehover/e/{DEAD_LETTER_EXCHANGE}/q/{DEAD_LETTER_QUEUE}"),
         ("PUT", f"/api/policies/codehover/{WORK_POLICY_NAME}"),
     ]
-    policy = calls[1][2]
+    assert calls[2][2]["routing_key"] == "#"  # every dead-lettered message is kept
+    policy = calls[3][2]
     assert policy["apply-to"] == "quorum_queues"
     assert policy["definition"] == {"dead-letter-exchange": DEAD_LETTER_EXCHANGE, "delivery-limit": 20}
 

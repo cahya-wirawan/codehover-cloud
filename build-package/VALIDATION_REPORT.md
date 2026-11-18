@@ -1,6 +1,17 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.3.10
+Date: 2026-11-18 · Package version 0.3.11
+
+0.3.11 records the M1 implementation. M1 exit criteria are met by these tests:
+- **End-to-end build:** an immutable fixture build runs from a GitHub ref through acquire, index, explain and render to the private viewer, with secrets excluded or blocked, Unicode columns, name-based references and a manifest stored last.
+- **Cross-tenant isolation:** tenancy, flat-route 404s and the viewer are private.
+- **Crash and retry:** duplicate notifications claim once; a lost lease is fenced and reconciled; transient failures retry, then fail the build; cancelled builds are not claimed; lost messages are re-notified; dispatch backs off on broker failure.
+- **Parser network isolation:** on Linux, inside the sandbox, IPv4, IPv6 and Unix socket creation are refused, and the environment is empty.
+
+145 backend tests pass on PostgreSQL 18 (one Linux-only test runs in a Linux container and CI), plus 8 frontend tests. Mutation checks were caught for completion fencing, live-lease re-claim, cancelled-build claims, and every earlier guard. On the running Compose stack:
+- the hardened worker passed its sandbox self-check;
+- tasks flowed outbox, dispatcher, RabbitMQ, worker;
+- a poison message was refused and kept in `codehover.dead`.
 
 0.3.10: migration 0004 fails closed. A migration test creates a repository at 0003, upgrades, and asserts that it is revoked; the test fails if the fail-closed step is removed. 96 backend tests pass.
 

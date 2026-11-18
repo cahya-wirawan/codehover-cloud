@@ -94,7 +94,11 @@ async def test_docs_hidden_in_production_only_for_docs(path: str) -> None:
     from app.core.settings import Environment
     from tests.conftest import make_settings
 
-    prod = make_settings(app_env=Environment.PRODUCTION, public_origin="https://example.test")
+    prod = make_settings(
+        app_env=Environment.PRODUCTION,
+        public_origin="https://example.test",
+        s3_endpoint_url="https://s3.example.test",  # production refuses to start without object storage
+    )
     async with client_for(prod) as client:
         response = await client.get(path)
     assert response.status_code == (200 if path.endswith("openapi.json") else 404)

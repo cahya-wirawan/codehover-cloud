@@ -42,6 +42,7 @@ def model_type(column: sa.Column[object]) -> str:
         "BIGINT": "bigint",
         "INTEGER": "integer",
         "SMALLINT": "smallint",
+        "DOUBLE PRECISION": "double precision",
     }.get(compiled, compiled.lower().replace("varchar", "character varying"))
 
 

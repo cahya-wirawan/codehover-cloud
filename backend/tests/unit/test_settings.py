@@ -77,3 +77,10 @@ def test_configure_logging_silences_http_client_url_logging() -> None:
     assert not logging.getLogger("httpx").isEnabledFor(logging.INFO)
     assert not logging.getLogger("httpcore").isEnabledFor(logging.INFO)
     assert logging.getLogger("app").isEnabledFor(logging.INFO)
+
+
+def test_production_app_refuses_to_start_without_object_storage() -> None:
+    from app.main import create_app
+
+    with pytest.raises(RuntimeError, match="S3 storage must be configured"):
+        create_app(make_settings(app_env=Environment.PRODUCTION, public_origin="https://app.example.test"))

@@ -9,7 +9,10 @@ export function HomePage() {
         Understand any repository through cited, browsable explanations
       </h1>
       <p className="mt-3 text-base leading-[26px] text-muted">
-        This is the M0 foundation build. Sign-in, workspaces and private builds arrive in M1.
+        Sign in, connect GitHub and build a private, browsable explanation of a repository.
+      </p>
+      <p className="mt-4">
+        <Link to="/w" className="font-medium text-primary">Go to your workspaces</Link>
       </p>
       <div className="mt-6">
         <ServiceStatus />

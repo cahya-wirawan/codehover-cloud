@@ -23,6 +23,8 @@ Queries always filter by `workspace_id` explicitly, even inside a workspace cont
 
 Invitations are accepted through `app_private.invitation_by_token(token_hash)`; the workspace comes from the validated token, never from request data. The owner invariant is enforced in the database by the deferred constraint trigger `memberships_keep_owner`. It runs at commit, locks the workspace row and re-counts owners, so concurrent removals of the last two owners serialize and one fails. Workspaces in `deleting` status are exempt for purge.
 
+Signed GitHub webhooks (no context) change connection status only through `app_private.set_installation_status`, which never revives a revoked connection. `build_tasks.notified_at` lets the reconciler re-notify runnable tasks whose notification was lost; expiring a dead lease clears it.
+
 Lookup functions are `SECURITY DEFINER` with a fixed `search_path`, owned by the NOLOGIN role `app_resolver`, which can read only `id`/`workspace_id`/lifecycle columns through its own policies. No role has BYPASSRLS. EXECUTE is revoked from PUBLIC and granted to `app_runtime`. Task workers stay on `app_runtime`: they set `app.workspace_id` from the message, then claim the task by ID; a mismatched workspace makes the row invisible, so the claim fails closed. Purge and audited reconciliation use the separate maintenance role. Role bootstrap lives in `deployment/init-db.sh`; migrations grant privileges but never create login roles.
 
 ## Entities

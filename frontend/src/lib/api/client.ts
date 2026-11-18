@@ -88,7 +88,12 @@ async function getCsrfToken(): Promise<string> {
 }
 
 /** Unsafe request: the browser adds Origin; the session-bound X-CSRF-Token comes from /auth/csrf (09). */
-export async function apiSend(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<Response> {
+export async function apiSend(
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
   const token = await getCsrfToken();
   const response = await fetch(`${API_BASE}${path}`, {
     method,
@@ -96,6 +101,7 @@ export async function apiSend(method: "POST" | "PUT" | "PATCH" | "DELETE", path:
     headers: {
       Accept: "application/json",
       "X-CSRF-Token": token,
+      ...extraHeaders,
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -106,3 +112,9 @@ export async function apiSend(method: "POST" | "PUT" | "PATCH" | "DELETE", path:
   }
   return response;
 }
+
+/** JSON GET without a parser, for responses from our own API (shapes come from the OpenAPI contract). */
+export function apiJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return apiGet(path, (value) => value as T, signal);
+}
+

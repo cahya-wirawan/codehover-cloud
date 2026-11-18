@@ -43,6 +43,8 @@ class FakeGitHub:
     challenges: dict[str, str] = field(default_factory=dict)
     codes: dict[str, tuple[str, int]] = field(default_factory=dict)  # code -> (state, github user)
     user_access: dict[tuple[int, int], set[str]] = field(default_factory=dict)  # (user, inst) -> repo names
+    tarballs: dict[int, bytes] = field(default_factory=dict)  # repo id -> gzip tarball served by codeload
+    commit_sha: str = "c0ffee" + "0" * 34
 
     def share(self, installation_id: int, github_user: int, repo_names: set[str]) -> None:
         """Give another GitHub user access to some repositories of an existing installation."""
@@ -116,9 +118,22 @@ class FakeGitHub:
                 return httpx.Response(404)
             expires = (datetime.now(UTC) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
             return httpx.Response(201, json={"token": f"ghs_{installation}", "expires_at": expires})
+        if url.startswith("https://codeload.github.com/"):
+            if auth:
+                return httpx.Response(400)  # the installation token must never be sent to codeload
+            return httpx.Response(200, content=self.tarballs[int(url.rsplit("/", 1)[-1])])
         if auth.startswith("Bearer ghs_"):
             installation = int(auth.removeprefix("Bearer ghs_"))
             repos = self.repos.get(installation, [])
+            for repo in repos:
+                base = f"{gha.API}/repositories/{repo['id']}"
+                if url.startswith(f"{base}/commits/"):
+                    return httpx.Response(200, json={"sha": self.commit_sha})
+                if url == f"{base}/tarball/{self.commit_sha}":
+                    return httpx.Response(
+                        302,
+                        headers={"location": f"https://codeload.github.com/o/r/legacy.tar.gz/{repo['id']}"},
+                    )
             if url == f"{gha.API}/installation/repositories":
                 return httpx.Response(200, json={"total_count": len(repos), "repositories": repos})
             for repo in repos:

@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-11-18
+
+### Changed
+
+- M1 implementation decisions recorded:
+  - 22: the sandbox design (seccomp bootstrap, worker self-check, Linux CI gate) and the dead-letter queue `codehover.dead`;
+  - 07: the replay generator and the M1 stages;
+  - 06: replay build start by `ref` until estimates arrive in M2;
+  - 05: the webhook status function and re-notification via `notified_at`.
+
 ## [0.3.10] - 2026-11-18
 
 ### Security

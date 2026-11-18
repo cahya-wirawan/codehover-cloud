@@ -2,13 +2,17 @@
 
 codehover-cloud turns a GitHub repository into a browsable, cited explanation website. The specification lives in [`build-package/`](build-package/README.md); this repository implements it milestone by milestone (`build-package/14_IMPLEMENTATION_ROADMAP.md`).
 
-**Status: M0 foundation.** It includes:
-- the FastAPI shell with health endpoints and the error envelope;
-- the Alembic baseline on PostgreSQL 18;
-- worker process shells and the infrastructure bootstrap;
-- the Vite/React shell, Compose, and CI.
+**Status: M1 complete** (private vertical slice, deterministic replay generation). It includes:
+- Google and GitHub sign-in with sessions and CSRF protection;
+- workspaces with roles and invitations;
+- GitHub App connections that grant only the repositories the connecting user can read;
+- snapshot acquisition with bounded extraction and a safe scan;
+- the outbox, RabbitMQ and worker job system, with fenced leases and a reconciler;
+- a seccomp-sandboxed tree-sitter parser;
+- replay explanations validated against the explanation contract;
+- a private code viewer.
 
-Sign-in, workspaces and builds start in M1.
+Live sign-in and builds need Google/GitHub OAuth credentials and a GitHub App (see `build-package/22_DEPLOYMENT_AND_OPERATIONS.md`); everything else, including the end-to-end build, is covered by tests with faked providers. M2 adds model-backed generation, estimates and budgets.
 
 | Path | Contents |
 |---|---|
