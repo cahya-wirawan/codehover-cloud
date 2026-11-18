@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.3
+Date: 2026-11-18 · Package version 0.5.4
+
+0.5.4 adds the M2 evaluation baseline. On the corpus, the replay run passes every hard gate:
+- scan as labeled;
+- 50 of 50 labeled definitions matched (precision and recall 1.0) and 100% span validity;
+- the malformed file reported as a parse error;
+- 9 of 9 explanation answers valid, none containing injected text, and every prompt with intact data blocks;
+- 4 of 4 invalid citations rejected with the labeled reason.
+
+On 34 labeled claims, the replay checker's supported-label precision is 0.54 (Wilson 95% 0.35–0.71), and recall 0.67 (0.45–0.83). That measures a heuristic and is the reason a preset may no longer pair a model writer with it. The labels are drafts by the implementing assistant, and the report marks the baseline provisional until two maintainers label it; no accuracy claim follows from it. A model-checker baseline needs an operator catalog, an API key and approval to spend. CI pins the baseline report and checks that it reproduces byte for byte. 263 backend tests pass.
 
 0.5.3 records cancellation, retry and event polling. Integration tests cover:
 - a queued build cancelled at once with its full envelope released;

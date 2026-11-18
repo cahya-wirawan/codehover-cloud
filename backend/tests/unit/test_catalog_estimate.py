@@ -74,6 +74,9 @@ def test_operator_catalog_adds_presets_and_keeps_replay(tmp_path: Path) -> None:
         lambda d: d["models"][0]["price"].update(input_per_mtok_micro_usd=1.5),  # integers only
         lambda d: d["models"][0].update(provider="custom-base-url"),  # no user-supplied endpoints
         lambda d: d["presets"][0].update(name="balanced"),  # presets are versioned <name>-v<N>
+        lambda d: d["presets"][0]["checker"].update(
+            model="replay/replay-v2"
+        ),  # heuristic checker on model text
     ],
 )
 def test_invalid_operator_catalogs_are_rejected(tmp_path: Path, mutation: object) -> None:

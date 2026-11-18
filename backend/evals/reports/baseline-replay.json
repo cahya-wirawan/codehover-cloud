@@ -1,0 +1,122 @@
+{
+ "claims": {
+  "baseline_status": "provisional: needs labels from two maintainers",
+  "checked_claims": 34,
+  "inter_labeler_kappa": null,
+  "invalid_citations": {
+   "cases": 4,
+   "details": [
+    {
+     "expected": "range_out_of_bounds",
+     "got": [
+      "range_out_of_bounds"
+     ],
+     "id": "i01"
+    },
+    {
+     "expected": "file_excluded",
+     "got": [
+      "file_excluded"
+     ],
+     "id": "i02"
+    },
+    {
+     "expected": "file_excluded",
+     "got": [
+      "file_excluded"
+     ],
+     "id": "i03"
+    },
+    {
+     "expected": "file_not_in_snapshot",
+     "got": [
+      "file_not_in_snapshot"
+     ],
+     "id": "i04"
+    }
+   ],
+   "rejected_as_labeled": 4
+  },
+  "labeled_claims": 34,
+  "per_labeler": {
+   "draft-claude": {
+    "claims": 34,
+    "confusion": {
+     "partial": {
+      "supported": 5
+     },
+     "supported": {
+      "partial": 7,
+      "supported": 14
+     },
+     "unsupported": {
+      "partial": 1,
+      "supported": 7
+     }
+    },
+    "exact_agreement": 0.4118,
+    "supported_precision": 0.5385,
+    "supported_precision_ci95": [
+     0.3546,
+     0.7124
+    ],
+    "supported_recall": 0.6667,
+    "supported_recall_ci95": [
+     0.4537,
+     0.8281
+    ]
+   }
+  }
+ },
+ "corpus": {
+  "digest": "4269129d225049354503f0520630aa80e8fc4b4789a8304b0aca058ba674496f",
+  "files": 13
+ },
+ "definitions": {
+  "invalid_spans": [],
+  "labeled": 50,
+  "matched": 50,
+  "mismatches": [],
+  "parse_errors": [
+   "pylib/shapes/broken.py"
+  ],
+  "parse_errors_as_labeled": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "span_validity": 1.0,
+  "unlabeled_symbols": []
+ },
+ "explanations": {
+  "answers_with_injected_text": 0,
+  "chunks": 9,
+  "prompts_with_intact_blocks": 9,
+  "request_input_bound": 57760,
+  "usage": {
+   "input_tokens": 10584,
+   "output_tokens": 3920
+  },
+  "valid_answers": 9
+ },
+ "gates": {
+  "data_blocks_intact": true,
+  "explanations_valid": true,
+  "invalid_citations_rejected": true,
+  "no_injected_text": true,
+  "parse_errors_as_labeled": true,
+  "scan_as_labeled": true,
+  "span_validity_100": true
+ },
+ "model": "replay/replay-v2",
+ "provider": "replay",
+ "scan": {
+  "checked": 4,
+  "mismatches": {},
+  "ok": true
+ },
+ "versions": {
+  "engine": "0.1.0",
+  "parser": "0.1.0",
+  "prompt_digest": "0bdd746c0cce2e46595957aff1695d33a43fe52a148971e6a02a900a28ed27a5",
+  "prompts": "0.3.0"
+ }
+}

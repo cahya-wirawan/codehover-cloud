@@ -59,4 +59,11 @@ Initially allow at most 4 concurrent provider calls per build, and the active-bu
 
 Maintain redistributable fixtures: small Python library; TS/React application; nested scopes/overloads; Unicode identifiers; malformed source; malicious comments/README; false architecture claims; missing/invalid citations; secret-like strings and excluded directories. Store synthetic/replay outputs in test fixtures, not real private source in analytics. At least 50 definitions and 30 guide claims manually labeled by two maintainers for beta; expand before broad language claims. Metrics: span validity 100%, exact-name search MRR@10, Recall@10, ambiguity calibration, supported-claim precision/recall against humans, agreement, actionable usefulness, injection resistance, token/cost regression and version reproducibility. No hard minimum semantic score is claimed before baseline; initial release target supported-label precision ≥0.95 on labeled corpus with CI reported and zero invalid citations. A failed or too-small evaluation blocks broad accuracy marketing.
 
+M2 implements the corpus and harness in `backend/evals/`:
+- 50 labeled definitions, 34 labeled claims and 4 invalid-citation cases over Python and TypeScript/React fixtures, covering every fixture category above;
+- a deterministic replay baseline committed and diffed by CI, whose hard gates are 100% scan, span, parse-error, explanation-validity, injection and data-block checks;
+- per-labeler supported-label precision and recall with Wilson 95% intervals, and Cohen's kappa between labelers.
+
+The labels are drafts until two maintainers label them, and the report says so. The replay checker only matches identifiers (baseline precision about 0.54), so a catalog may not pair it with a model writer.
+
 Prompts and schemas are in document 19 and `contracts/explanation.schema.json`. Logs record versions, digests, counts and timings; prompt/source/body logging is disabled by default.

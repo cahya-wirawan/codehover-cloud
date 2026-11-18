@@ -44,6 +44,8 @@ exclude-newer = "2026-11-03T00:00:00Z"
 [tool.ruff]
 line-length = 110
 target-version = "py313"
+# Evaluation fixtures are repository *data* (including deliberately malformed source), never linted.
+extend-exclude = ["evals/corpus"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF", "N", "SIM", "PTH"]
@@ -65,7 +67,8 @@ known-third-party = ["alembic"]
 python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
-files = ["app", "alembic"]
+files = ["app", "alembic", "evals"]
+exclude = ["evals/corpus/"]
 
 [[tool.mypy.overrides]]
 module = ["boto3", "boto3.*", "botocore", "botocore.*", "jsonschema", "jsonschema.*"]

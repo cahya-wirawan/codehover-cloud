@@ -89,6 +89,11 @@ class Catalog(_Frozen):
                     raise ValueError(f"preset {preset.name} exceeds the output limit of {model.id}")
                 if not model.structured_output:
                     raise ValueError(f"{model.id} lacks structured output, required by every role")
+            writer, checker = models[preset.writer.model], models[preset.checker.model]
+            if checker.provider == "replay" and writer.provider != "replay":
+                # The replay checker matches identifiers; the eval baseline shows it labels unsupported
+                # claims supported, so it may only check its own deterministic replay pages.
+                raise ValueError(f"preset {preset.name} pairs a model writer with the replay checker")
         return self
 
     def model(self, model_id: str) -> Model:

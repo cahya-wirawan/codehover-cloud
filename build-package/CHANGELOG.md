@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-18
+
+### Added
+
+- 07: the evaluation corpus, labels, harness and committed replay baseline as implemented in M2, with their hard gates and their provisional status until two maintainers label them.
+
+### Changed
+
+- 07, 23: a preset may not pair a model writer with the replay checker, because the replay checker only matches identifiers and the baseline shows it labels unsupported claims as supported.
+
 ## [0.5.3] - 2026-11-18
 
 ### Changed

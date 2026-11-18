@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-M0 and M1 are implemented: sign-in, workspaces, GitHub App connection with per-repository grants, snapshot acquisition with a safe scan, the outbox/RabbitMQ job system with fenced leases, a sandboxed tree-sitter parser, deterministic replay explanations and a private viewer. Live use needs real Google/GitHub OAuth and GitHub App credentials. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
+M0, M1 and M2 are implemented.
 
-The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the explanation and task-envelope JSON Schemas. Prompts live in `19_PROMPT_LIBRARY.md`.
+- **M0–M1:** sign-in, workspaces, GitHub App connection with per-repository grants, snapshot acquisition with a safe scan, the outbox/RabbitMQ job system with fenced leases, a sandboxed tree-sitter parser, and a private viewer.
+- **M2:** the model catalog, estimates, single-envelope budget reservations, and the provider gateway. The Anthropic SDK and a deterministic replay gateway sit behind it. It adds explanation, overview, plan and guide stages, deterministic citation checks, the independent checker with one repair cycle, the quality gate and waivers, cancel and retry, and a labeled eval harness (`backend/evals/`).
 
-Next scope: **M2** (`14_IMPLEMENTATION_ROADMAP.md`): model catalog and provider gateway, estimates and budget reservations, real explanations and guides, and citation checks. The M1 slice it builds on:
+The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
 
-- OAuth sign-in
-- workspace membership with RLS
-- GitHub App acquisition of immutable snapshots
-- safe scan
-- outbox, RabbitMQ and worker
-- replay build and private viewer
+The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the JSON Schemas for explanations, overview, guide plan and page, claim checks and repairs, and task envelopes. Prompts live in `19_PROMPT_LIBRARY.md`.
 
-Don't add paid model calls or billing until the cross-tenant tests and the worker crash/retry tests pass.
+Next scope: **M3** (`14_IMPLEMENTATION_ROADMAP.md`):
+
+- the refined code and guide viewer, with search and the SSE event stream (T13–T14);
+- publication controls, which use the quality gate in `app/modules/projects/quality.py` (T15);
+- export, freshness and audit (T16–T17).
+
+Billing (Stripe) stays out until M5; generation spend is metered against `GENERATION_ALLOWANCE_MICRO_USD` until entitlements exist.
 
 ## Stack
 
@@ -63,6 +65,12 @@ Conventions that span files:
 - **Schema and models.** The migration SQL is authoritative for constraints, RLS, grants and `app_private` functions. `app/db/models.py` mirrors the columns, and `tests/integration/test_schema.py` fails on drift. Every new table needs FORCE RLS, explicit grants, a model and isolation tests in `tests/integration/test_tenancy.py`, using the `world` fixture of two tenants.
 - **Auth in handlers.** Use the dependencies in `app/modules/identity/sessions.py`: `Db`, `OptionalPrincipal`, `CurrentPrincipal`, or `CsrfPrincipal` for every unsafe method, which checks Origin and X-CSRF-Token. They set `app.user_id` for the request transaction. Handlers commit explicitly. Browser-navigation endpoints (OAuth start and callback) redirect with `?error=<code>` instead of returning JSON. Sign-in tests fake providers through `httpx.MockTransport` with real RS256 tokens (`tests/integration/test_auth.py`), never by stubbing out verification.
 - **Jobs** (`app/jobs`). Create work only through `store.create_task`, which writes the outbox row in the same transaction. Stage handlers in `stages.py` must not hold a transaction during GitHub, sandbox or storage I/O; they return an `apply` callback that `store.complete` runs after the fencing check. The reconciler (`control.py`, app_system) re-notifies runnable tasks; never requeue from the broker. New stages go into `store.STAGES` and `stages.HANDLERS`.
+- **Generation** (`app/jobs/generation.py`, `verification.py`, `calls.py`).
+  - Every provider call goes through `calls.run`, which follows a fixed sequence: earmark inside the build envelope, call with no transaction open, then settle actual usage, the ledger entry and the cache checkpoint in one fenced transaction.
+  - Lock order is the build row, then the task row.
+  - Prompts are immutable per set in `app/engine/prompts/<X.Y.Z>/`; any text change is a new set and a new `GENERATION_PROMPT_VERSION`.
+  - The checker never falls back to a heuristic for model output; any checker failure leaves claims `unchecked`.
+  - Regenerate `backend/evals/reports/baseline-replay.json` after changing parser, prompts, chunking or claim extraction (CI diffs it).
 - **Engine** (`app/engine`). Repository content is parsed only inside the sandbox (`sandbox.run("app.engine.parse_worker", ...)`); add new sandboxed modules to `sandbox_exec.ALLOWED_MODULES` only. `app/engine/schemas/explanation.schema.json` must equal the spec contract (a test checks it). Object keys come only from `engine/keys.py`.
 - **Errors** go through `app/core/errors.py` (`ApiError` → envelope). Never return exception text, input values or connection details to clients.
 - **Frontend environment.** Code may read only the `import.meta.env` keys allowlisted in `frontend/scripts/check-env-usage.mjs`.
