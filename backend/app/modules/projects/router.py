@@ -38,7 +38,7 @@ async def project_reader(project_id: UUID, db: Db, principal: CurrentPrincipal) 
 
 
 async def project_writer(project_id: UUID, db: Db, principal: CsrfPrincipal) -> Member:
-    return await resource_member("project", project_id, db, principal)
+    return await resource_member("project", project_id, db, principal, write=True)
 
 
 async def build_reader(build_id: UUID, db: Db, principal: CurrentPrincipal) -> Member:
@@ -46,7 +46,7 @@ async def build_reader(build_id: UUID, db: Db, principal: CurrentPrincipal) -> M
 
 
 async def build_writer(build_id: UUID, db: Db, principal: CsrfPrincipal) -> Member:
-    return await resource_member("build", build_id, db, principal)
+    return await resource_member("build", build_id, db, principal, write=True)
 
 
 ProjectReader = Annotated[Member, Depends(project_reader)]

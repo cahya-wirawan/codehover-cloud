@@ -74,6 +74,12 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/me/deletion` | confirmation `delete my account`, delete_workspaces → 202 {account, workspaces} | Self; sign-in within 10 minutes; every workspace owned alone must be listed (409 `OWNERSHIP_TRANSFER_REQUIRED` with the list), others 422 `NOT_SOLE_OWNER`; leaves other workspaces, revokes every session, removes sign-in methods (signing in again starts a new account), scrubs the profile; audited `account.deleted` |
 | POST `/webhooks/github` | raw signed body → 202 | HMAC verified; delivery deduplicated |
 | POST `/webhooks/stripe` | raw signed body → 200/202 | Signature/timestamp verified; durable receipt then async processing |
+| GET `/me` | none → profile, identities, `operator` | Self; `operator` is true for the platform operations role |
+| GET/POST/DELETE `/workspaces/{wid}/support-access[/{id}]` | hours (1–72), reason → grant | Admin; lets platform operators read the workspace, read-only, until expiry or revocation; audited `support.granted`/`support.revoked`, and each reading session (at most one per 10 minutes) `support.accessed` |
+| GET `/ops/summary`, `/ops/builds/{bid}`, `/ops/events` | none → aggregates, build diagnostics (IDs, states, codes, money), operator log | Operators only; anyone else 404; no names, paths or content |
+| POST `/ops/builds-paused` | paused, reason → summary | Operators; new builds then get 503 `BUILDS_PAUSED` (retryable); reads continue |
+| POST/DELETE `/ops/projects/{pid}/suspension` | reason → 204 | Operators; takedown or reinstatement of the project's publication; audited in the workspace |
+| GET/POST `/ops/workspaces/{wid}/entitlements`, DELETE `/ops/entitlements/{id}` | allowance_micro_usd, days (≤366), reason → grant | Operators; adds allowance to every usage period the grant overlaps; audited in the workspace |
 | GET `/health/live` / `/health/ready` | none → status, application `version` | Live process only; readiness DB/schema, essential dependencies |
 
 ## Core request/response examples

@@ -223,6 +223,12 @@ async def start_generation_build(
 
 async def _admit(db: AsyncSession, settings: Settings, member: Member) -> ledger.Account:
     """Lock the period's usage account: serializes reservations and the workspace active-build limit."""
+    paused = (await db.execute(text("SELECT builds_paused FROM platform_settings"))).scalar_one_or_none()
+    if paused:  # the operator kill switch (22): reads stay available, new builds wait
+        await db.rollback()
+        raise ApiError(
+            503, "BUILDS_PAUSED", "New builds are paused by the operators; reading works.", retryable=True
+        )
     account = await ledger.current_account(
         db, member.workspace_id, settings.generation_allowance_micro_usd, lock=True
     )

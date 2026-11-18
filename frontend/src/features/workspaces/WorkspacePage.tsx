@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { ConfirmDeletion } from "../../components/ConfirmDeletion";
+import { SupportAccessPanel } from "./SupportAccessPanel";
 
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
@@ -99,6 +100,7 @@ export function WorkspacePage() {
           ) : null}
         </form>
       )}
+      {workspace?.role === "admin" || workspace?.role === "owner" ? <SupportAccessPanel workspaceId={wid} /> : null}
       {workspace?.role === "owner" ? (
         <ConfirmDeletion
           title="Delete workspace"

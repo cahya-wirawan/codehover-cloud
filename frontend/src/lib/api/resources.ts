@@ -333,6 +333,66 @@ export interface AccountDeletion {
   account: DeletionRequest;
   workspaces: DeletionRequest[];
 }
+export interface OpsSummary {
+  queue: Record<string, number>;
+  builds_last_24h: Record<string, number>;
+  tasks_by_stage: Record<string, number>;
+  builds_paused: boolean;
+  paused_reason: string;
+  paused_since: string | null;
+}
+export interface OpsTask {
+  id: string;
+  stage: string;
+  state: string;
+  attempts: number;
+  lease_generation: number;
+  lease_until: string | null;
+  next_attempt_at: string | null;
+  error_code: string | null;
+  updated_at: string;
+}
+export interface OpsBuild {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  cap_micro_usd: number;
+  reserved_micro_usd: number;
+  settled_micro_usd: number;
+  tasks: OpsTask[];
+  provider_attempts: { purpose: string; state: string; count: number; settled_micro_usd: number; error_codes: string[] }[];
+  events: number;
+}
+export interface Entitlement {
+  id: string;
+  workspace_id: string;
+  allowance_micro_usd: number;
+  starts_at: string;
+  expires_at: string;
+  reason: string;
+  revoked_at: string | null;
+}
+export interface OperatorEvent {
+  id: string;
+  operator_user_id: string;
+  action: string;
+  workspace_id: string | null;
+  target_id: string | null;
+  reason: string;
+  created_at: string;
+}
+export interface SupportGrant {
+  id: string;
+  granted_by_name: string | null;
+  reason: string;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  active: boolean;
+}
 export const ACCOUNT_CONFIRMATION = "delete my account";
 
 const json = async <T>(response: Response) => (await response.json()) as T;
@@ -347,6 +407,29 @@ export const api = {
   deleteAccount: async (confirmation: string, deleteWorkspaces: string[]) =>
     json<AccountDeletion>(await apiSend("POST", "/me/deletion", { confirmation, delete_workspaces: deleteWorkspaces })),
   exportAccount: async () => (await apiSend("POST", "/me/export")).blob(),
+  opsSummary: () => apiJson<OpsSummary>("/ops/summary"),
+  opsPause: async (paused: boolean, reason: string) =>
+    json<OpsSummary>(await apiSend("POST", "/ops/builds-paused", { paused, reason })),
+  opsBuild: (bid: string) => apiJson<OpsBuild>(`/ops/builds/${encodeURIComponent(bid)}`),
+  opsSuspend: async (pid: string, reason: string) => {
+    await apiSend("POST", `/ops/projects/${encodeURIComponent(pid)}/suspension`, { reason });
+  },
+  opsReinstate: async (pid: string, reason: string) => {
+    await apiSend("DELETE", `/ops/projects/${encodeURIComponent(pid)}/suspension?${new URLSearchParams({ reason }).toString()}`);
+  },
+  opsEntitlements: (wid: string) => apiJson<Page<Entitlement>>(`/ops/workspaces/${encodeURIComponent(wid)}/entitlements`),
+  opsGrant: async (wid: string, body: { allowance_micro_usd: number; days: number; reason: string }) =>
+    json<Entitlement>(await apiSend("POST", `/ops/workspaces/${encodeURIComponent(wid)}/entitlements`, body)),
+  opsRevokeGrant: async (id: string, reason: string) => {
+    await apiSend("DELETE", `/ops/entitlements/${encodeURIComponent(id)}?${new URLSearchParams({ reason }).toString()}`);
+  },
+  opsEvents: () => apiJson<{ items: OperatorEvent[]; next_cursor: string | null }>("/ops/events"),
+  supportGrants: (wid: string) => apiJson<Page<SupportGrant>>(`/workspaces/${wid}/support-access`),
+  grantSupport: async (wid: string, hours: number, reason: string) =>
+    json<SupportGrant>(await apiSend("POST", `/workspaces/${wid}/support-access`, { hours, reason })),
+  revokeSupport: async (wid: string, id: string) => {
+    await apiSend("DELETE", `/workspaces/${wid}/support-access/${id}`);
+  },
   createWorkspace: async (name: string, slug: string) => json<Workspace>(await apiSend("POST", "/workspaces", { name, slug })),
   connections: (wid: string) => apiJson<Page<Connection>>(`/workspaces/${wid}/connections`),
   startInstall: async (wid: string) =>

@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from app.adapters.oauth import OAuthError, OAuthProvider
 from app.core import metrics
@@ -57,6 +58,7 @@ class MeResponse(BaseModel):
     display_name: str
     primary_email: str | None
     identities: list[IdentityOut]
+    operator: bool = False  # platform operations role (09); shows the operations view
 
 
 class SessionOut(BaseModel):
@@ -199,7 +201,9 @@ async def logout(request: Request, db: Db, principal: CsrfPrincipal) -> Response
 
 @router.get("/me", response_model=MeResponse)
 async def me(db: Db, principal: CurrentPrincipal) -> MeResponse:
-    return MeResponse.model_validate(await service.profile(db, principal))
+    profile = await service.profile(db, principal)
+    operator = (await db.execute(text("SELECT app_private.is_operator()"))).scalar_one()
+    return MeResponse.model_validate({**profile, "operator": bool(operator)})
 
 
 @router.get("/me/sessions", response_model=SessionList)

@@ -376,6 +376,28 @@ def test_deletion_requests_are_scoped_and_claimed_without_content(world: World, 
         )
 
 
+def test_the_runtime_cannot_grant_itself_operations_rights(world: World, runtime: Db) -> None:
+    """0018: whatever default privileges a database was bootstrapped with, the runtime role cannot make
+    anyone an operator, flip platform switches, write entitlements or delete tombstones."""
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    expect(runtime, DENIED, "INSERT INTO operators(user_id) VALUES (:u)", u=world.a.user)
+    expect(runtime, DENIED, "SELECT count(*) FROM operators")
+    expect(runtime, DENIED, "SELECT count(*) FROM operator_events")
+    expect(runtime, DENIED, "UPDATE platform_settings SET builds_paused = false")
+    assert runtime.one("SELECT count(*) FROM platform_settings") == 1  # reading the switch is allowed
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO entitlement_grants(workspace_id, allowance_micro_usd, expires_at, reason, granted_by)"
+        " VALUES (:w, 1000000, now() + interval '1 day', 'self-service', :u)",
+        w=world.a.workspace,
+        u=world.a.user,
+    )
+    expect(runtime, DENIED, "DELETE FROM deletion_requests WHERE workspace_id = :w", w=world.a.workspace)
+    expect(runtime, DENIED, "DELETE FROM support_grants WHERE workspace_id = :w", w=world.a.workspace)
+    assert runtime.one("SELECT app_private.is_operator()") is False
+
+
 @needs_system
 def test_system_role_can_expire_a_lease(world: World, system: Db) -> None:
     # Lease, then expire it the way the reconciler will: state and lease_until change together (CHECK).

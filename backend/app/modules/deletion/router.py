@@ -19,7 +19,7 @@ router = APIRouter(tags=["deletion"])
 
 
 async def project_admin(project_id: UUID, db: Db, principal: CsrfPrincipal) -> Member:
-    return await resource_member("project", project_id, db, principal)
+    return await resource_member("project", project_id, db, principal, write=True)
 
 
 ProjectAdmin = Annotated[Member, Depends(project_admin)]

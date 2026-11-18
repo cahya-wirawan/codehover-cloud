@@ -29,6 +29,7 @@ from app.engine import catalog
 from app.modules.deletion import router as deletion
 from app.modules.github import router as github
 from app.modules.identity import router as identity
+from app.modules.ops import router as ops
 from app.modules.projects import router as projects
 from app.modules.published import router as published
 from app.modules.usage import router as usage
@@ -159,6 +160,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(usage.router)
     api.include_router(webhooks.router)
     api.include_router(deletion.router)
+    api.include_router(ops.router)
     app.include_router(api)
     return app
 

@@ -4,6 +4,20 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.17] - 2026-11-18
+
+### Added
+
+- 02, 05, 06, 08, 09, 11, 22: platform operations (migration 0018):
+  - an operations role granted by the deployment, with every operator action re-checked by a database function and recorded in an operator log and the affected workspace's audit log;
+  - the `/ops` view and endpoints: aggregates, build diagnostics, the new-build kill switch (503 `BUILDS_PAUSED`), site takedown and reinstatement, and manual entitlement grants that raise the period allowance;
+  - support access granted by workspace admins: read-only, at most 72 hours, revocable, with each reading session audited;
+  - `GET /me` gains `operator`.
+
+### Security
+
+- 05: the local bootstrap's default privileges give the runtime role full rights on every new table. Migration 0018 therefore revokes them on the operations tables, keeping read access to the platform switch only. It also revokes runtime writes to entitlements, deleting support grants, and deleting deletion tombstones (0015). Without this, the runtime role could have made a user an operator. Found by the schema-wide tenancy guard while writing 0018, before any commit.
+
 ## [0.5.16] - 2026-11-18
 
 ### Added

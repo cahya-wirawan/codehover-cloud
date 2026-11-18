@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.5.16",
+  "package_version": "0.5.17",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -53,7 +53,7 @@
     },
     "02_UX_SCREEN_SPEC.md": {
       "status": "complete specification",
-      "sha256": "4ad04554ff7a4a8004d40398183831dff31bc6931a81d4a8c7287733e406a388"
+      "sha256": "1340babffc8cf2fdc9abd9b096408bb085f299762ffc958bfffd780a6d60d971"
     },
     "03_USER_FLOWS.md": {
       "status": "complete specification",
@@ -65,11 +65,11 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "cee298f226d8a7f204366caacd2a198dea2c25ecf0d0d15ed5d0032a72054943"
+      "sha256": "671a619dede2644d5f45f939a7aed215493a2f565dffeaa6440c619d0c2967a7"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "0da7ae593262f0e22d74cca2d6bbd91ddeb3e1753af38356fc7e678a51790c11"
+      "sha256": "33e65206ec79e459010cd57c58ed7c6bee11e31357066f35deb6f0784d5c9070"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -77,11 +77,11 @@
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
-      "sha256": "395108bf545309a372f6bdce298241ee6b5dffbb5f1b6ef69e495dd18982fd11"
+      "sha256": "dabd75f10ee5f09f674d81ff9c778493452c946ce9588517d5ad53fce90be4f0"
     },
     "09_AUTH_AND_PERMISSIONS.md": {
       "status": "complete specification",
-      "sha256": "d3b3ef6cb278021d23329f747b73434b863d7ceb0d9d29efc3805f15ad3bab17"
+      "sha256": "f9f7bfca3d4fcf406746d773572c88b266bb521ea0959f3d0d34c327bff435b6"
     },
     "10_OFFLINE_SYNC_AND_STORAGE.md": {
       "status": "complete specification",
@@ -89,7 +89,7 @@
     },
     "11_MONETIZATION_AND_BILLING.md": {
       "status": "complete specification",
-      "sha256": "3a3ef98a2f6bf3c74376ff38bc6e004a4f6f376a1aed6b102c82d3564aa320c1"
+      "sha256": "8b561e115123ac9b28f35edb0edc9a52a877557e7fa8d20b8a409ad8a4ba33c4"
     },
     "12_ANALYTICS_AND_OBSERVABILITY.md": {
       "status": "complete specification",
@@ -133,7 +133,7 @@
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
-      "sha256": "58aa55264dc5fe662dcfdee06a9f852fa4075bf1cfd93801d84eb9d6dedced9d"
+      "sha256": "9d96b8905d0a5c78443dc3f1ecb8b8fcf8180318397c2c3b0f0ea737ca6ef7ee"
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "60118aa4356ce1681f90945174e8efabe1c8cd62ffd3701e931a6581d4ee9ba9"
+      "sha256": "3d01880b1a40574d6b9797285a1f500c6b4dc6124c4fc43649ea724d6f379b1c"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "31e435ebd3cbbb07aa8631d948b4e2eb6f13e85928110ae0d3b7d368c1741051"
+      "sha256": "438185ef6098f61d92767bf7ca4457037272d52b6ea5317eb37ff5d529086318"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "81602682b579a08079d6517211f0da4251069144880cf9badbcc0d8c372b2ad1"
+      "sha256": "e099216cb8b66413c9b87f811ea84d89db7ac16982a90cf01365238cd08a4411"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "7124473c5135451c219b3f0ee36b37d5dd62944888b53c9177ae0bc47b96e5a6"
+      "sha256": "6f8f11733e726afea952c89be4793d908004021135551153d682ce45a6eff259"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -256,5 +256,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "2e01e8801dde8c07fa1bf43f4809645d966a7a7aa97dcef79b6fbca76b3284ce"
+  "master_spec_sha256": "7771d4a8fac98e5c846e918ab903be1436b9fde73bdb045194d085ba47ed3dc5"
 }

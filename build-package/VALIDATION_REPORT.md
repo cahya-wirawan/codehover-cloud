@@ -1,6 +1,18 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.16
+Date: 2026-11-18 · Package version 0.5.17
+
+0.5.17 records platform operations (`test_operations.py`, 6 tests):
+- Non-operators get 404 from every `/ops` route, and the database functions refuse them too (42501); the event helper is not callable by the runtime at all.
+- Operators see aggregates and build diagnostics, with no paths or content. Without a support grant they get 404 on tenant data.
+- The kill switch returns a retryable 503 on new builds while reads keep working; resuming restores builds, and both actions are logged.
+- A takedown stops the public site, binds the admin (409 on unpublish), appears in the workspace's audit log with its reason, and can be reinstated.
+- An entitlement raises the reported allowance by its amount and revocation restores it; both are audited, and 400 days is refused.
+- Support access: editors can't grant it and 73 hours is refused. A grant admits the operator to reads but not writes (404 on build start and deletion), audits one session for several requests, and ends at expiry and at revocation. A non-operator gains nothing.
+
+A tenancy test checks that the runtime role cannot insert an operator, read the operator tables, flip the platform switch, write an entitlement, or delete a tombstone or support grant. It holds whatever default privileges the database was bootstrapped with. The schema-wide guard found these grants while 0018 was being written.
+
+Letting support access through write routes makes a test fail. Component tests cover the operations view (not-found for non-operators, the pause form) and the support panel; 21 frontend tests pass.
 
 0.5.16 records T18 metrics (`test_telemetry.py`):
 - with production logging, a replay build, a search, an export download and a forged sign-in leave no fixture secret, source text, query, file path, session cookie, CSRF token or UUID in the logs or the metrics exposition;

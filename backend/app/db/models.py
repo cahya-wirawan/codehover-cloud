@@ -627,3 +627,56 @@ class DeletionRequest(Base):
     error_code: Mapped[str | None] = mapped_column(Text)
     requested_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class Operator(Base):
+    """Platform operations role, granted by the deployment (0018)."""
+
+    __tablename__ = "operators"
+    user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    granted_at: Mapped[datetime] = ts(default_now=True)
+    note: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class OperatorEvent(Base):
+    __tablename__ = "operator_events"
+    id: Mapped[UUID] = pk()
+    operator_user_id: Mapped[UUID] = ref("users.id")
+    action: Mapped[str] = mapped_column(Text)
+    workspace_id: Mapped[UUID | None] = ref(nullable=True)
+    target_id: Mapped[UUID | None] = ref(nullable=True)
+    reason: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    created_at: Mapped[datetime] = ts(default_now=True)
+
+
+class PlatformSettings(Base):
+    __tablename__ = "platform_settings"
+    id: Mapped[bool] = mapped_column(Boolean, primary_key=True, server_default=text("true"))
+    builds_paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    paused_reason: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+class EntitlementGrant(Base):
+    __tablename__ = "entitlement_grants"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    allowance_micro_usd: Mapped[int] = mapped_column(BigInteger)
+    starts_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts()
+    reason: Mapped[str] = mapped_column(Text)
+    granted_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class SupportGrant(Base):
+    __tablename__ = "support_grants"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    granted_by: Mapped[UUID] = ref("users.id")
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts()
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
