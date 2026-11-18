@@ -111,7 +111,9 @@ async def publish(
                 "SELECT p.name, r.access_revoked_at, c.status FROM projects p"
                 " JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
                 " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
-                " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL FOR UPDATE OF p"
+                # FOR SHARE OF r, c: a concurrent revoke waits for this publish, and its trigger then suspends
+                # the new pointer; a revoke that committed first is seen here and refused.
+                " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL FOR UPDATE OF p FOR SHARE OF r, c"
             ),
             {"w": member.workspace_id, "p": project_id},
         )
@@ -121,12 +123,16 @@ async def publish(
     existing = (
         await db.execute(
             text(
-                "SELECT build_id, visibility, version FROM publications WHERE workspace_id = :w AND project_id = :p FOR UPDATE"
+                "SELECT build_id, visibility, version, suspended_reason FROM publications"
+                " WHERE workspace_id = :w AND project_id = :p FOR UPDATE"
             ),
             {"w": member.workspace_id, "p": project_id},
         )
     ).one_or_none()
     await _check_precondition(existing, if_match)
+    if existing is not None and existing.suspended_reason == "operator":
+        # Only access-related suspensions are cleared by republishing; an operator lifts their own.
+        raise ApiError(409, "SUSPENDED_BY_OPERATOR", "This site was suspended by an operator.")
     if project.status != "active" or project.access_revoked_at is not None:
         raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub before publishing this project.")
     still_ready = (

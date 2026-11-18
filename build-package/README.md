@@ -1,6 +1,6 @@
 # codehover-cloud — build package
 
-Version 0.5.8 · 18 November 2026 · Status: implementation specification, not a deployed application. Release history is in `CHANGELOG.md`; versioning rules for the package and the product are in `23_VERSIONING_AND_RELEASES.md`.
+Version 0.5.9 · 18 November 2026 · Status: implementation specification, not a deployed application. Release history is in `CHANGELOG.md`; versioning rules for the package and the product are in `23_VERSIONING_AND_RELEASES.md`.
 
 codehover-cloud turns a GitHub repository into a browsable, cited explanation website: annotated source, hover cards, relationships, architecture guides, and downloadable static artifacts. It provides the hosted SaaS workflow around those capabilities: OAuth sign-in, workspace isolation, private repository connections, asynchronous builds, budgets, access-controlled hosting, and subscriptions.
 

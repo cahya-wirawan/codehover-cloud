@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.5.8",
+  "package_version": "0.5.9",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -69,7 +69,7 @@
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "157f99275de62b046fd3d0ee90d1008142389d6070f234ce4e440755c6259537"
+      "sha256": "bc5add9e64bf01e841fb20fc42b361de7f7cacd2200aecb31d4847810d906ea4"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "8cab63eae910d51f4ac69dad2ce924da7bf60538a5331d4783f2e242479e8ae0"
+      "sha256": "51da7efe89dcd7bd899334bf0f12bc9cd5f23a8cab75434a77952cb41d1e0144"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "534a32db54a49b3f4c25f4aa0f5e74d35c2aa7e15262c74753396c23d4a969ca"
+      "sha256": "d41f54d2d850e79f82c4a71df0324048ce2050672fa5f1c8607a5d54c1d506ad"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "e2dd30fa381987cbf1a0dc65d86cd91a731b4acb4a2d49d2bdaec1c353cf6fd2"
+      "sha256": "901f05022ccccb809a47e423b7237e8174e4b41578f1a3e30d41924a9123dddf"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "9a5e04d55ade7d167d2c3717946fb945d2036ac644486074f77df2bf1942b9db"
+      "sha256": "dcdecbc7866cc9413935ee7a76b92beba1e4494f63aa0df5d8b5afe979d16260"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -240,5 +240,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "8fa2c00f4d0b62cc204c815d5b39090a58c0cef00e70183e1dade03d1c4b24ea"
+  "master_spec_sha256": "a5883b369c90d759a652dcaf09f98e8a4af82cd09c1132b0224817ba203386b3"
 }

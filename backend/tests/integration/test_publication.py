@@ -314,3 +314,67 @@ async def test_a_private_site_address_is_for_members_only(
     async with browser(app) as visitor:
         assert (await visitor.get(f"/api/v1/published/{slug}")).status_code == 404
         assert (await visitor.get(f"/api/v1/published/{slug}/tree")).status_code == 404
+
+
+async def test_sites_of_inactive_workspaces_or_deleted_projects_are_not_served(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, ws, project, build, app = await ready_build(client, idp, github)
+    slug = f"site-{secrets.token_hex(3)}"
+    assert (
+        await publish(
+            owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
+        )
+    ).status_code == 200
+    async with browser(app) as visitor:
+        assert (await visitor.get(f"/api/v1/published/{slug}")).status_code == 200
+        ddl("UPDATE workspaces SET status = 'suspended' WHERE id = :w", w=ws)
+        assert (await visitor.get(f"/api/v1/published/{slug}")).status_code == 404
+        ddl("UPDATE workspaces SET status = 'active' WHERE id = :w", w=ws)
+        assert (await visitor.get(f"/api/v1/published/{slug}")).status_code == 200
+        ddl("UPDATE projects SET deleted_at = now() WHERE id = :p", p=project)
+        assert (await visitor.get(f"/api/v1/published/{slug}/tree")).status_code == 404
+
+
+async def test_an_operator_suspension_is_not_lifted_by_republishing(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, _ws, project, build, _app = await ready_build(client, idp, github)
+    first = await publish(owner, project, build_id=build)
+    ddl(
+        "UPDATE publications SET suspended_at = now(), suspended_reason = 'operator' WHERE project_id = :p",
+        p=project,
+    )
+    again = await publish(owner, project, first.headers["etag"], build_id=build)
+    assert again.status_code == 409 and again.json()["error"]["code"] == "SUSPENDED_BY_OPERATOR"
+    assert (
+        ddl("SELECT suspended_reason FROM publications WHERE project_id = :p", p=project)[0][0] == "operator"
+    )
+
+
+async def test_a_concurrent_revoke_cannot_slip_past_the_access_check(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """The publish reads the connection FOR SHARE: a revoke in flight makes it wait, then refuse."""
+    import asyncio
+
+    import sqlalchemy as sa
+
+    from tests.integration.conftest import MIGRATION_URL, engine
+
+    owner, _ws, project, build, _app = await ready_build(client, idp, github)
+    connection = ddl(
+        "SELECT r.connection_id FROM projects p JOIN repositories r ON r.id = p.repository_id WHERE p.id = :p",
+        p=project,
+    )[0][0]
+    with engine(MIGRATION_URL).connect() as revoke:
+        revoke.execute(
+            sa.text("UPDATE repository_connections SET status = 'revoked' WHERE id = :c"), {"c": connection}
+        )
+        attempt = asyncio.create_task(publish(owner, project, build_id=build))
+        await asyncio.sleep(0.5)
+        assert not attempt.done(), "the publish must wait for the revoke in flight"
+        revoke.commit()
+    refused = await asyncio.wait_for(attempt, 10)
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "CONNECTION_INACTIVE"
+    assert ddl("SELECT count(*) FROM publications WHERE project_id = :p", p=project)[0][0] == 0

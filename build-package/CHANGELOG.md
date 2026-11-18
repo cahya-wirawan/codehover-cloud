@@ -4,6 +4,15 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-11-18
+
+### Security
+
+- 06, 05: three findings of the automated review of T15, fixed with tests.
+  - The resolver ignored workspace status and project deletion. It now serves only live projects in active workspaces, and the members-only check requires an active workspace (migration 0011).
+  - Republishing cleared an operator's suspension. It is now refused with `SUSPENDED_BY_OPERATOR`.
+  - A revoke committed concurrently with a publish could leave an unsuspended pointer. The publish now reads the repository and connection FOR SHARE.
+
 ## [0.5.8] - 2026-11-18
 
 ### Added

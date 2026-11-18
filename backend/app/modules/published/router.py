@@ -63,7 +63,10 @@ async def resolve_site(slug: SlugPath, db: Db, principal: OptionalPrincipal) -> 
         if principal is not None:
             member = (
                 await db.execute(
-                    text("SELECT 1 FROM memberships WHERE workspace_id = :w AND user_id = :u"),
+                    text(
+                        "SELECT 1 FROM memberships m JOIN workspaces w ON w.id = m.workspace_id"
+                        " WHERE m.workspace_id = :w AND m.user_id = :u AND w.status = 'active'"
+                    ),
                     {"w": found.workspace_id, "u": principal.user_id},
                 )
             ).one_or_none()

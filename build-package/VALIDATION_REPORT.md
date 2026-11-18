@@ -1,6 +1,13 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.8
+Date: 2026-11-18 · Package version 0.5.9
+
+0.5.9 hardens publication.
+- A suspended workspace or deleted project stops delivery, and reactivation restores it.
+- An operator suspension survives republishing.
+- In a two-connection race, the publish waits for an uncommitted revoke and then refuses.
+
+Removing FOR SHARE or the operator check makes a test fail. 9 publication tests pass.
 
 0.5.8 records T15, part of the M3 exit criterion (public opt-in and revocation). Integration tests cover:
 - private-by-default publication (A15), public only with an address and the typed project name, and anonymous reading of tree, source, guide, claims and search without the build ID ever appearing;
