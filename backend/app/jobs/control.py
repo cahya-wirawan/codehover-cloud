@@ -9,6 +9,7 @@ import aio_pika
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import metrics
 from app.jobs.envelope import ROUTING_KEY, TaskEnvelope
 
 DISPATCH_BATCH = 50
@@ -49,8 +50,10 @@ async def dispatch_once(db: AsyncSession, exchange: Any) -> int:
                 ),
                 {"id": row.id},
             )
+            metrics.OUTBOX_PUBLISHED.labels("failed").inc()
             continue
         await db.execute(text("UPDATE outbox SET published_at = now() WHERE id = :id"), {"id": row.id})
+        metrics.OUTBOX_PUBLISHED.labels("published").inc()
         published += 1
     await db.commit()
     return published
@@ -95,3 +98,19 @@ async def reconcile_once(db: AsyncSession) -> dict[str, int]:
         await db.execute(text("UPDATE build_tasks SET notified_at = now() WHERE id = :t"), {"t": task.id})
     await db.commit()
     return {"expired": len(expired), "notified": len(runnable)}
+
+
+OUTBOX_RETENTION_DAYS = 7
+
+
+async def sweep_outbox(db: AsyncSession) -> int:
+    """Dispatched outbox rows are kept 7 days (05), then removed (app_system)."""
+    result: Any = await db.execute(
+        text(
+            "DELETE FROM outbox WHERE id IN (SELECT id FROM outbox WHERE published_at IS NOT NULL"
+            " AND published_at < now() - make_interval(days => :d) LIMIT 5000)"
+        ),
+        {"d": OUTBOX_RETENTION_DAYS},
+    )
+    await db.commit()
+    return int(result.rowcount or 0)

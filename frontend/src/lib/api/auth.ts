@@ -4,6 +4,7 @@ export interface CurrentUser {
   id: string;
   display_name: string;
   primary_email: string | null;
+  operator: boolean;
 }
 
 export type Provider = "google" | "github";
@@ -13,7 +14,12 @@ export const authKeys = { me: ["auth", "me"] as const };
 function parseUser(value: unknown): CurrentUser {
   const v = value as Partial<CurrentUser>;
   if (typeof v.id !== "string" || typeof v.display_name !== "string") throw new Error("Unexpected /me response");
-  return { id: v.id, display_name: v.display_name, primary_email: typeof v.primary_email === "string" ? v.primary_email : null };
+  return {
+    id: v.id,
+    display_name: v.display_name,
+    primary_email: typeof v.primary_email === "string" ? v.primary_email : null,
+    operator: v.operator === true,
+  };
 }
 
 /** The signed-in user, or null when signed out (401). Other errors propagate. */

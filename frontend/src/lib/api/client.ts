@@ -15,6 +15,7 @@ export class ApiError extends Error {
   readonly code: string;
   readonly requestId: string | null;
   readonly retryable: boolean;
+  readonly details: Record<string, unknown>;
 
   constructor(status: number, body: ApiErrorBody) {
     super(body.message);
@@ -23,6 +24,7 @@ export class ApiError extends Error {
     this.code = body.code;
     this.requestId = body.request_id;
     this.retryable = body.retryable;
+    this.details = typeof body.details === "object" && body.details !== null ? body.details : {};
   }
 }
 

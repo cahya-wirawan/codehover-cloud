@@ -1,0 +1,27 @@
+# Reference scrape configuration (12, 22). Every target is on the internal Compose network; no metrics
+# port is published or routed by the gateway. Labels are bounded (no tenant IDs; see app/core/metrics.py).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: codehover
+    static_configs:
+      - targets: ["api:9100"]
+        labels: { process: api }
+      - targets: ["worker:9100"]
+        labels: { process: worker }
+      - targets: ["dispatcher:9100"]
+        labels: { process: dispatcher }
+      - targets: ["scheduler:9100"]
+        labels: { process: scheduler }
+  # RabbitMQ's built-in Prometheus plugin: per-queue depth for the dead-letter alert.
+  - job_name: rabbitmq
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_coarse_metrics]
+    static_configs:
+      - targets: ["rabbitmq:15692"]

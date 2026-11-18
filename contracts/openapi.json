@@ -30,6 +30,86 @@
         "title": "Accepted",
         "type": "object"
       },
+      "AccountDeletionIn": {
+        "properties": {
+          "confirmation": {
+            "maxLength": 200,
+            "title": "Confirmation",
+            "type": "string"
+          },
+          "delete_workspaces": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Delete Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confirmation"
+        ],
+        "title": "AccountDeletionIn",
+        "type": "object"
+      },
+      "AccountDeletionOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/DeletionOut"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/DeletionOut"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account",
+          "workspaces"
+        ],
+        "title": "AccountDeletionOut",
+        "type": "object"
+      },
+      "AttemptGroup": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Error Codes",
+            "type": "array"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "settled_micro_usd": {
+            "title": "Settled Micro Usd",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "state",
+          "count",
+          "settled_micro_usd",
+          "error_codes"
+        ],
+        "title": "AttemptGroup",
+        "type": "object"
+      },
       "AuditEntry": {
         "properties": {
           "action": {
@@ -144,6 +224,115 @@
         "title": "AuditList",
         "type": "object"
       },
+      "BuildDiagnostics": {
+        "properties": {
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
+          "cap_micro_usd": {
+            "title": "Cap Micro Usd",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "events": {
+            "title": "Events",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptGroup"
+            },
+            "title": "Provider Attempts",
+            "type": "array"
+          },
+          "reserved_micro_usd": {
+            "title": "Reserved Micro Usd",
+            "type": "integer"
+          },
+          "settled_micro_usd": {
+            "title": "Settled Micro Usd",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskDiagnostics"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "project_id",
+          "status",
+          "created_at",
+          "completed_at",
+          "cancel_requested_at",
+          "engine_version",
+          "prompt_version",
+          "cap_micro_usd",
+          "reserved_micro_usd",
+          "settled_micro_usd",
+          "tasks",
+          "provider_attempts",
+          "events"
+        ],
+        "title": "BuildDiagnostics",
+        "type": "object"
+      },
       "BuildList": {
         "properties": {
           "items": {
@@ -193,6 +382,18 @@
               }
             ],
             "title": "Completed At"
+          },
+          "content_purged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Purged At"
           },
           "counts": {
             "additionalProperties": {
@@ -686,6 +887,20 @@
         "title": "ClaimCitation",
         "type": "object"
       },
+      "Confirmation": {
+        "properties": {
+          "confirmation": {
+            "maxLength": 200,
+            "title": "Confirmation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation"
+        ],
+        "title": "Confirmation",
+        "type": "object"
+      },
       "ConnectionList": {
         "properties": {
           "items": {
@@ -781,6 +996,164 @@
           "csrf_token"
         ],
         "title": "CsrfResponse",
+        "type": "object"
+      },
+      "DeletionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "purge_after": {
+            "format": "date-time",
+            "title": "Purge After",
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "project",
+              "workspace",
+              "account"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "state": {
+            "const": "pending",
+            "default": "pending",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scope",
+          "requested_at",
+          "purge_after"
+        ],
+        "title": "DeletionOut",
+        "type": "object"
+      },
+      "EntitlementIn": {
+        "properties": {
+          "allowance_micro_usd": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000000000.0,
+            "title": "Allowance Micro Usd",
+            "type": "integer"
+          },
+          "days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Days",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_micro_usd",
+          "days",
+          "reason"
+        ],
+        "title": "EntitlementIn",
+        "type": "object"
+      },
+      "EntitlementList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntitlementOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EntitlementList",
+        "type": "object"
+      },
+      "EntitlementOut": {
+        "properties": {
+          "allowance_micro_usd": {
+            "title": "Allowance Micro Usd",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "granted_by": {
+            "format": "uuid",
+            "title": "Granted By",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "allowance_micro_usd",
+          "starts_at",
+          "expires_at",
+          "reason",
+          "granted_by",
+          "created_at",
+          "revoked_at"
+        ],
+        "title": "EntitlementOut",
         "type": "object"
       },
       "EntryList": {
@@ -1865,6 +2238,11 @@
             "title": "Identities",
             "type": "array"
           },
+          "operator": {
+            "default": false,
+            "title": "Operator",
+            "type": "boolean"
+          },
           "primary_email": {
             "anyOf": [
               {
@@ -1950,6 +2328,96 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "OperatorEvent": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "operator_user_id": {
+            "format": "uuid",
+            "title": "Operator User Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "id",
+          "operator_user_id",
+          "action",
+          "workspace_id",
+          "target_id",
+          "reason",
+          "created_at"
+        ],
+        "title": "OperatorEvent",
+        "type": "object"
+      },
+      "OperatorEventList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorEvent"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "OperatorEventList",
+        "type": "object"
+      },
       "PageClaim": {
         "properties": {
           "citations": {
@@ -2001,6 +2469,26 @@
           "citations"
         ],
         "title": "PageClaim",
+        "type": "object"
+      },
+      "PauseIn": {
+        "properties": {
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paused",
+          "reason"
+        ],
+        "title": "PauseIn",
         "type": "object"
       },
       "PresetList": {
@@ -3020,6 +3508,185 @@
         "title": "StageOut",
         "type": "object"
       },
+      "Summary": {
+        "properties": {
+          "builds_last_24h": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Builds Last 24H",
+            "type": "object"
+          },
+          "builds_paused": {
+            "title": "Builds Paused",
+            "type": "boolean"
+          },
+          "paused_reason": {
+            "title": "Paused Reason",
+            "type": "string"
+          },
+          "paused_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Since"
+          },
+          "queue": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Queue",
+            "type": "object"
+          },
+          "tasks_by_stage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Tasks By Stage",
+            "type": "object"
+          }
+        },
+        "required": [
+          "queue",
+          "builds_last_24h",
+          "tasks_by_stage",
+          "builds_paused",
+          "paused_reason",
+          "paused_since"
+        ],
+        "title": "Summary",
+        "type": "object"
+      },
+      "SupportGrantIn": {
+        "properties": {
+          "hours": {
+            "maximum": 72.0,
+            "minimum": 1.0,
+            "title": "Hours",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hours",
+          "reason"
+        ],
+        "title": "SupportGrantIn",
+        "type": "object"
+      },
+      "SupportGrantList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupportGrantOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SupportGrantList",
+        "type": "object"
+      },
+      "SupportGrantOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "granted_by": {
+            "format": "uuid",
+            "title": "Granted By",
+            "type": "string"
+          },
+          "granted_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "granted_by",
+          "granted_by_name",
+          "reason",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "active"
+        ],
+        "title": "SupportGrantOut",
+        "type": "object"
+      },
+      "SuspensionIn": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "SuspensionIn",
+        "type": "object"
+      },
       "SymbolOut": {
         "properties": {
           "card": {
@@ -3112,6 +3779,90 @@
           "used_by"
         ],
         "title": "SymbolOut",
+        "type": "object"
+      },
+      "TaskDiagnostics": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lease_generation": {
+            "title": "Lease Generation",
+            "type": "integer"
+          },
+          "lease_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Until"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stage",
+          "state",
+          "attempts",
+          "lease_generation",
+          "lease_until",
+          "next_attempt_at",
+          "error_code",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TaskDiagnostics",
         "type": "object"
       },
       "TokenRange": {
@@ -4843,6 +5594,66 @@
         ]
       }
     },
+    "/api/v1/me/deletion": {
+      "post": {
+        "operationId": "delete_account_api_v1_me_deletion_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeletionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Account",
+        "tags": [
+          "deletion"
+        ]
+      }
+    },
+    "/api/v1/me/export": {
+      "post": {
+        "operationId": "export_account_api_v1_me_export_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "The account data as a download"
+          }
+        },
+        "summary": "Export Account",
+        "tags": [
+          "deletion"
+        ]
+      }
+    },
     "/api/v1/me/identities/{identity_id}": {
       "delete": {
         "operationId": "unlink_api_v1_me_identities__identity_id__delete",
@@ -4979,6 +5790,406 @@
         "summary": "Revoke Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/ops/builds-paused": {
+      "post": {
+        "operationId": "set_builds_paused_api_v1_ops_builds_paused_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Builds Paused",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/builds/{build_id}": {
+      "get": {
+        "operationId": "build_diagnostics_api_v1_ops_builds__build_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildDiagnostics"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Diagnostics",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/entitlements/{grant_id}": {
+      "delete": {
+        "operationId": "revoke_entitlement_api_v1_ops_entitlements__grant_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 3,
+              "title": "Reason",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Entitlement",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/events": {
+      "get": {
+        "operationId": "events_api_v1_ops_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorEventList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/projects/{project_id}/suspension": {
+      "delete": {
+        "operationId": "reinstate_publication_api_v1_ops_projects__project_id__suspension_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 3,
+              "title": "Reason",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reinstate Publication",
+        "tags": [
+          "operations"
+        ]
+      },
+      "post": {
+        "description": "Operator takedown: the site stops at once; admins cannot lift or unpublish it (0012).",
+        "operationId": "suspend_publication_api_v1_ops_projects__project_id__suspension_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspensionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suspend Publication",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/summary": {
+      "get": {
+        "operationId": "summary_api_v1_ops_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/workspaces/{workspace_id}/entitlements": {
+      "get": {
+        "operationId": "entitlements_api_v1_ops_workspaces__workspace_id__entitlements_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitlementList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Entitlements",
+        "tags": [
+          "operations"
+        ]
+      },
+      "post": {
+        "operationId": "grant_entitlement_api_v1_ops_workspaces__workspace_id__entitlements_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntitlementIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitlementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grant Entitlement",
+        "tags": [
+          "operations"
         ]
       }
     },
@@ -5132,6 +6343,59 @@
         "summary": "Start Build",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/deletion": {
+      "post": {
+        "operationId": "delete_project_api_v1_projects__project_id__deletion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project",
+        "tags": [
+          "deletion"
         ]
       }
     },
@@ -6474,6 +7738,59 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/deletion": {
+      "post": {
+        "operationId": "delete_workspace_api_v1_workspaces__workspace_id__deletion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Workspace",
+        "tags": [
+          "deletion"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/github/install": {
       "post": {
         "operationId": "start_install_api_v1_workspaces__workspace_id__github_install_post",
@@ -7032,6 +8349,147 @@
         "summary": "List Refs",
         "tags": [
           "github"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/support-access": {
+      "get": {
+        "operationId": "list_support_access_api_v1_workspaces__workspace_id__support_access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportGrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Support Access",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Let platform operators read this workspace, read-only, until the grant expires or is revoked.",
+        "operationId": "grant_support_access_api_v1_workspaces__workspace_id__support_access_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportGrantIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportGrantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grant Support Access",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/support-access/{grant_id}": {
+      "delete": {
+        "operationId": "revoke_support_access_api_v1_workspaces__workspace_id__support_access__grant_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Support Access",
+        "tags": [
+          "workspaces"
         ]
       }
     },

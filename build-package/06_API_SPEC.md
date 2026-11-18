@@ -59,8 +59,8 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET/POST `/projects/{pid}/publication` | GET → current pointer with `ETag`; POST build_id, visibility (default private), public_slug, confirmation, acknowledge_partial → publication | Member read; admin write; `Idempotency-Key`; `If-Match` required once published (428 `PRECONDITION_REQUIRED`, stale → 409 `VERSION_CONFLICT`); the build must be ready in this project (else 404/409 `BUILD_NOT_READY`) and pass the review gate (409 `PUBLICATION_BLOCKED` with blockers); partly supported claims need `acknowledge_partial` (422 `ACKNOWLEDGMENT_REQUIRED`); public needs a slug (422 `SLUG_INVALID`) and the project name typed as `confirmation` (422 `CONFIRMATION_REQUIRED`); taken slug → 409 `SLUG_TAKEN`; a revoked connection or repository → 409 `CONNECTION_INACTIVE` (the connection is read FOR SHARE, so a concurrent revoke either waits and then suspends the new pointer or is seen and refused); publishing an older ready build is the rollback; publishing clears an access suspension, never an operator's (409 `SUSPENDED_BY_OPERATOR`); audited as `publication.changed` |
 | DELETE `/projects/{pid}/publication` | `If-Match` publication ETag → 204 | Admin; immediate stop serving; no request body; an operator-suspended publication cannot be removed (409 `SUSPENDED_BY_OPERATOR`, also refused by a database trigger), so a fresh publish cannot skip the takedown; audited as `publication.removed` |
 | GET `/published/{slug}[/tree, /files/{fid}, /symbols/{sid}, /guide[/{page}], /search]` | resource route → site info (project, repository, commit, visibility) or viewer data | Each request re-resolves the slug through the resolver (unsuspended publications of live projects in active workspaces only); public → anyone, private → signed-in members, otherwise 404; never returns the build ID; JSON only, rendered by the product viewer |
-| POST `/builds/{bid}/exports` | format static_zip/kb_json → 202 export | Editor; `Idempotency-Key`; ready builds only (409 `BUILD_NOT_READY`); 10 per workspace and hour (429 `EXPORT_LIMIT`); audited |
-| GET `/exports/{eid}` | none → state, size, expires_at, expired | Requester or admin; anyone else 404 |
+| POST `/builds/{bid}/exports` | format static_zip/kb_json → 202 export | Editor; `Idempotency-Key`; ready builds only (409 `BUILD_NOT_READY`; a build whose content retention removed, shown by its `content_purged_at`, is 409 `BUILD_EXPIRED`, also for publishing); 10 per workspace and hour (429 `EXPORT_LIMIT`); audited |
+| GET `/exports/{eid}` | none → state (pending, ready, failed, expired), size, expires_at, expired | Requester or admin; anyone else 404; `expired` once retention removed the package |
 | GET `/exports/{eid}/download` | none → attachment stream (`codehover-<project>-<sha12>.zip` or `-kb.json`, `no-store`, `nosniff`) | Requester or admin, reauthorized on every request; not ready → 409 `EXPORT_NOT_READY`; after 24 h → 410 `EXPORT_EXPIRED`; audited; no public bearer URL |
 | GET `/workspaces/{wid}/usage` | none → current period, allowance, reserved, settled, available | Members summary |
 | GET `/catalog/presets` | none → price_version and the approved presets whose providers are configured (models, providers, data regions) | Authenticated; no tenant data |
@@ -68,10 +68,18 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/workspaces/{wid}/billing/checkout` | plan_key → checkout_url | Owner; provider-configured price mapping |
 | POST `/workspaces/{wid}/billing/portal` | none → portal_url | Owner; fixed allowed return origin |
 | GET `/workspaces/{wid}/audit` | action prefix (for example `publication.`), cursor, limit → entries newest first with actor name, resource, metadata and request ID | Admin; cursor bound to the filter |
-| POST `/projects/{pid}/deletion` | confirmation → request | Admin; disables delivery immediately |
-| POST `/me/export` / `/me/deletion` | reauthentication, confirmation → request | Self; ownership transfer rule |
+| POST `/projects/{pid}/deletion` | confirmation (the project name) → 202 deletion request (id, scope, state, requested_at, purge_after) | Admin; mismatch 422 `CONFIRMATION_MISMATCH`; in one transaction: delivery stops (project, builds, exports and site all 404), live builds end cancelled with their envelope released, unfinished tasks are fenced; audited `project.deleted`; purge after `purge_after` |
+| POST `/workspaces/{wid}/deletion` | confirmation (the workspace address) → 202 deletion request | Owner; every project is deleted as above, members lose access at once; audited `workspace.deleted` |
+| POST `/me/export` | none → JSON attachment (profile, sign-in methods, workspaces, projects, own builds) | Self; sign-in within 10 minutes (403 `REAUTH_REQUIRED`); no other member's account data; `no-store`; audited `account.exported` |
+| POST `/me/deletion` | confirmation `delete my account`, delete_workspaces → 202 {account, workspaces} | Self; sign-in within 10 minutes; every workspace owned alone must be listed (409 `OWNERSHIP_TRANSFER_REQUIRED` with the list), others 422 `NOT_SOLE_OWNER`; leaves other workspaces, revokes every session, removes sign-in methods (signing in again starts a new account), scrubs the profile; audited `account.deleted` |
 | POST `/webhooks/github` | raw signed body → 202 | HMAC verified; delivery deduplicated |
 | POST `/webhooks/stripe` | raw signed body → 200/202 | Signature/timestamp verified; durable receipt then async processing |
+| GET `/me` | none → profile, identities, `operator` | Self; `operator` is true for the platform operations role |
+| GET/POST/DELETE `/workspaces/{wid}/support-access[/{id}]` | hours (1–72), reason → grant | Admin; lets platform operators read the workspace, read-only, until expiry or revocation; audited `support.granted`/`support.revoked`, and each reading session (at most one per 10 minutes) `support.accessed` |
+| GET `/ops/summary`, `/ops/builds/{bid}`, `/ops/events` | none → aggregates, build diagnostics (IDs, states, codes, money), operator log | Operators only; anyone else 404; no names, paths or content |
+| POST `/ops/builds-paused` | paused, reason → summary | Operators; new builds then get 503 `BUILDS_PAUSED` (retryable); reads continue |
+| POST/DELETE `/ops/projects/{pid}/suspension` | reason → 204 | Operators; takedown or reinstatement of the project's publication; audited in the workspace |
+| GET/POST `/ops/workspaces/{wid}/entitlements`, DELETE `/ops/entitlements/{id}` | allowance_micro_usd, days (≤366), reason → grant | Operators; adds allowance to every usage period the grant overlaps; audited in the workspace |
 | GET `/health/live` / `/health/ready` | none → status, application `version` | Live process only; readiness DB/schema, essential dependencies |
 
 ## Core request/response examples
@@ -97,5 +105,14 @@ Event ID is monotonically increasing `build_events.sequence` scoped to build. Ty
 ## Quotas and webhooks
 
 Initial rate policies: authenticated API 120/min/user; sign-in starts 10/min/IP; estimate/acquire 10/hour/workspace; build starts 20/day/workspace or lower plan limit; exports 10/hour/workspace; public delivery 300/min/IP with bounded response size. Database atomic counters or gateway controls must work across replicas; no per-process-only enforcement. Operator overrides are audited.
+
+As implemented in M4 (`app/core/ratelimit.py`, 0019), fixed windows are counted in PostgreSQL, so they hold across replicas.
+- Each hit is its own transaction, and the bucket is an HMAC of policy and subject.
+- Over a limit, the API returns 429 `RATE_LIMITED` (retryable) with `Retry-After` and `details.retry_after_seconds`. Sign-in starts redirect to `/login?error=rate_limited` instead.
+- Policies: authenticated requests 120 per minute per user, sign-in starts 10 per minute per address, public and private site delivery 300 per minute per address, estimates and acquisitions 10 per hour per workspace, build starts and retries 20 per day per workspace. Each is configurable.
+- An idempotent replay doesn't count; a failed attempt does.
+- Client addresses come from `X-Forwarded-For` only when the peer is in `TRUSTED_PROXIES`. IPv6 clients are counted per /64, and IPv4-mapped addresses as IPv4.
+- Hits run on a small connection pool of their own, never the request's pool.
+- Event stream concurrency (3 per session, 20 per workspace) is still counted per process.
 
 GitHub validates `X-Hub-Signature-256` over raw bytes in constant-time, delivery ID unique, body max 2 MiB. MVP handles installation/installation_repositories revocation and repository rename/transfer; push rebuild P1. Return success only after receipt persisted. Stripe uses SDK signature verification, event dedupe and fetching latest subscription state when event ordering is ambiguous. Both handlers reject malformed or unknown tenant associations and do not trust webhook-supplied workspace IDs.

@@ -4,6 +4,91 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.21] - 2026-11-18
+
+### Added
+
+- 12, 13, 22: the synthetic probe and load check (`app.ops.loadcheck`), restore verification (`app.ops.verify_restore`) and `tombstones purge`, the local restore drill (`tests.e2e.restore_drill`), and the drilled restore order in the runbook.
+
+### Security
+
+- 05: runtime privileges now come from migrations alone (0020). Purge needed `DELETE` on exports and claim checks, granted only by the bootstrap defaults. The defaults also gave the runtime table-wide `UPDATE` on support grants (enough to extend one), `DELETE` on provider attempts and webhook receipts, and `UPDATE` on search documents; 0020 revokes those. Found by the restore drill.
+
+## [0.5.20] - 2026-11-18
+
+### Added
+
+- 13: M4 threat tests: the cross-tenant and anonymous sweep over every route of the OpenAPI contract, and the XSS corpus for the viewer, the guide and the offline export viewer.
+
+### Security
+
+- 06: the API sets `X-Content-Type-Options: nosniff` on every response itself, beside the gateway's headers.
+
+## [0.5.19] - 2026-11-18
+
+### Security
+
+- 06: rate-limit hits now run on a dedicated small connection pool. On the request pool, each authenticated request held one connection while waiting for a second, so a full pool could deadlock against itself.
+- 06: IPv6 clients are counted per /64, so rotating addresses within one allocation no longer escapes the per-address limits; IPv4-mapped addresses count as IPv4.
+
+Both were found by automated security review of 0.5.18.
+
+## [0.5.18] - 2026-11-18
+
+### Added
+
+- 06, 22: rate limits as implemented (migration 0019). Fixed windows are counted in PostgreSQL and shared by all replicas, with HMAC buckets, 429 `RATE_LIMITED` and `Retry-After`. The spec's policies for users, sign-in starts, site delivery, estimates, acquisitions and build starts are now enforced. `TRUSTED_PROXIES` controls which peers' `X-Forwarded-For` is believed; it is in Compose for both copies. Retention removes windows older than two days.
+
+## [0.5.17] - 2026-11-18
+
+### Added
+
+- 02, 05, 06, 08, 09, 11, 22: platform operations (migration 0018):
+  - an operations role granted by the deployment, with every operator action re-checked by a database function and recorded in an operator log and the affected workspace's audit log;
+  - the `/ops` view and endpoints: aggregates, build diagnostics, the new-build kill switch (503 `BUILDS_PAUSED`), site takedown and reinstatement, and manual entitlement grants that raise the period allowance;
+  - support access granted by workspace admins: read-only, at most 72 hours, revocable, with each reading session audited;
+  - `GET /me` gains `operator`.
+
+### Security
+
+- 05: the local bootstrap's default privileges give the runtime role full rights on every new table. Migration 0018 therefore revokes them on the operations tables, keeping read access to the platform switch only. It also revokes runtime writes to entitlements, deleting support grants, and deleting deletion tombstones (0015). Without this, the runtime role could have made a user an operator. Found by the schema-wide tenancy guard while writing 0018, before any commit.
+
+## [0.5.16] - 2026-11-18
+
+### Added
+
+- 12, 22: metrics as implemented in T18. Each process serves Prometheus metrics with bounded labels on an internal port, and the scheduler refreshes aggregate job-system gauges from `app_private.ops_gauges` (migration 0017).
+- 12, 22: reference scrape configuration and alert rules with promtool unit tests in `deployment/prometheus/` (both copies), plus an `ops` Compose profile with a digest-pinned Prometheus and `METRICS_PORT`.
+- 13: the A24 telemetry check.
+
+### Security
+
+- 05: the retention sweep re-checks the publication pointer in a separate statement after locking the build. A check inside the locking statement keeps its old snapshot under READ COMMITTED, so a publish committed while the sweep waited could have been purged. Found by automated security review of 0.5.15; a lock-wait race test covers it.
+
+## [0.5.15] - 2026-11-18
+
+### Added
+
+- 05, 06, 08: retention sweeps as implemented in T17 (migration 0016). Exports gain the `expired` state, builds gain `content_purged_at`, and a purged build cannot be published or exported (409 `BUILD_EXPIRED`). Identity and audit rows are swept through functions whose policies admit only rows past their window; the scheduler removes dispatched outbox rows after 7 days.
+
+### Security
+
+- 05: an operator takedown survives project deletion. The purge keeps the suspended publication row, so its public address stays reserved, and the 0012 trigger again refuses deleting it in every case. Found by automated security review of 0.5.14.
+
+## [0.5.14] - 2026-11-18
+
+### Added
+
+- 05, 06, 08: project, workspace and account deletion as implemented in T17 (migration 0015). This adds `deletion_requests` tombstones, with a copy in object storage, and fencing of running work. A purge removes content and objects once fenced leases have expired. The account data export is added too.
+- 06: `POST /workspaces/{wid}/deletion` (owner) and the `/me/export` and `/me/deletion` contracts, including the sole-owner rule.
+- 22: `python -m app.ops.tombstones reapply` in the restore procedure.
+- 13: the journey's delete step.
+
+### Changed
+
+- 05: project and workspace slugs are unique among live rows only, so a deleted address can be reused.
+- 02: S18 starts at `/account` with export and deletion.
+
 ## [0.5.13] - 2026-11-18
 
 ### Added

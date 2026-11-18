@@ -133,3 +133,42 @@ def test_repository_grants_migration_fails_closed(alembic_config: Config) -> Non
             {"w": ws},
         ).scalar_one()
     assert revoked
+
+
+PRIVILEGES = """
+SELECT t.table_name, string_agg(DISTINCT t.privilege_type, ',' ORDER BY t.privilege_type),
+  (SELECT string_agg(c.column_name || ':' || c.privilege_type, ',' ORDER BY c.column_name, c.privilege_type)
+     FROM information_schema.column_privileges c
+    WHERE c.grantee = 'app_runtime' AND c.table_schema = 'public' AND c.table_name = t.table_name)
+FROM information_schema.role_table_grants t
+WHERE t.grantee = 'app_runtime' AND t.table_schema = 'public'
+GROUP BY t.table_name ORDER BY t.table_name
+"""
+
+
+def test_migrations_alone_grant_the_runtime_exactly_its_privileges(alembic_config: Config) -> None:
+    """M4 restore drill: a database migrated without init-db.sh's default privileges must grant the runtime
+    the same privileges as a bootstrapped one. Every table's grants are explicit in its migration, so no
+    deployment depends on how its database was bootstrapped (0020)."""
+    assert MIGRATION_URL
+    probe = f"grants_probe_{os.getpid()}"
+    admin = sa.create_engine(MIGRATION_URL.rsplit("/", 1)[0] + "/postgres", isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{probe}" WITH (FORCE)'))
+        conn.execute(sa.text(f'CREATE DATABASE "{probe}"'))
+    probe_url = MIGRATION_URL.rsplit("/", 1)[0] + "/" + probe
+    try:
+        with sa.create_engine(probe_url, isolation_level="AUTOCOMMIT").connect() as conn:
+            conn.execute(sa.text("GRANT USAGE ON SCHEMA public TO app_runtime, app_system, app_resolver"))
+        config = Config(str(BACKEND / "alembic.ini"))
+        config.attributes["migration_url"] = probe_url
+        command.upgrade(config, "head")
+        with sa.create_engine(probe_url, poolclass=sa.pool.NullPool).connect() as conn:
+            explicit = conn.execute(sa.text(PRIVILEGES)).all()
+        with ddl_engine().connect() as conn:
+            bootstrapped = conn.execute(sa.text(PRIVILEGES)).all()
+        assert [tuple(r) for r in explicit] == [tuple(r) for r in bootstrapped]
+    finally:
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{probe}" WITH (FORCE)'))
+        admin.dispose()

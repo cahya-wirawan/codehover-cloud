@@ -223,6 +223,12 @@ async def start_generation_build(
 
 async def _admit(db: AsyncSession, settings: Settings, member: Member) -> ledger.Account:
     """Lock the period's usage account: serializes reservations and the workspace active-build limit."""
+    paused = (await db.execute(text("SELECT builds_paused FROM platform_settings"))).scalar_one_or_none()
+    if paused:  # the operator kill switch (22): reads stay available, new builds wait
+        await db.rollback()
+        raise ApiError(
+            503, "BUILDS_PAUSED", "New builds are paused by the operators; reading works.", retryable=True
+        )
     account = await ledger.current_account(
         db, member.workspace_id, settings.generation_allowance_micro_usd, lock=True
     )
@@ -314,7 +320,7 @@ async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[st
         await db.execute(
             text(
                 "SELECT b.id, b.project_id, b.snapshot_id, b.estimate_id, b.retry_of_id, b.status, b.created_at,"
-                " b.completed_at, b.cancel_requested_at,"
+                " b.completed_at, b.cancel_requested_at, b.content_purged_at,"
                 " b.engine_version, b.prompt_version, b.cap_micro_usd, b.reserved_micro_usd, b.settled_micro_usd,"
                 " s.commit_sha, s.status AS snapshot_status, s.rejection_code"
                 " FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"

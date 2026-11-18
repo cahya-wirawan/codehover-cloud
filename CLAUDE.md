@@ -4,17 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-M0 to M3 are implemented.
+M0 to M4 are implemented.
 
 - **M0–M1:** sign-in, workspaces, GitHub App connection with per-repository grants, snapshot acquisition with a safe scan, the outbox/RabbitMQ job system with fenced leases, a sandboxed tree-sitter parser, and a private viewer.
 - **M2:** the model catalog, estimates, single-envelope budget reservations, and the provider gateway. The Anthropic SDK and a deterministic replay gateway sit behind it. It adds explanation, overview, plan and guide stages, deterministic citation checks, the independent checker with one repair cycle, the quality gate and waivers, cancel and retry, and a labeled eval harness (`backend/evals/`).
 - **M3:** the build viewer with Overview, Code, Guide, Search and Review tabs, using a product-controlled line renderer rather than CodeMirror (an open decision). It adds the build SSE stream (`app/modules/projects/events.py`) and full-text search over `search_documents`. Publication (`publication.py`) covers private by default, a public opt-in with typed confirmation, ETags, rollback and suspension triggers. Published sites are served at `/published/{slug}`. Exports are a ZIP or KB JSON produced by the `export` stage, served to the requester or an admin and expiring after 24 h. M3 also adds project freshness, the admin audit log, and the Playwright + axe journey (`frontend/e2e/`, `backend/tests/e2e/server.py`).
+- **M4:**
+  - Deletion of projects, workspaces and accounts with tombstones (`deletion_requests`, plus copies under `tombstones/` in object storage), fencing and purge (`app/jobs/purge.py`).
+  - Retention sweeps (`app/jobs/retention.py`) and tombstone replay after restore (`app.ops.tombstones`).
+  - Prometheus metrics on an internal port (`app/core/metrics.py`, `deployment/prometheus/` with tested alerts).
+  - Operations: an operator role, the `/ops` view, admin-granted read-only support access, the kill switch, takedowns and manual entitlements (`app/modules/ops`, `app.ops.operators`).
+  - Rate limits shared across replicas (`app/core/ratelimit.py`).
+  - Threat tests (`tests/integration/test_threats.py`, `frontend/src/features/viewer/xss.test.tsx`), the load check (`app.ops.loadcheck`) and the restore drill (`tests.e2e.restore_drill`).
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
 
 The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the JSON Schemas for explanations, overview, guide plan and page, claim checks and repairs, and task envelopes. Prompts live in `19_PROMPT_LIBRARY.md`.
 
-Next scope: **M4** (`14_IMPLEMENTATION_ROADMAP.md`): metrics, purge/restore (project and account deletion, tombstones, which completes T17 and the journey's delete step), threat tests, support diagnostics and manual entitlement grants. Two items are known gaps: the stream limits are per process, and published delivery has no rate limit yet.
+Next scope: **M5** (`14_IMPLEMENTATION_ROADMAP.md`): Stripe checkout and portal, webhooks and reconciliation, quotas and the plan lifecycle (T20), and privacy, terms and support. Entitlements then come from plans, beside the manual grants. Known gaps:
+- event-stream concurrency limits are still per process;
+- RPO ≤ 15 min needs a PITR drill on the managed staging database (the local drill covers the restore procedure and RTO only);
+- the load numbers come from a single local process, not staging.
 
 Billing (Stripe) stays out until M5; generation spend is metered against `GENERATION_ALLOWANCE_MICRO_USD` until entitlements exist.
 
@@ -49,6 +59,10 @@ cd backend && uv venv --python 3.13 .venv && uv pip sync --require-hashes requir
 .venv/bin/python -m app.openapi_export   # regenerate contracts/openapi.json after API changes (CI checks drift)
 cd frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build && npm run check:env
 cd frontend && npm run test:e2e           # Playwright + axe journey; same TEST_* URLs as integration, installed Chrome
+.venv/bin/python -m app.ops.operators grant <user-id> "<note>"   # operations role (DDL role: MIGRATION_DATABASE_URL)
+.venv/bin/python -m app.ops.tombstones reapply && .venv/bin/python -m app.ops.tombstones purge && .venv/bin/python -m app.ops.verify_restore  # after a restore, before traffic
+.venv/bin/python -m tests.e2e.restore_drill    # local drill (deployment/.env sourced; scratch DBs and bucket)
+.venv/bin/python -m app.ops.loadcheck --base <url> --site <slug> --users 50   # NFR p95 targets (see README)
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
 cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \
   && docker compose --env-file .env -f compose.yaml --profile app up -d --build   # http://localhost:8080
@@ -70,6 +84,13 @@ Conventions that span files:
   - The checker never falls back to a heuristic for model output; any checker failure leaves claims `unchecked`.
   - Regenerate `backend/evals/reports/baseline-replay.json` after changing parser, prompts, chunking or claim extraction (CI diffs it).
 - **Engine** (`app/engine`). Repository content is parsed only inside the sandbox (`sandbox.run("app.engine.parse_worker", ...)`); add new sandboxed modules to `sandbox_exec.ALLOWED_MODULES` only. `app/engine/schemas/explanation.schema.json` must equal the spec contract (a test checks it). Object keys come only from `engine/keys.py`.
+- **Privileges and operations.**
+  - Every runtime privilege is granted explicitly in its migration; local bootstrap defaults are not relied on. `test_migrations_alone_grant_the_runtime_exactly_its_privileges` compares a database migrated without defaults.
+  - Revoke what defaults would add on tables the runtime must not write (0018, 0020).
+  - Operator actions go only through `app_private.ops_*` functions, which re-check the role and write both logs.
+  - Support access is read-only: writer dependencies pass `write=True` to `resource_member`/`_member`.
+- **Rate limits** use `ratelimit.hit(request.app.state.rate_sessions, ...)`, a separate pool so a request never waits for a second connection of its own. Client addresses come from `ratelimit.client_address`: trusted proxies only, IPv6 per /64.
+- **Deletion and retention.** Content purges keep the ledger's rows (builds, tasks, attempts, snapshots) with names scrubbed. Re-check publication pointers after locking, in a separate statement (READ COMMITTED snapshots). Operator takedowns are never deleted.
 - **Errors** go through `app/core/errors.py` (`ApiError` → envelope). Never return exception text, input values or connection details to clients.
 - **Frontend environment.** Code may read only the `import.meta.env` keys allowlisted in `frontend/scripts/check-env-usage.mjs`.
 

@@ -1,6 +1,73 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.13
+Date: 2026-11-18 · Package version 0.5.21
+
+0.5.21 records the M4 exit checks for SLOs, load and recovery. All were run locally on a laptop: one uvicorn process for the E2E server, PostgreSQL 18 and SeaweedFS in Compose.
+- **Load (NFR-003, NFR-005):** a published replay site of 200 files with 20,000 definitions (20,200 search documents), with 50 readers for 60 s.
+  - Run 1: read p50 30 / p95 131 ms (1724 requests, 0 errors), search p50 69 / p95 175 ms (568 requests, 0 errors), card p50 32 / p95 139 ms (563 requests, 0 errors); 47.6 requests/s. Passed.
+  - Run 2: read p50 49 / p95 321 ms (1637 requests, 0 errors), search p50 99 / p95 376 ms (554 requests, 0 errors), card p50 48 / p95 361 ms (556 requests, 0 errors); 45.8 requests/s. Passed.
+  - Targets: reads and cards p95 < 500 ms, search p95 < 700 ms, no errors.
+  - Stress (no pauses, 50 concurrent loops): the single process saturates at 71.6 requests/s with p95 about 1616 ms and no errors. Capacity beyond that needs more API processes or replicas, which the shared rate limits and stateless API allow.
+  - One reader (the probe's shape): read p50 21 / p95 49 ms (182 requests, 0 errors), search p50 56 / p95 89 ms (67 requests, 0 errors), card p50 22 / p95 52 ms (59 requests, 0 errors).
+  - NFR-005's "cached card opens <100 ms" refers to a card already in the viewer's memory, which makes no request; server-side card fetches are held to the read target.
+- **Restore drill (NFR-009, A22):** backup 277661 bytes in 0.54 s. Restore 2.28 s, reapply 2.71 s, purge 2.78 s, verify 2.97 s: RTO 10.73 s for this data set (target ≤ 4 h).
+  - All checks passed: backup_predates_deletion, tombstone_reapplied, deleted_stays_deleted, no_source_resurrected, kept_site_consistent, rto_under_4h.
+  - The first run failed: purge could not delete export and claim-check rows, because those privileges came only from the bootstrap's default privileges. 0020 makes every runtime grant explicit and removes four the defaults had added. A test now migrates a database without defaults and compares.
+  - RPO ≤ 15 min depends on the managed database's continuous WAL archiving (PITR), which a local Compose stack does not have. It must be drilled on the staging database before paid launch (18).
+
+0.5.20 records the threat tests for the M4 exit criterion "zero critical isolation/XSS issues":
+- The isolation sweep covers 66 routes (27 unsafe). It finds no route that admits another tenant or anonymous visitors, leaks a victim ID or changes the victim's state.
+- Mutation: admitting any non-member to read routes makes it fail with the leaking routes listed.
+- The XSS corpus passes for the product viewer, the guide and the offline export viewer. An `innerHTML` mutation in the export viewer fails it.
+- Tenant content responses are JSON with `nosniff` and `no-store`. 24 frontend tests pass.
+
+0.5.19 fixes two review findings in the rate limiter. Hits run on their own pool. A unit test checks that IPv6 subjects collapse to their /64 and that mapped IPv4 is plain IPv4, also for the direct peer. The integration tests pass three runs in a row with distinct /64s per simulated client.
+
+0.5.18 records shared rate limits (`test_rate_limits.py`, `tests/unit/test_ratelimit.py`):
+- a user's sixth request in a minute at a limit of 5 gets 429 with a consistent `Retry-After`, while another user is unaffected;
+- sign-in starts per address redirect to `/login?error=rate_limited`, while another address continues;
+- public delivery per address returns 429 on the fourth request, while another address is served;
+- build starts count new work and not idempotent replays; estimates and acquisitions count attempts;
+- buckets hold no address; forwarded addresses are believed only from trusted networks (a spoofed header from an untrusted peer is ignored), and an invalid network setting is refused.
+
+0.5.17 records platform operations (`test_operations.py`, 6 tests):
+- Non-operators get 404 from every `/ops` route, and the database functions refuse them too (42501); the event helper is not callable by the runtime at all.
+- Operators see aggregates and build diagnostics, with no paths or content. Without a support grant they get 404 on tenant data.
+- The kill switch returns a retryable 503 on new builds while reads keep working; resuming restores builds, and both actions are logged.
+- A takedown stops the public site, binds the admin (409 on unpublish), appears in the workspace's audit log with its reason, and can be reinstated.
+- An entitlement raises the reported allowance by its amount and revocation restores it; both are audited, and 400 days is refused.
+- Support access: editors can't grant it and 73 hours is refused. A grant admits the operator to reads but not writes (404 on build start and deletion), audits one session for several requests, and ends at expiry and at revocation. A non-operator gains nothing.
+
+A tenancy test checks that the runtime role cannot insert an operator, read the operator tables, flip the platform switch, write an entitlement, or delete a tombstone or support grant. It holds whatever default privileges the database was bootstrapped with. The schema-wide guard found these grants while 0018 was being written.
+
+Letting support access through write routes makes a test fail. Component tests cover the operations view (not-found for non-operators, the pause form) and the support panel; 21 frontend tests pass.
+
+0.5.16 records T18 metrics (`test_telemetry.py`):
+- with production logging, a replay build, a search, an export download and a forged sign-in leave no fixture secret, source text, query, file path, session cookie, CSRF token or UUID in the logs or the metrics exposition;
+- the expected series exist with route templates; hostile label values become `other`;
+- the gauges return the 11 aggregates to the system role only, with zero usage drift on the test data.
+
+promtool validates the configuration and passes all 15 alert unit tests (`alerts.test.yml`). Raising the 5xx threshold makes a test fail. For the sweep race, a test holds a publish's `FOR SHARE` until the sweep's backend is waiting on the lock. The earlier single-statement guard purges the newly published build and fails that test; the fix passes. The first version of the test, which did not wait for the lock, passed under the mutation and was corrected.
+
+0.5.15 completes T17 with retention sweeps (`test_retention.py`), checking each window at and past its boundary:
+- exports expire, lose their object and download as 410;
+- old unpublished builds lose rows and objects, while the published build and the newest builds stay; a purged build cannot be published or exported (409 `BUILD_EXPIRED`), and a second sweep changes nothing;
+- failed builds are swept at 8 days but not at 6; events after 30 days, expired cache entries, and estimates no build uses;
+- audit events at 181 days but not at 179, ended sessions after 30 days with the live session untouched, and expired idempotency keys;
+- dispatched outbox rows at 8 days but not at 6.
+
+Removing both published-build guards makes a test fail. A regression test covers the security fix: an operator takedown survives project deletion and purge, and its row cannot be deleted.
+
+0.5.14 records T17, part of the M4 exit criterion. Integration tests (`test_deletion.py`) check:
+- a project deletion: serving stops in the same transaction, with the project, build, export download and public site all 404;
+- the running build ends cancelled with nothing reserved; the worker holding its lease fails its heartbeat and completion (LeaseLost), and a unit test shows that a lost lease cancels the running stage;
+- the purge waits for `not_before`, then removes every content row and object while keeping the ledger's build rows, and frees the slug;
+- a failed purge records its error and is retried after its lease;
+- tombstone replay after a simulated restore (request and mark removed) deletes the project again with the same request ID and purges it, and re-purges a completed request when late objects reappear;
+- workspace deletion (owner only, typed address) and account deletion (sign-in within 10 minutes, the sole-owner rule, a member who simply leaves, sessions and sign-in methods removed);
+- tenancy: requests are visible only in their workspace or to their user, and the purger's claim returns identifiers only.
+
+Removing the fencing call or the tombstone re-mark makes a test fail. The E2E journey gains the delete step: a member's private site becomes "Site not found" and the project and build APIs return 404.
 
 0.5.13 records the M3 exit criterion "accessible full E2E". One Playwright journey runs in the installed Chrome against the real API with fake Google and GitHub, and aborts any request outside the app:
 - sign-in, workspace, project, snapshot with the exclusion summary, estimate and a replay build followed over SSE;

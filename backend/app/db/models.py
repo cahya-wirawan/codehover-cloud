@@ -209,6 +209,7 @@ class Snapshot(Base):
     file_count: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+    content_purged_at: Mapped[datetime | None] = ts(nullable=True)
 
 
 class SourceFile(Base):
@@ -266,6 +267,7 @@ class Build(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
+    content_purged_at: Mapped[datetime | None] = ts(nullable=True)
     usage_account_id: Mapped[UUID | None] = ref(nullable=True)  # reservation account (0006)
 
 
@@ -604,3 +606,86 @@ class Export(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
     expires_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class DeletionRequest(Base):
+    """A deletion tombstone: identifiers only; drives the purge (0015)."""
+
+    __tablename__ = "deletion_requests"
+    id: Mapped[UUID] = pk()
+    scope: Mapped[str] = mapped_column(Text)
+    workspace_id: Mapped[UUID | None] = ref(nullable=True)
+    project_id: Mapped[UUID | None] = ref(nullable=True)
+    user_id: Mapped[UUID | None] = ref(nullable=True)
+    requested_by: Mapped[UUID | None] = ref(nullable=True)
+    state: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    not_before: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now() + '00:05:00'::interval")
+    )
+    lease_until: Mapped[datetime | None] = ts(nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime] = ts(default_now=True)
+    completed_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class Operator(Base):
+    """Platform operations role, granted by the deployment (0018)."""
+
+    __tablename__ = "operators"
+    user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    granted_at: Mapped[datetime] = ts(default_now=True)
+    note: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class OperatorEvent(Base):
+    __tablename__ = "operator_events"
+    id: Mapped[UUID] = pk()
+    operator_user_id: Mapped[UUID] = ref("users.id")
+    action: Mapped[str] = mapped_column(Text)
+    workspace_id: Mapped[UUID | None] = ref(nullable=True)
+    target_id: Mapped[UUID | None] = ref(nullable=True)
+    reason: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    created_at: Mapped[datetime] = ts(default_now=True)
+
+
+class PlatformSettings(Base):
+    __tablename__ = "platform_settings"
+    id: Mapped[bool] = mapped_column(Boolean, primary_key=True, server_default=text("true"))
+    builds_paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    paused_reason: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+class EntitlementGrant(Base):
+    __tablename__ = "entitlement_grants"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    allowance_micro_usd: Mapped[int] = mapped_column(BigInteger)
+    starts_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts()
+    reason: Mapped[str] = mapped_column(Text)
+    granted_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class SupportGrant(Base):
+    __tablename__ = "support_grants"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    granted_by: Mapped[UUID] = ref("users.id")
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts()
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class RateLimit(Base):
+    """A fixed-window counter shared by all replicas; the bucket is an HMAC (0019)."""
+
+    __tablename__ = "rate_limits"
+    bucket: Mapped[str] = mapped_column(Text, primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer)

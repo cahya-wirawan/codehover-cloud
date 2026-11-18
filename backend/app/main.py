@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,7 @@ from app.adapters.oauth.github import GitHubProvider
 from app.adapters.oauth.google import GoogleProvider
 from app.adapters.storage import MemoryObjectStore, ObjectStore, S3ObjectStore
 from app.api import health
+from app.core import metrics
 from app.core.db import create_engine, session_factory
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
@@ -24,8 +26,10 @@ from app.core.request_context import RequestIdMiddleware
 from app.core.security import Sealer
 from app.core.settings import Environment, Settings, get_settings
 from app.engine import catalog
+from app.modules.deletion import router as deletion
 from app.modules.github import router as github
 from app.modules.identity import router as identity
+from app.modules.ops import router as ops
 from app.modules.projects import router as projects
 from app.modules.published import router as published
 from app.modules.usage import router as usage
@@ -89,11 +93,24 @@ def github_app(settings: Settings, http: httpx.AsyncClient) -> GitHubApp | None:
     )
 
 
+async def observe(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """Request counts and durations by route template (12); event streams are counted, not timed."""
+    started = time.perf_counter()
+    response = await call_next(request)
+    route = metrics.route_of(request.scope)
+    metrics.HTTP_REQUESTS.labels(route, request.method, f"{response.status_code // 100}xx").inc()
+    if response.media_type != "text/event-stream":
+        metrics.HTTP_DURATION.labels(route, request.method).observe(time.perf_counter() - started)
+    return response
+
+
 async def no_store(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """API responses are private and never cached by browsers or intermediaries (08)."""
     response = await call_next(request)
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
+        # Defense in depth beside the gateway's headers: tenant text is never sniffed as HTML (A07).
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
     return response
 
 
@@ -104,11 +121,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        metrics.serve(settings.metrics_port)
         try:
             yield
         finally:
             await http.aclose()
             await engine.dispose()
+            await limiter.dispose()
 
     interactive_docs = settings.app_env is not Environment.PRODUCTION
     app = FastAPI(
@@ -122,6 +141,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessions = session_factory(engine)
+    # Rate-limit hits run on their own small pool: a request already holds a connection of the main
+    # pool, and taking a second one from it could exhaust the pool against itself under load.
+    limiter = create_engine(settings, application_name="ratelimit", pool_size=4, max_overflow=4)
+    app.state.rate_sessions = session_factory(limiter)
     app.state.http = http
     app.state.sealer = Sealer(settings.app_encryption_key.get_secret_value())
     app.state.oauth_providers = oauth_providers(settings, http)
@@ -131,6 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     install_error_handlers(app)
     app.middleware("http")(no_store)
+    app.middleware("http")(observe)
     app.add_middleware(RequestIdMiddleware)
 
     api = APIRouter(prefix=API_PREFIX)
@@ -142,6 +166,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(published.router)
     api.include_router(usage.router)
     api.include_router(webhooks.router)
+    api.include_router(deletion.router)
+    api.include_router(ops.router)
     app.include_router(api)
     return app
 

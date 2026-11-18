@@ -106,7 +106,7 @@ async def create_workspace(db: AsyncSession, principal: Principal, name: str, sl
         ).scalar_one()
     except exc.IntegrityError as error:
         await db.rollback()
-        if "workspaces_slug_key" in str(error.orig):
+        if "uq_workspaces_live_slug" in str(error.orig):  # unique among live workspaces (0015)
             raise ApiError(409, "SLUG_TAKEN", "That workspace address is already in use.") from error
         raise ApiError(422, "VALIDATION_FAILED", "Workspace name or address is invalid.") from error
     member = Member(principal, workspace_id, "owner")

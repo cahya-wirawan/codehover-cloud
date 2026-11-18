@@ -124,8 +124,9 @@ async def test_dispatcher_publishes_and_backs_off() -> None:
         "trace_id": "a" * 32,
     }
     (row,) = ddl(
-        "INSERT INTO outbox(workspace_id, aggregate_id, event_type, payload)"
-        " VALUES (:w, :a, 'task.ready', CAST(:p AS jsonb)) RETURNING id",
+        # The oldest due row, so leftovers of other tests cannot crowd it out of the dispatch batch.
+        "INSERT INTO outbox(workspace_id, aggregate_id, event_type, payload, available_at)"
+        " VALUES (:w, :a, 'task.ready', CAST(:p AS jsonb), now() - interval '10 years') RETURNING id",
         w=ws,
         a=payload["task_id"],
         p=json.dumps(payload),
@@ -137,7 +138,7 @@ async def test_dispatcher_publishes_and_backs_off() -> None:
         assert await control.dispatch_once(db, down) == 0
     attempts, published = ddl("SELECT dispatch_attempts, published_at FROM outbox WHERE id = :i", i=row)[0]
     assert attempts == 1 and published is None  # kept for retry, not lost
-    ddl("UPDATE outbox SET available_at = now() WHERE id = :i", i=row)
+    ddl("UPDATE outbox SET available_at = now() - interval '10 years' WHERE id = :i", i=row)
     up = FakeExchange()
     async with sessions() as db:
         assert await control.dispatch_once(db, up) >= 1

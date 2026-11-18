@@ -82,7 +82,8 @@ async def publish(
     target = (
         await db.execute(
             text(
-                "SELECT status, estimate_id FROM builds WHERE workspace_id = :w AND project_id = :p AND id = :b"
+                "SELECT status, estimate_id, content_purged_at FROM builds"
+                " WHERE workspace_id = :w AND project_id = :p AND id = :b"
             ),
             {"w": member.workspace_id, "p": project_id, "b": build_id},
         )
@@ -91,6 +92,10 @@ async def publish(
         raise ApiError(404, "NOT_FOUND", "Build not found in this project.")
     if target.status != "ready":
         raise ApiError(409, "BUILD_NOT_READY", "Only a ready build can be published.")
+    if target.content_purged_at is not None:
+        raise ApiError(
+            409, "BUILD_EXPIRED", "Retention removed this build's content; publish or export a newer build."
+        )
     report = await quality.summary(db, objects, member, build_id)  # commits; locks are taken below
     if report["blockers"]:
         raise ApiError(
@@ -135,14 +140,21 @@ async def publish(
         raise ApiError(409, "SUSPENDED_BY_OPERATOR", "This site was suspended by an operator.")
     if project.status != "active" or project.access_revoked_at is not None:
         raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub before publishing this project.")
+    # FOR SHARE also orders this against the retention sweep, which locks the build before purging it.
     still_ready = (
         await db.execute(
-            text("SELECT status FROM builds WHERE workspace_id = :w AND id = :b FOR SHARE"),
+            text(
+                "SELECT status, content_purged_at FROM builds WHERE workspace_id = :w AND id = :b FOR SHARE"
+            ),
             {"w": member.workspace_id, "b": build_id},
         )
-    ).scalar_one()
-    if still_ready != "ready":
+    ).one()
+    if still_ready.status != "ready":
         raise ApiError(409, "BUILD_NOT_READY", "Only a ready build can be published.")
+    if still_ready.content_purged_at is not None:
+        raise ApiError(
+            409, "BUILD_EXPIRED", "Retention removed this build's content; publish or export a newer build."
+        )
     # A slug gives the site an address. Public sites need one and the typed confirmation; a private site may
     # have one too, readable only by signed-in members (02 S20).
     if public_slug is not None and not SLUG.fullmatch(public_slug):

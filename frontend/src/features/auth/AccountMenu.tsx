@@ -29,7 +29,8 @@ export function AccountMenu() {
   }
   return (
     <div className="flex items-center gap-3">
-      <span className="text-muted">{user.display_name}</span>
+      {user.operator ? <Link to="/ops" className="text-muted underline">Operations</Link> : null}
+      <Link to="/account" className="text-muted underline">{user.display_name}</Link>
       <button
         type="button"
         onClick={() => logout.mutate()}

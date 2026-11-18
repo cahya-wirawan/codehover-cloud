@@ -64,7 +64,25 @@ async def current_account(
     )
     query = _ACCOUNT_FOR_UPDATE if lock else _ACCOUNT
     row = (await db.execute(query, {"w": workspace_id, "s": start})).one()
-    return Account(*row)
+    # Manual entitlements (11, 0018) add to every period they overlap; revoked grants stop counting.
+    granted = (
+        await db.execute(
+            text(
+                "SELECT COALESCE(sum(allowance_micro_usd), 0) FROM entitlement_grants WHERE workspace_id = :w"
+                " AND revoked_at IS NULL AND starts_at < :e AND expires_at > :s"
+            ),
+            {"w": workspace_id, "s": start, "e": end},
+        )
+    ).scalar_one()
+    allowance = default_allowance + int(granted)
+    if lock and allowance != row.allowance_micro_usd:  # persisted under the account lock
+        await db.execute(
+            text("UPDATE usage_accounts SET allowance_micro_usd = :a, version = version + 1 WHERE id = :id"),
+            {"a": allowance, "id": row.id},
+        )
+    return Account(
+        row.id, row.period_start, row.period_end, allowance, row.reserved_micro_usd, row.settled_micro_usd
+    )
 
 
 async def _entry(

@@ -23,10 +23,10 @@ All screens are Proposed. Navigation: workspace switcher; Projects; Builds; Usag
 | S15 `/p/:pid/publish` | Version selection, private/public radio, disclosure summary, confirm and rollback | Admin/owner | Default private; public requires typed project-name confirmation; previous build remains live until atomic switch |
 | S16 `/w/:wid/usage` | Current period usage, credits, reservations, ledger and plan; billing portal | Member summary; owner billing | Pending webhook shows “processing”; never infer entitlement from success URL |
 | S17 `/w/:wid/members` | Members, roles, invitations, workspace-wide access explanation | Admin manage; owner ownership | Expired invitation/revoke/resend; cannot remove/demote final owner; self-role change reauthorizes |
-| S18 `/account/security` | Linked providers, sessions, logout-all, export/delete account | Self | Reauthentication for provider link/delete; cannot unlink last sign-in provider |
+| S18 `/account` (M4: export and deletion; `/account/security` for providers and sessions later) | Linked providers, sessions, logout-all, export/delete account | Self | Reauthentication for provider link/delete; cannot unlink last sign-in provider |
 | S19 `/p/:pid/settings` | Name, source/ref, exclusions, build defaults, access suspension, retention, export/delete | Editor config; admin delete | ETag conflict with refreshed diff; deletion confirmation; connection revocation blocks new builds |
 | S20 `/sites/:slug/*` | Published site with same code/guide reading experience | Public visitor only if explicitly public; otherwise member | Every asset/source/KB request authorized; withdrawn public site returns 404; no content in preview metadata |
-| S21 `/ops/jobs` | Operational counts, lease/dead-letter tools, redacted IDs | Scoped operator | No source browsing by default; approved time-bounded support access audited |
+| S21 `/ops` (M4: job-system counts, builds of the last 24 h, the new-build switch, build diagnostics by ID, site takedown, entitlements, operator log; workspace admins grant support access on S07) | Operational counts, lease/dead-letter tools, redacted IDs | Scoped operator | No source browsing by default; approved time-bounded support access audited |
 
 ## Component contracts
 

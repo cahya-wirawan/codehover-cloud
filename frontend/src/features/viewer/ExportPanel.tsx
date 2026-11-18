@@ -48,7 +48,7 @@ export function ExportPanel({ buildId, canExport }: { buildId: string; canExport
           {current.status === "ready" && !current.expired ? (
             <a className="text-primary underline" href={api.exportDownloadUrl(current.id)}>Download</a>
           ) : null}
-          {current.status === "ready" && current.expired ? "expired; request a new export." : null}
+          {current.expired || current.status === "expired" ? "expired; request a new export." : null}
           {current.status === "ready" && current.expires_at && !current.expired
             ? ` (available until ${new Date(current.expires_at).toLocaleString()})`
             : null}

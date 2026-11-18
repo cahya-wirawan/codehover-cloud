@@ -1,0 +1,30 @@
+DROP FUNCTION IF EXISTS app_private.ops_gauges_for_operator();
+DROP FUNCTION app_private.ops_events(timestamptz, integer);
+DROP FUNCTION app_private.ops_entitlements(uuid);
+DROP FUNCTION app_private.ops_revoke_entitlement(uuid, text);
+DROP FUNCTION app_private.ops_grant_entitlement(uuid, bigint, integer, text);
+DROP FUNCTION app_private.ops_suspend_publication(uuid, boolean, text);
+DROP FUNCTION app_private.ops_set_builds_paused(boolean, text);
+DROP FUNCTION app_private.ops_build(uuid);
+DROP FUNCTION app_private.ops_summary();
+DROP FUNCTION app_private.ops_event(text, uuid, uuid, text);
+DROP FUNCTION app_private.support_access(uuid);
+DROP FUNCTION app_private.require_operator();
+DROP FUNCTION app_private.is_operator();
+REVOKE USAGE ON SCHEMA app_private FROM app_resolver;
+DROP POLICY resolver_ops ON build_events;
+REVOKE SELECT (build_id) ON build_events FROM app_resolver;
+REVOKE SELECT (build_id, purpose, settled_micro_usd, error_code) ON provider_attempts FROM app_resolver;
+REVOKE SELECT (id, build_id, stage, attempt_count, lease_generation, error_code, updated_at, snapshot_id)
+  ON build_tasks FROM app_resolver;
+REVOKE SELECT (status, created_at, completed_at, cancel_requested_at, engine_version, prompt_version,
+               cap_micro_usd, reserved_micro_usd, settled_micro_usd) ON builds FROM app_resolver;
+REVOKE SELECT (suspended_reason) ON publications FROM app_resolver;
+REVOKE INSERT ON audit_events FROM app_resolver;
+DROP POLICY resolver_operator_insert ON audit_events;
+GRANT DELETE ON deletion_requests TO app_runtime;
+DROP TABLE support_grants;
+DROP TABLE entitlement_grants;
+DROP TABLE platform_settings;
+DROP TABLE operator_events;
+DROP TABLE operators;

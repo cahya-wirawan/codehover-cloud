@@ -135,6 +135,19 @@ jobs:
           CANARY_SECRETS: canary-session-${{ github.run_id }},canary-model-${{ github.run_id }},canary-vite-${{ github.run_id }}
         run: npm run check:env
 
+  alerts:
+    name: Prometheus config and alert rule tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: promtool check and test (the pinned image from deployment/.env.example)
+        working-directory: deployment/prometheus
+        run: |
+          image=$(sed -n 's/^PROMETHEUS_IMAGE=//p' ../.env.example)
+          docker run --rm -v "$PWD:/rules:ro" -w /rules --entrypoint promtool "$image" check config prometheus.yml
+          docker run --rm -v "$PWD:/rules:ro" -w /rules --entrypoint promtool "$image" test rules alerts.test.yml
+          diff -r . ../../build-package/deployment/prometheus
+
   e2e:
     name: Accessible end-to-end journey (Playwright, axe)
     runs-on: ubuntu-24.04

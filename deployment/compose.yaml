@@ -30,6 +30,10 @@ x-app-env: &app-env
   MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE: ${MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE:-2}
   STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
   STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  # Internal metrics port per process (12); scraped on the services network, never published.
+  METRICS_PORT: ${METRICS_PORT:-9100}
+  # Only the gateway reaches the API (its port is not published); in production name the ingress only (22).
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
 x-backend: &backend
   profiles: [app]
   image: codehover-cloud-backend:local
@@ -166,6 +170,19 @@ services:
       api: {condition: service_healthy}
     networks: [services]
     restart: unless-stopped
+  # Optional operations profile (12, 22): Prometheus with the reference alert rules; localhost only.
+  prometheus:
+    profiles: [ops]
+    image: ${PROMETHEUS_IMAGE:?choose a reviewed Prometheus image}
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
+              "--storage.tsdb.retention.time=15d"]
+    volumes: ["./prometheus:/etc/prometheus:ro", "metrics:/prometheus"]
+    ports: ["127.0.0.1:${PROMETHEUS_HOST_PORT:-9090}:9090"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [services]
+    restart: unless-stopped
 secrets:
   github_app_key:
     file: ${GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}
@@ -173,5 +190,6 @@ volumes:
   pgdata:
   rabbitdata:
   objects:
+  metrics:
 networks:
   services:

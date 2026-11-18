@@ -11,8 +11,10 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from app.adapters.oauth import OAuthError, OAuthProvider
+from app.core import metrics, ratelimit
 from app.core.errors import ApiError
 from app.core.security import safe_return_path
 from app.core.settings import Settings
@@ -56,6 +58,7 @@ class MeResponse(BaseModel):
     display_name: str
     primary_email: str | None
     identities: list[IdentityOut]
+    operator: bool = False  # platform operations role (09); shows the operations view
 
 
 class SessionOut(BaseModel):
@@ -87,6 +90,8 @@ def _provider(request: Request, name: str) -> OAuthProvider | None:
 
 
 def _redirect(path: str, **query: str) -> RedirectResponse:
+    if "error" in query:
+        metrics.AUTH_FAILURES.labels(reason=metrics.label(query["error"])).inc()
     target = f"{path}?{urlencode(query)}" if query else path
     response = RedirectResponse(target, status_code=302)
     response.headers["Cache-Control"] = "no-store"
@@ -98,6 +103,13 @@ def _redirect(path: str, **query: str) -> RedirectResponse:
 async def start(
     provider: Provider, request: Request, db: Db, return_to: str | None = Query(default=None, max_length=512)
 ) -> RedirectResponse:
+    settings = _settings(request)
+    try:
+        await ratelimit.hit(
+            request.app.state.rate_sessions, settings, "signin", ratelimit.client_address(request, settings)
+        )
+    except ApiError:
+        return _redirect(LOGIN_PAGE, error="rate_limited")  # a browser navigation: never a JSON error
     impl = _provider(request, provider)
     if impl is None:
         return _redirect(LOGIN_PAGE, error="unavailable")
@@ -196,7 +208,9 @@ async def logout(request: Request, db: Db, principal: CsrfPrincipal) -> Response
 
 @router.get("/me", response_model=MeResponse)
 async def me(db: Db, principal: CurrentPrincipal) -> MeResponse:
-    return MeResponse.model_validate(await service.profile(db, principal))
+    profile = await service.profile(db, principal)
+    operator = (await db.execute(text("SELECT app_private.is_operator()"))).scalar_one()
+    return MeResponse.model_validate({**profile, "operator": bool(operator)})
 
 
 @router.get("/me/sessions", response_model=SessionList)

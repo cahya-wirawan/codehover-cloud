@@ -1,0 +1,139 @@
+# promtool test rules alerts.test.yml: every alert fires on its threshold and stays quiet below it.
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      # 3 of 100 per minute fail (3%) on one route; a quiet route with 1% failing stays below the threshold.
+      - series: 'codehover_http_requests_total{route="/api/v1/builds/{build_id}",method="GET",status="5xx"}'
+        values: '0+3x20'
+      - series: 'codehover_http_requests_total{route="/api/v1/builds/{build_id}",method="GET",status="2xx"}'
+        values: '0+97x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ApiErrorRateHigh
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: API 5xx above 2% over 5 minutes (at least 100 requests) }
+  - interval: 1m
+    input_series:
+      - series: 'codehover_http_requests_total{route="/x",method="GET",status="5xx"}'
+        values: '0+1x20'
+      - series: 'codehover_http_requests_total{route="/x",method="GET",status="2xx"}'
+        values: '0+99x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ApiErrorRateHigh
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      # Too few requests: 50% failing but under 100 requests in 5 minutes.
+      - series: 'codehover_http_requests_total{route="/x",method="GET",status="5xx"}'
+        values: '0+5x20'
+      - series: 'codehover_http_requests_total{route="/x",method="GET",status="2xx"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ApiErrorRateHigh
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'codehover_http_requests_total{route="/x",method="GET",status="5xx"}'
+        values: '0+10x90'
+      - series: 'codehover_http_requests_total{route="/x",method="GET",status="2xx"}'
+        values: '0+90x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: AvailabilityBudgetBurn
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: Error budget burning fast (14.4x over one hour) }
+  - interval: 1m
+    input_series:
+      - series: 'codehover_queue{measure="runnable_tasks",process="scheduler"}'
+        values: '3x30'
+      - series: 'codehover_task_outcomes_total{stage="explain",outcome="completed",process="worker"}'
+        values: '5x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NoTaskProgress
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: Runnable tasks but no completed task for 10 minutes }
+  - interval: 1m
+    input_series:
+      - series: 'codehover_queue{measure="runnable_tasks",process="scheduler"}'
+        values: '3x30'
+      - series: 'codehover_task_outcomes_total{stage="explain",outcome="completed",process="worker"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NoTaskProgress
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'codehover_queue{measure="outbox_oldest_seconds",process="scheduler"}'
+        values: '30 61 90 120 150'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: OutboxLagging
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: OutboxLagging
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: Oldest due outbox notification older than 60 seconds }
+  - interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_messages{queue="codehover.dead",vhost="/"}'
+        values: '0 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: DeadLettersRising
+        exp_alerts:
+          - exp_labels: { severity: ticket, queue: codehover.dead, vhost: / }
+            exp_annotations: { summary: Messages are arriving in the dead-letter queue }
+  - interval: 1m
+    input_series:
+      - series: 'codehover_queue{measure="usage_drift_micro_usd",process="scheduler"}'
+        values: '0 0 5 5 5 5 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: UsageCounterDrift
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: UsageCounterDrift
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: Reserved/settled counters differ from the ledger }
+  - interval: 1m
+    input_series:
+      - series: 'codehover_queue{measure="unknown_oldest_seconds",process="scheduler"}'
+        values: '86000 86500'
+      - series: 'codehover_queue{measure="deletion_oldest_seconds",process="scheduler"}'
+        values: '3600 90000'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: UnknownProviderSpendStale
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: UnknownProviderSpendStale
+        exp_alerts:
+          - exp_labels: { severity: ticket }
+            exp_annotations: { summary: A provider attempt has had an unknown outcome for more than 24 hours }
+      - eval_time: 1m
+        alertname: DeletionOverdue
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: A deletion has not completed within 24 hours (A22) }
+  - interval: 1m
+    input_series:
+      - series: 'up{job="codehover",process="worker",instance="worker:9100"}'
+        values: '1 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MetricsTargetDown
+        exp_alerts:
+          - exp_labels: { severity: page, job: codehover, process: worker, instance: "worker:9100" }
+            exp_annotations: { summary: worker is not reporting metrics }

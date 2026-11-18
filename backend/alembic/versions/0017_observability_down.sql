@@ -1,0 +1,12 @@
+DROP FUNCTION app_private.ops_gauges();
+REVOKE SELECT (requested_at) ON deletion_requests FROM app_resolver;
+REVOKE SELECT (account_id, kind, amount_micro_usd) ON usage_entries FROM app_resolver;
+REVOKE SELECT (id, reserved_micro_usd, settled_micro_usd) ON usage_accounts FROM app_resolver;
+REVOKE SELECT (state, created_at) ON provider_attempts FROM app_resolver;
+REVOKE SELECT (published_at, available_at) ON outbox FROM app_resolver;
+REVOKE SELECT (state, next_attempt_at, lease_until, created_at) ON build_tasks FROM app_resolver;
+DROP POLICY resolver_gauges ON usage_entries;
+DROP POLICY resolver_gauges ON usage_accounts;
+DROP POLICY resolver_gauges ON provider_attempts;
+DROP POLICY resolver_gauges ON outbox;
+DROP POLICY resolver_gauges ON build_tasks;

@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core import metrics
 from app.core.errors import ApiError
 from app.core.security import digest
 from app.core.tenancy import set_context
@@ -52,10 +53,12 @@ class StreamSlot:
     def __enter__(self) -> StreamSlot:
         session_key, workspace_key = self.keys
         if _open[session_key] >= PER_SESSION or _open[workspace_key] >= PER_WORKSPACE:
+            metrics.SSE_REJECTED.inc()
             raise ApiError(429, "STREAM_LIMIT", "Too many open event streams.", retryable=True)
         for key in self.keys:
             _open[key] += 1
         self.held = True
+        metrics.SSE_STREAMS.inc()
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -63,6 +66,7 @@ class StreamSlot:
         if not self.held:
             return
         self.held = False
+        metrics.SSE_STREAMS.dec()
         for key in self.keys:
             _open[key] -= 1
             if _open[key] <= 0:

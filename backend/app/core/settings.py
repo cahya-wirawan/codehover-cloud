@@ -69,6 +69,17 @@ class Settings(BaseSettings):
     generation_allowance_micro_usd: int = Field(default=0, ge=0)
     max_active_builds_per_workspace: int = Field(default=2, ge=1, le=20)
     max_active_acquisitions_per_workspace: int = Field(default=2, ge=1, le=20)
+    # Rate limits shared by all replicas (06 "Initial rate policies"; app/core/ratelimit.py).
+    rate_limit_user_per_minute: int = Field(default=120, ge=1)
+    rate_limit_signin_per_minute: int = Field(default=10, ge=1)
+    rate_limit_public_per_minute: int = Field(default=300, ge=1)
+    rate_limit_estimates_per_hour: int = Field(default=10, ge=1)
+    rate_limit_acquisitions_per_hour: int = Field(default=10, ge=1)
+    rate_limit_builds_per_day: int = Field(default=20, ge=1)
+    # Comma-separated networks whose X-Forwarded-For is believed (the ingress proxy only, 22).
+    trusted_proxies: str = ""
+    # Internal Prometheus port per process (12); 0 disables it. Never routed by the gateway.
+    metrics_port: int = Field(default=0, ge=0, le=65535)
 
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
@@ -76,6 +87,16 @@ class Settings(BaseSettings):
     def configured_providers(self) -> frozenset[str]:
         """Providers whose catalog models can run: replay always, others only with credentials."""
         return frozenset({"replay"} | ({"anthropic"} if self.anthropic_api_key is not None else set()))
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _networks(cls, value: str) -> str:
+        import ipaddress
+
+        for network in (n.strip() for n in value.split(",")):
+            if network:
+                ipaddress.ip_network(network, strict=False)  # raises on anything but an address or CIDR
+        return value
 
     @field_validator("public_origin")
     @classmethod

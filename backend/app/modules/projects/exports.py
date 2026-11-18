@@ -22,14 +22,14 @@ from app.modules.workspaces.service import audit
 PER_HOUR = 10
 COLUMNS = (
     "e.id, e.build_id, e.format, e.status, e.byte_count, e.error_code, e.created_at, e.completed_at, e.expires_at,"
-    " e.expires_at IS NOT NULL AND e.expires_at <= now() AS expired, e.requested_by, e.object_key, e.sha256"
+    " (e.status = 'expired' OR (e.expires_at IS NOT NULL AND e.expires_at <= now())) AS expired, e.requested_by, e.object_key, e.sha256"
 )
 
 
 async def request_export(db: AsyncSession, member: Member, build_id: UUID, fmt: str) -> dict[str, Any]:
     build = (
         await db.execute(
-            text("SELECT status FROM builds WHERE workspace_id = :w AND id = :b"),
+            text("SELECT status, content_purged_at FROM builds WHERE workspace_id = :w AND id = :b"),
             {"w": member.workspace_id, "b": build_id},
         )
     ).one_or_none()
@@ -37,6 +37,10 @@ async def request_export(db: AsyncSession, member: Member, build_id: UUID, fmt: 
         raise ApiError(404, "NOT_FOUND", "Build not found.")
     if build.status != "ready":
         raise ApiError(409, "BUILD_NOT_READY", "Only a ready build can be exported.")
+    if build.content_purged_at is not None:
+        raise ApiError(
+            409, "BUILD_EXPIRED", "Retention removed this build's content; publish or export a newer build."
+        )
     await db.execute(
         text("SELECT 1 FROM workspaces WHERE id = :w FOR UPDATE"), {"w": member.workspace_id}
     )  # serializes the hourly quota per workspace
@@ -92,6 +96,8 @@ async def get_export(db: AsyncSession, member: Member, export_id: UUID) -> dict[
 async def download(db: AsyncSession, member: Member, export_id: UUID) -> tuple[str, str, str, Any]:
     """(object key, content type, file name, row): authorized again on every request."""
     row = await _visible(db, member, export_id)
+    if row.status == "expired":  # retention removed the package (0016)
+        raise ApiError(410, "EXPORT_EXPIRED", "This export expired; request a new one.")
     if row.status != "ready":
         raise ApiError(
             409, "EXPORT_NOT_READY", "This export is not ready.", retryable=row.status == "pending"

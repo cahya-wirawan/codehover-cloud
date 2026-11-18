@@ -17,6 +17,7 @@ from fastapi import Depends, Request, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import ratelimit
 from app.core.errors import ApiError
 from app.core.security import csrf_token, digest, matches_digest
 from app.core.settings import Settings
@@ -126,6 +127,7 @@ async def optional_principal(request: Request, db: Db) -> Principal | None:
             text("UPDATE sessions SET last_seen_at = now() WHERE id = :id"), {"id": row.session_id}
         )
         await db.commit()
+    await ratelimit.hit(request.app.state.rate_sessions, settings, "user", str(row.user_id))
     await set_context(db, user_id=row.user_id)  # user scope for the rest of the request transaction
     return Principal(row.user_id, row.session_id, token, row.csrf_hash, row.reauthenticated_at)
 

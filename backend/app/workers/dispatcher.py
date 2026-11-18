@@ -8,6 +8,7 @@ import logging
 
 import aio_pika
 
+from app.core import metrics
 from app.core.db import create_engine, session_factory
 from app.core.settings import get_settings
 from app.jobs.control import dispatch_once
@@ -20,6 +21,7 @@ IDLE_SECONDS = 1.0
 
 async def body(stop: asyncio.Event) -> None:
     settings = get_settings()
+    metrics.serve(settings.metrics_port)
     sessions = session_factory(create_engine(settings, application_name="dispatcher"))
     assert settings.amqp_url is not None, "AMQP_URL is required"
     connection = await aio_pika.connect_robust(settings.amqp_url.get_secret_value())

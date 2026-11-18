@@ -10,6 +10,7 @@ from fastapi import APIRouter, Header, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
+from app.core.errors import ApiError
 from app.core.pagination import Position, clamp_limit, decode_cursor, encode_cursor
 from app.core.settings import Settings
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
@@ -258,3 +259,81 @@ async def audit_log(
         if more
         else None,
     )
+
+
+# ---------------------------------------------------------------- support access (08)
+class SupportGrantIn(BaseModel):
+    hours: Annotated[int, Field(ge=1, le=72)]
+    reason: Annotated[str, Field(min_length=3, max_length=500)]
+
+
+class SupportGrantOut(BaseModel):
+    id: UUID
+    granted_by: UUID
+    granted_by_name: str | None
+    reason: str
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None
+    active: bool
+
+
+class SupportGrantList(BaseModel):
+    items: list[SupportGrantOut]
+    next_cursor: None = None
+
+
+_GRANTS = (
+    "SELECT g.id, g.granted_by, u.display_name AS granted_by_name, g.reason, g.created_at, g.expires_at,"
+    " g.revoked_at, (g.revoked_at IS NULL AND g.expires_at > now()) AS active FROM support_grants g"
+    " LEFT JOIN users u ON u.id = g.granted_by WHERE g.workspace_id = :w"
+)
+
+
+@router.get("/workspaces/{workspace_id}/support-access", response_model=SupportGrantList)
+async def list_support_access(db: Db, member: ReadMember) -> SupportGrantList:
+    require_role(member, "admin")
+    rows = await db.execute(
+        text(_GRANTS + " ORDER BY g.created_at DESC LIMIT 50"), {"w": member.workspace_id}
+    )
+    return SupportGrantList(items=[SupportGrantOut(**dict(r._mapping)) for r in rows])
+
+
+@router.post("/workspaces/{workspace_id}/support-access", response_model=SupportGrantOut, status_code=201)
+async def grant_support_access(body: SupportGrantIn, db: Db, member: WriteMember) -> SupportGrantOut:
+    """Let platform operators read this workspace, read-only, until the grant expires or is revoked."""
+    require_role(member, "admin")
+    grant_id = (
+        await db.execute(
+            text(
+                "INSERT INTO support_grants(workspace_id, granted_by, reason, expires_at)"
+                " VALUES (:w, :u, :r, now() + make_interval(hours => :h)) RETURNING id"
+            ),
+            {"w": member.workspace_id, "u": member.user_id, "r": body.reason, "h": body.hours},
+        )
+    ).scalar_one()
+    await service.audit(db, member, "support.granted", "support_grant", grant_id, {"hours": body.hours})
+    row = (
+        await db.execute(text(_GRANTS + " AND g.id = :g"), {"w": member.workspace_id, "g": grant_id})
+    ).one()
+    await db.commit()
+    return SupportGrantOut(**dict(row._mapping))
+
+
+@router.delete("/workspaces/{workspace_id}/support-access/{grant_id}", status_code=204)
+async def revoke_support_access(grant_id: UUID, db: Db, member: WriteMember) -> Response:
+    require_role(member, "admin")
+    revoked = (
+        await db.execute(
+            text(
+                "UPDATE support_grants SET revoked_at = now() WHERE workspace_id = :w AND id = :g"
+                " AND revoked_at IS NULL RETURNING id"
+            ),
+            {"w": member.workspace_id, "g": grant_id},
+        )
+    ).one_or_none()
+    if revoked is None:
+        raise ApiError(404, "NOT_FOUND", "Support access not found.")
+    await service.audit(db, member, "support.revoked", "support_grant", grant_id)
+    await db.commit()
+    return Response(status_code=204)
