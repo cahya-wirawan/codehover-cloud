@@ -4,6 +4,24 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-18
+
+### Added
+
+- `contracts/overview.schema.json`, `guide-plan.schema.json` and `guide-page.schema.json` 1.0.0: the structured outputs of P03, P01 and P04.
+- `deployment/model-catalog.example.json`: an operator catalog template with one Anthropic preset, whose region and retention entries must be confirmed before use.
+- 05: `generation_cache` (tenant-local cache and stage checkpoint), `file_explanations`, and the full `guide_pages` columns.
+- 06: the guide index and page responses, file explanations in the file view, and 422 `PRESET_UNAVAILABLE`.
+
+### Changed
+
+- 07: the provider gateway as implemented in T11: the adapters, error classes, earmark bound, stage list, at most four units in flight, cache checkpoints, labeled fallbacks, and unknown outcomes on re-claim.
+- 19: prompt set 0.2.0, its data-boundary markers and the repair template.
+
+### Removed
+
+- 22: the `MODEL_PROVIDER`, `MODEL_ID` and `MODEL_API_KEY` settings, replaced by `MODEL_CATALOG_FILE` and per-provider credentials (`ANTHROPIC_API_KEY`).
+
 ## [0.4.2] - 2026-11-18
 
 ### Security

@@ -110,6 +110,45 @@ async def reserve_build(
     )
 
 
+async def settle_attempt(
+    db: AsyncSession, workspace_id: UUID, build_id: UUID, attempt_id: UUID, amount: int
+) -> int:
+    """Charge an attempt's actual cost: reserved -> settled on the build and its account, once.
+    The earmark is released implicitly (the attempt is no longer open). Returns the amount charged."""
+    build = (
+        await db.execute(
+            text(
+                "SELECT usage_account_id, reserved_micro_usd FROM builds WHERE workspace_id = :w AND id = :b FOR UPDATE"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).one()
+    if amount <= 0 or build.usage_account_id is None:
+        return 0
+    charged = min(amount, int(build.reserved_micro_usd))  # the earmark bound makes this a no-op cap
+    inserted = (
+        await db.execute(
+            text(
+                "INSERT INTO usage_entries(workspace_id, account_id, build_id, attempt_id, kind, amount_micro_usd,"
+                " idempotency_key) VALUES (:w, :a, :b, :t, 'settle', :n, :key)"
+                " ON CONFLICT (workspace_id, idempotency_key) DO NOTHING RETURNING id"
+            ),
+            {
+                "w": workspace_id,
+                "a": build.usage_account_id,
+                "b": build_id,
+                "t": attempt_id,
+                "n": charged,
+                "key": f"attempt:{attempt_id}:settle",
+            },
+        )
+    ).scalar_one_or_none()
+    if inserted is None:
+        return 0
+    await _move(db, workspace_id, build.usage_account_id, build_id, reserved=-charged, settled=charged)
+    return charged
+
+
 async def unresolved_holds(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> int:
     """Earmarks of provider attempts that are still running or whose outcome is unknown (T11)."""
     held = (

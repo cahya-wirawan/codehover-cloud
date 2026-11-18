@@ -190,9 +190,18 @@ async def scanned_files(db: AsyncSession, workspace_id: UUID, snapshot_id: UUID)
     return [ScannedFile(str(r[0]), r[1], r[2], int(r[3]), int(r[4])) for r in rows]
 
 
+def preset_available(catalog: Catalog, name: str, settings: Settings) -> bool:
+    preset = catalog.preset(name)
+    if preset is None:
+        return False
+    providers = {catalog.model(preset.writer.model).provider, catalog.model(preset.checker.model).provider}
+    return providers <= settings.configured_providers()
+
+
 async def create_estimate(
     db: AsyncSession,
     catalog: Catalog,
+    settings: Settings,
     member: Member,
     project_id: UUID,
     snapshot_id: UUID,
@@ -210,6 +219,8 @@ async def create_estimate(
     preset = catalog.preset(config.model_preset)
     if preset is None:
         raise ApiError(422, "PRESET_UNKNOWN", "This model preset is not in the approved catalog.")
+    if not preset_available(catalog, config.model_preset, settings):
+        raise ApiError(422, "PRESET_UNAVAILABLE", "This model preset's provider is not configured.")
     try:
         files = await scanned_files(db, member.workspace_id, snapshot_id)
         # Bounded but CPU-bound: keep the event loop serving other requests meanwhile.

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
 from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
@@ -213,6 +213,48 @@ class FileSymbol(BaseModel):
     summary: str | None
 
 
+class ChunkExplanation(BaseModel):
+    start_line: int
+    end_line: int
+    incomplete: bool
+    summary: str
+    notes: list[dict[str, Any]]
+    status: str
+
+
+class FileExplanationOut(BaseModel):
+    status: str
+    summary: str
+    chunks: list[ChunkExplanation]
+
+
+class GuidePageSummary(BaseModel):
+    slug: str
+    title: str
+    ordinal: int
+    purpose: str
+    status: str
+    check_status: str
+    provenance: dict[str, Any]
+
+
+class GuideIndexOut(BaseModel):
+    overview: dict[str, Any] | None
+    pages: list[GuidePageSummary]
+
+
+class Citation(BaseModel):
+    file_id: str
+    path: str | None
+    start_line: int
+    end_line: int
+
+
+class GuidePageOut(GuidePageSummary):
+    markdown: str
+    citations: list[Citation]
+
+
 class FileOut(BaseModel):
     id: UUID
     path: str
@@ -223,6 +265,7 @@ class FileOut(BaseModel):
     end_line: int
     lines: list[str]
     symbols: list[FileSymbol]
+    explanation: FileExplanationOut | None = None
 
 
 class Related(BaseModel):
@@ -437,7 +480,7 @@ async def create_estimate(
 
     async def produce() -> tuple[int, dict[str, Any]]:
         created = await estimates.create_estimate(
-            db, _catalog(request), member, project_id, body.snapshot_id, body.config
+            db, _catalog(request), _settings(request), member, project_id, body.snapshot_id, body.config
         )
         return 201, EstimateOut(**created).model_dump(mode="json")
 
@@ -458,3 +501,20 @@ async def create_estimate(
 @router.get("/projects/{project_id}/estimates/{estimate_id}", response_model=EstimateOut)
 async def get_estimate(project_id: UUID, estimate_id: UUID, db: Db, member: ProjectReader) -> EstimateOut:
     return EstimateOut(**await estimates.get_estimate(db, member, project_id, estimate_id))
+
+
+# ---------------------------------------------------------------- guide
+@router.get("/builds/{build_id}/guide", response_model=GuideIndexOut)
+async def guide_index(build_id: UUID, request: Request, db: Db, member: BuildReader) -> GuideIndexOut:
+    return GuideIndexOut(**await service.guide_index(db, _objects(request), member, build_id))
+
+
+@router.get("/builds/{build_id}/guide/{slug}", response_model=GuidePageOut)
+async def guide_page(
+    build_id: UUID,
+    request: Request,
+    db: Db,
+    member: BuildReader,
+    slug: Annotated[str, Path(pattern=r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$")],
+) -> GuidePageOut:
+    return GuidePageOut(**await service.guide_page(db, _objects(request), member, build_id, slug))

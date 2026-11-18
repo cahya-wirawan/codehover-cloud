@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -34,7 +35,11 @@ ALLOWANCE = 50_000_000  # USD 50 in micro-units
 def configure(client: httpx.AsyncClient, *, allowance: int = ALLOWANCE, active_limit: int = 2) -> Any:
     app = client.app  # type: ignore[attr-defined]
     app.state.settings = app.state.settings.model_copy(
-        update={"generation_allowance_micro_usd": allowance, "max_active_builds_per_workspace": active_limit}
+        update={
+            "generation_allowance_micro_usd": allowance,
+            "max_active_builds_per_workspace": active_limit,
+            "anthropic_api_key": SecretStr("test-only"),  # the priced test model's provider is configured
+        }
     )
     app.state.catalog = catalog.Catalog.model_validate(
         {
@@ -219,7 +224,7 @@ async def test_build_reserves_its_cap_once_and_releases_the_rest_at_the_end(
     owner, ws, project = await setup_project(client, idp, github)
     app = configure(client)
     snapshot = await scanned_snapshot(owner, app, project)
-    estimate = (await make_estimate(owner, project, snapshot["id"])).json()
+    estimate = (await make_estimate(owner, project, snapshot["id"], preset="replay-v2")).json()
     github.commit_sha = "d" * 40  # the branch moves after the estimate (A05)
 
     started = await start_from(owner, project, estimate["id"], cap=2_000_000)
@@ -236,7 +241,7 @@ async def test_build_reserves_its_cap_once_and_releases_the_rest_at_the_end(
     assert usage["available_micro_usd"] == ALLOWANCE - 2_000_000
 
     outcomes = await drive(app, build["id"])
-    assert outcomes == ["completed"] * 3, outcomes  # acquire skipped: the snapshot was already scanned
+    assert outcomes == ["completed"] * 6, outcomes  # acquire skipped: the snapshot was already scanned
     done = (await owner.get(f"/api/v1/builds/{build['id']}")).json()
     assert done["status"] == "ready"
     assert done["usage"] == {"cap_micro_usd": 2_000_000, "reserved_micro_usd": 0, "settled_micro_usd": 0}
@@ -417,3 +422,16 @@ async def test_workspace_snapshot_acquisition_limit(
     await drive_snapshot(app, first.json()["id"])
     allowed = await unsafe(owner, "POST", f"/api/v1/projects/{second}/snapshots", json={})
     assert allowed.status_code == 202, allowed.text
+
+
+async def test_presets_need_a_configured_provider(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, _ws, project = await setup_project(client, idp, github)
+    app = configure(client)
+    snapshot = await scanned_snapshot(owner, app, project)
+    app.state.settings = app.state.settings.model_copy(update={"anthropic_api_key": None})
+    refused = await make_estimate(owner, project, snapshot["id"])
+    assert refused.status_code == 422 and refused.json()["error"]["code"] == "PRESET_UNAVAILABLE"
+    listed = (await owner.get("/api/v1/catalog/presets")).json()
+    assert [p["name"] for p in listed["items"]] == ["replay-v2"]

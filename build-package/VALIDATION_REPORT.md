@@ -1,6 +1,19 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.4.2
+Date: 2026-11-18 · Package version 0.5.0
+
+0.5.0 records T11, the provider gateway and generation stages. Integration tests run the real pipeline with the deterministic replay gateway, and a scripted fake stands in for a priced provider; no real provider is called. They cover:
+- a free replay-preset build through explain, overview, plan, guide and render, with labeled cards, file explanations, cited guide pages, a manifest listing the guide, and the guide endpoints private to the workspace;
+- priced calls whose actual cost never exceeds the earmark, with a ledger that balances (reserve, settle, release) and provider request IDs kept;
+- budget exhaustion before any request;
+- a rate-limited call retried without charge, and an invalid answer billed and then repaired;
+- a refusal falling back to a labeled source-only card;
+- an unknown outcome keeping its hold after the build ends;
+- a crash after paid output resuming from the checkpoint without paying again (A09);
+- a fenced-out worker settling and checkpointing nothing;
+- a killed worker's attempts becoming `unknown` on re-claim, with their holds kept.
+
+Unit tests cover chunking, data-boundary markers, validators, the Markdown allowlist, the schema projection, and the Anthropic adapter against a mock transport, including error normalization and a request with no sampling parameters or tools. Mutation checks catch removing the earmark budget check, the settlement fence, unknown-on-re-claim, cache reuse, the repair call, symbol-key validation and the raw-HTML check. Cancellation has no test until T13. 224 backend tests pass (one Linux-only test skipped on macOS).
 
 0.4.2 bounds scope selection. Against 2000 files with 29 segments of 200 characters each and 40 hostile but valid globs, every selection finishes or stops at the budget within 1.6 s (previously 61 s); ordinary globs take 0.2 s on those paths and 37 ms on a realistic repository. 183 backend tests pass.
 

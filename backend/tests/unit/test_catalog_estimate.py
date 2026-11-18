@@ -224,3 +224,12 @@ def test_glob_matching_is_bounded_on_hostile_globs() -> None:
 def test_unsupported_or_oversized_globs_are_rejected(glob: str) -> None:
     with pytest.raises(ValidationError):
         GenerationConfig(model_preset="replay-v2", include=[glob])
+
+
+def test_example_operator_catalog_is_valid() -> None:
+    example = Path(__file__).resolve().parents[3] / "deployment" / "model-catalog.example.json"
+    loaded = catalog.load(str(example))
+    assert loaded.revision != catalog.BUILTIN_REVISION
+    preset = loaded.preset("balanced-v1")
+    assert preset is not None and loaded.model(preset.writer.model).provider == "anthropic"
+    assert all(m.price.input_per_mtok_micro_usd > 0 for m in loaded.models if m.provider != "replay")

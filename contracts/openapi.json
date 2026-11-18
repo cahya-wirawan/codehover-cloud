@@ -275,6 +275,83 @@
         "title": "BuildUsage",
         "type": "object"
       },
+      "ChunkExplanation": {
+        "properties": {
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "boolean"
+          },
+          "notes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_line",
+          "end_line",
+          "incomplete",
+          "summary",
+          "notes",
+          "status"
+        ],
+        "title": "ChunkExplanation",
+        "type": "object"
+      },
+      "Citation": {
+        "properties": {
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_id",
+          "path",
+          "start_line",
+          "end_line"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
       "ConnectionList": {
         "properties": {
           "items": {
@@ -565,11 +642,47 @@
         "title": "EstimateRequest",
         "type": "object"
       },
+      "FileExplanationOut": {
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkExplanation"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "chunks"
+        ],
+        "title": "FileExplanationOut",
+        "type": "object"
+      },
       "FileOut": {
         "properties": {
           "end_line": {
             "title": "End Line",
             "type": "integer"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileExplanationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "format": "uuid",
@@ -716,10 +829,10 @@
             "items": {
               "maxLength": 200,
               "minLength": 1,
-              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]]+$",
+              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]?]+$",
               "type": "string"
             },
-            "maxItems": 50,
+            "maxItems": 20,
             "title": "Exclude",
             "type": "array"
           },
@@ -737,10 +850,10 @@
             "items": {
               "maxLength": 200,
               "minLength": 1,
-              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]]+$",
+              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]?]+$",
               "type": "string"
             },
-            "maxItems": 50,
+            "maxItems": 20,
             "title": "Include",
             "type": "array"
           },
@@ -786,6 +899,136 @@
           "model_preset"
         ],
         "title": "GenerationConfig",
+        "type": "object"
+      },
+      "GuideIndexOut": {
+        "properties": {
+          "overview": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overview"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/GuidePageSummary"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "overview",
+          "pages"
+        ],
+        "title": "GuideIndexOut",
+        "type": "object"
+      },
+      "GuidePageOut": {
+        "properties": {
+          "check_status": {
+            "title": "Check Status",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "ordinal",
+          "purpose",
+          "status",
+          "check_status",
+          "provenance",
+          "markdown",
+          "citations"
+        ],
+        "title": "GuidePageOut",
+        "type": "object"
+      },
+      "GuidePageSummary": {
+        "properties": {
+          "check_status": {
+            "title": "Check Status",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "ordinal",
+          "purpose",
+          "status",
+          "check_status",
+          "provenance"
+        ],
+        "title": "GuidePageSummary",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2430,6 +2673,102 @@
           }
         },
         "summary": "File View",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/guide": {
+      "get": {
+        "operationId": "guide_index_api_v1_builds__build_id__guide_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideIndexOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guide Index",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/guide/{slug}": {
+      "get": {
+        "operationId": "guide_page_api_v1_builds__build_id__guide__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$",
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuidePageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guide Page",
         "tags": [
           "projects"
         ]

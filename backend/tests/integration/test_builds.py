@@ -48,14 +48,15 @@ def fixture_tarball() -> bytes:
     return buffer.getvalue()
 
 
-async def drive(app: Any, build_id: str, rounds: int = 12) -> list[str]:
+async def drive(app: Any, build_id: str, rounds: int = 12, runtime: Runtime | None = None) -> list[str]:
     """Deliver pending notifications to the runner until the build stops, like the consumer would."""
     assert RUNTIME_URL
-    rt = Runtime(
+    rt = runtime or Runtime(
         sessions=session_factory(create_async_engine(RUNTIME_URL)),
         store=app.state.objects,
         github=app.state.github_app,
         allow_unsandboxed=True,
+        catalog=app.state.catalog,
     )
     outcomes: list[str] = []
     for _ in range(rounds):

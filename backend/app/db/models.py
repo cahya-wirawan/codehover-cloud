@@ -462,3 +462,50 @@ class WebhookReceipt(Base):
     state: Mapped[str] = mapped_column(Text, server_default=text("'received'"))
     received_at: Mapped[datetime] = ts(default_now=True)
     processed_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+# ---------------------------------------------------------------- generation (0007)
+class GenerationCache(Base):
+    """Tenant-local validated model output; also the fenced checkpoint of generation stages."""
+
+    __tablename__ = "generation_cache"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    cache_key: Mapped[str] = mapped_column(Text)
+    purpose: Mapped[str] = mapped_column(Text)
+    output: Mapped[dict[str, Any]] = jsonb()
+    output_digest: Mapped[str] = mapped_column(Text)
+    model_id: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    attempt_id: Mapped[UUID | None] = ref(nullable=True)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts(default_now=False)
+
+
+class FileExplanation(Base):
+    __tablename__ = "file_explanations"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    source_file_id: Mapped[UUID] = ref()
+    status: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    chunks: Mapped[list[Any]] = jsonb(default="'[]'::jsonb")
+    provenance: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
+
+
+class GuidePage(Base):
+    __tablename__ = "guide_pages"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    slug: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    purpose: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    source_ranges: Mapped[list[Any]] = jsonb()
+    status: Mapped[str] = mapped_column(Text, server_default=text("'planned'"))
+    markdown_key: Mapped[str | None] = mapped_column(Text)
+    provenance: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
+    check_status: Mapped[str] = mapped_column(Text, server_default=text("'unchecked'"))
+    created_at: Mapped[datetime] = ts(default_now=True)

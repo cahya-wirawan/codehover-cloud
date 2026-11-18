@@ -14,6 +14,7 @@ from app.core.pagination import Position, clamp_limit, decode_cursor, encode_cur
 from app.core.settings import Settings
 from app.engine.catalog import Catalog
 from app.modules.identity.sessions import CurrentPrincipal, Db
+from app.modules.projects.estimates import preset_available
 from app.modules.usage import ledger
 from app.modules.workspaces.access import ReadMember, require_role
 
@@ -123,7 +124,10 @@ async def presets(request: Request, principal: CurrentPrincipal) -> PresetList:
     del principal  # signed-in users only; the catalog holds no tenant data
     catalog: Catalog = request.app.state.catalog
     items = []
+    settings = _settings(request)
     for preset in catalog.presets:
+        if not preset_available(catalog, preset.name, settings):
+            continue
         models = [catalog.model(preset.writer.model), catalog.model(preset.checker.model)]
         items.append(
             PresetOut(

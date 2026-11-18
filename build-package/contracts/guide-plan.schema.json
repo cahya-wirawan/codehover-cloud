@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:codehover-cloud:schema:guide-plan:1.0.0",
+  "title": "codehover-cloud guide plan v1 (19 P01)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pages", "reason"],
+  "properties": {
+    "pages": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "title", "purpose", "source_ranges"],
+        "properties": {
+          "slug": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"},
+          "title": {"type": "string", "maxLength": 200},
+          "purpose": {"type": "string", "maxLength": 1000},
+          "source_ranges": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["file_id", "path", "start_line", "end_line"],
+              "properties": {
+                "file_id": {"type": "string", "maxLength": 36},
+                "path": {"type": "string", "maxLength": 1024},
+                "start_line": {"type": "integer", "minimum": 1},
+                "end_line": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "reason": {"type": "string", "maxLength": 1000}
+  }
+}

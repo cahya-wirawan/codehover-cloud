@@ -21,6 +21,7 @@ dependencies = [
   "tree-sitter-javascript>=0.23",
   "tree-sitter-typescript>=0.23",
   "jsonschema>=4.23",
+  "anthropic>=1.0",  # official SDK for the Anthropic adapter (07 provider gateway)
 ]
 
 [project.optional-dependencies]

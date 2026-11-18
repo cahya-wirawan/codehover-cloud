@@ -32,7 +32,17 @@ LEASE_SECONDS = 120
 HEARTBEAT_SECONDS = 20
 MAX_ATTEMPTS = 4  # first try + three retries
 BACKOFF_SECONDS = (5, 30, 120)
-STAGES = ("acquire", "index", "explain", "render")
+STAGES = ("acquire", "index", "explain", "render")  # M1 replay builds (started from a ref)
+GENERATION_STAGES = ("acquire", "index", "explain", "overview", "plan", "guide", "render")  # estimate builds
+TERMINAL_CODES = {
+    "budget_exhausted": ("budget_exhausted", "build.budget_exhausted"),
+    "cancelled": ("cancelled", "build.cancelled"),
+}
+
+
+def pipeline(generation: bool) -> tuple[str, ...]:
+    return GENERATION_STAGES if generation else STAGES
+
 
 Apply = Callable[[AsyncSession], Awaitable[None]]
 
@@ -225,6 +235,15 @@ async def claim(db: AsyncSession, envelope: TaskEnvelope) -> Claim | None:
         {"w": envelope.workspace_id, "b": envelope.build_id},
     )
     assert envelope.build_id is not None
+    # Attempts started under an earlier lease never settled: their provider outcome is unknown, so they
+    # keep their conservative hold until reconciled (07, 11; A09).
+    await db.execute(
+        text(
+            "UPDATE provider_attempts SET state = 'unknown', error_code = COALESCE(error_code, 'lease_lost')"
+            " WHERE workspace_id = :w AND task_id = :t AND state = 'started' AND lease_generation < :g"
+        ),
+        {"w": envelope.workspace_id, "t": row.id, "g": row.lease_generation},
+    )
     await event(db, envelope.workspace_id, envelope.build_id, "stage.started", {"stage": row.stage})
     await db.commit()
     return Claim(
@@ -298,9 +317,16 @@ async def complete(db: AsyncSession, claimed: Claim, apply: Apply | None = None)
         await db.commit()
         return
     await event(db, claimed.workspace_id, claimed.build_id, "stage.completed", {"stage": claimed.stage})
-    position = STAGES.index(claimed.stage)
-    if position + 1 < len(STAGES):
-        await create_task(db, claimed.workspace_id, claimed.build_id, STAGES[position + 1], "build")
+    generation = (
+        await db.execute(
+            text("SELECT config ? 'generation' FROM builds WHERE workspace_id = :w AND id = :b"),
+            {"w": claimed.workspace_id, "b": claimed.build_id},
+        )
+    ).scalar_one()
+    stages = pipeline(bool(generation))
+    position = stages.index(claimed.stage)
+    if position + 1 < len(stages):
+        await create_task(db, claimed.workspace_id, claimed.build_id, stages[position + 1], "build")
     else:
         await finish_build(db, claimed.workspace_id, claimed.build_id, "ready", "build.ready")
     await db.commit()
@@ -337,7 +363,7 @@ async def fail(
     db: AsyncSession, claimed: Claim, error_code: str, *, transient: bool, apply: Apply | None = None
 ) -> str:
     """Returns the resulting task state: retry_wait or failed."""
-    retry = transient and claimed.attempt < MAX_ATTEMPTS
+    retry = transient and claimed.attempt < MAX_ATTEMPTS and error_code not in TERMINAL_CODES
     delay = (
         BACKOFF_SECONDS[min(claimed.attempt, len(BACKOFF_SECONDS)) - 1] * (1 + random.random() * 0.2)  # noqa: S311 - jitter, not crypto
         if retry
@@ -368,12 +394,13 @@ async def fail(
     else:
         if apply is not None:
             await apply(db)
+        status, event_type = TERMINAL_CODES.get(error_code, ("failed", "build.failed"))
         await finish_build(
             db,
             claimed.workspace_id,
             claimed.build_id,
-            "failed",
-            "build.failed",
+            status,
+            event_type,
             {"stage": claimed.stage, "error": error_code},
         )
     await db.commit()

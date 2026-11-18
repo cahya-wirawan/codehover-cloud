@@ -61,9 +61,8 @@ class Settings(BaseSettings):
     github_app_private_key_file: str | None = None
     github_webhook_secret: SecretStr | None = None
 
-    model_provider: str = "replay"
-    model_id: str = "replay-v1"
-    model_api_key: SecretStr | None = None
+    # Provider credentials (07): a provider's catalog models are usable only when its key is set.
+    anthropic_api_key: SecretStr | None = None
     # Approved catalog file (07, 23); without it only the zero-cost replay preset exists.
     model_catalog_file: str | None = None
     # Generation allowance of each workspace per calendar month until entitlements exist (11, M4/M5).
@@ -73,6 +72,10 @@ class Settings(BaseSettings):
 
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
+
+    def configured_providers(self) -> frozenset[str]:
+        """Providers whose catalog models can run: replay always, others only with credentials."""
+        return frozenset({"replay"} | ({"anthropic"} if self.anthropic_api_key is not None else set()))
 
     @field_validator("public_origin")
     @classmethod

@@ -53,9 +53,12 @@ class Model(_Frozen):
 
 
 class Role(_Frozen):
+    """A pipeline role bound to a catalog model. No sampling parameters: current provider API versions
+    reject them; `effort` is the provider's depth control where supported."""
+
     model: str
     max_output_tokens: Annotated[int, Field(ge=256)]
-    temperature: Annotated[float | None, Field(ge=0, le=1)] = None
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
 
 
 class Preset(_Frozen):

@@ -40,7 +40,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/projects/{pid}/snapshots` | ref (default tracked ref) → 202 snapshot | Editor; resolves the exact commit, reuses an existing snapshot of that commit, otherwise schedules acquisition and scan as a snapshot task; a failed acquisition can be requested again, a rejected one cannot; at most `MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE` (default 2) unfinished acquisitions per workspace, checked under the usage-account lock → 409 `ACQUISITION_LIMIT` (retryable) |
 | GET `/projects/{pid}/snapshots/{sid}` | none → SHA,status,scan summary (file counts per scan status) | Member |
 | GET `/projects/{pid}/snapshots/{sid}/files` | cursor,status,limit → path, language, status, reason, sizes | Member; content requires viewer endpoint; byte-ordered by path, cursor bound to the status filter |
-| POST `/projects/{pid}/estimates` | snapshot_id, config → estimate | Editor; `Idempotency-Key`; snapshot not scanned → 409 `SNAPSHOT_NOT_READY`; preset not in the catalog → 422 `PRESET_UNKNOWN`; no selectable file in scope → 422 `SCOPE_EMPTY`; globs too expensive to evaluate → 422 `SCOPE_TOO_COMPLEX`; only `en`/`standard` until P1 variants |
+| POST `/projects/{pid}/estimates` | snapshot_id, config → estimate | Editor; `Idempotency-Key`; snapshot not scanned → 409 `SNAPSHOT_NOT_READY`; preset not in the catalog → 422 `PRESET_UNKNOWN`; no selectable file in scope → 422 `SCOPE_EMPTY`; globs too expensive to evaluate → 422 `SCOPE_TOO_COMPLEX`; only `en`/`standard` until P1 variants; a preset whose provider has no configured credentials → 422 `PRESET_UNAVAILABLE` |
 | GET `/projects/{pid}/estimates/{eid}` | none → estimate | Member |
 | GET/POST `/projects/{pid}/builds` | estimate_id, optional cap_micro_usd → build; or `ref` for a replay build with zero cap | Viewer list; editor start; `Idempotency-Key` required; the cap defaults to the lower of the remaining allowance and the estimate's high bound; expired estimate → 409 `ESTIMATE_EXPIRED`; catalog revision or preset changed → 409 `ESTIMATE_STALE`; cap above the remaining allowance → 409 `ALLOWANCE_EXCEEDED`; second active build → 409 `BUILD_ACTIVE`; workspace active-build limit → 409 `WORKSPACE_BUILD_LIMIT`; unknown ref → 422 `REF_NOT_FOUND`; reuses the immutable snapshot of an already-scanned commit |
 | GET `/builds/{bid}` | none → states,counts,usage,quality | Member |
@@ -48,10 +48,10 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | POST `/builds/{bid}/retry` | valid estimate_id → new build | Editor; same SHA/config unless new estimate specifies otherwise |
 | GET `/builds/{bid}/events` | Last-Event-ID → SSE | Member; cursor resume and periodic permission recheck |
 | GET `/builds/{bid}/tree` | parent_path,cursor → entries | Member/public only through published resource resolver |
-| GET `/builds/{bid}/files/{fid}` | start_line,end_line → source/card metadata | Member; max 500 source lines/request |
+| GET `/builds/{bid}/files/{fid}` | start_line,end_line → source/card metadata and the file explanation (status, summary, chunk summaries and line notes) | Member; max 500 source lines/request |
 | GET `/builds/{bid}/symbols/{symid}` | none → card,span,relations | Member |
 | GET `/builds/{bid}/search` | q,kind,limit → ranked hits | Member; max q 200 chars, limit 50 |
-| GET `/builds/{bid}/guide[/{slug}]` | none → index/page and checks | Member |
+| GET `/builds/{bid}/guide[/{slug}]` | none → index (overview with key concepts and reading order, pages with status, check status and provenance) or page (Markdown and its citations resolved to paths of this build) | Member; ready builds only |
 | GET `/builds/{bid}/quality` | status,cursor → checks/coverage | Member |
 | POST `/builds/{bid}/quality/waivers` | claim IDs,reason → waiver | Admin; cannot waive missing deterministic source locations |
 | POST `/projects/{pid}/publication` | build_id,visibility,confirmation → publication | Admin; ETag/idempotency; public confirmation |
@@ -61,7 +61,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/exports/{eid}` | none → state,expires_at | Requester or admin |
 | GET `/exports/{eid}/download` | none → attachment stream | Reauthorize every request; no public bearer URL |
 | GET `/workspaces/{wid}/usage` | none → current period, allowance, reserved, settled, available | Members summary |
-| GET `/catalog/presets` | none → price_version and approved presets (models, providers, data regions) | Authenticated; no tenant data |
+| GET `/catalog/presets` | none → price_version and the approved presets whose providers are configured (models, providers, data regions) | Authenticated; no tenant data |
 | GET `/workspaces/{wid}/usage/entries` | cursor → ledger, newest first | Owner/admin |
 | POST `/workspaces/{wid}/billing/checkout` | plan_key → checkout_url | Owner; provider-configured price mapping |
 | POST `/workspaces/{wid}/billing/portal` | none → portal_url | Owner; fixed allowed return origin |

@@ -22,6 +22,7 @@ from app.core.settings import Settings
 from app.core.tenancy import set_context
 from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION
 from app.engine.catalog import Catalog
+from app.engine.generate import CITATION
 from app.jobs import store as jobs
 from app.modules.projects import estimates
 from app.modules.usage import ledger
@@ -169,7 +170,9 @@ async def start_generation_build(
             "Refresh this estimate before building.",
             details={"estimate_id": str(estimate_id)},
         )
-    if approved.price_version != catalog.revision or catalog.preset(approved.config["model_preset"]) is None:
+    if approved.price_version != catalog.revision or not estimates.preset_available(
+        catalog, approved.config["model_preset"], settings
+    ):
         raise ApiError(
             409,
             "ESTIMATE_STALE",
@@ -441,6 +444,15 @@ async def file_view(
         {"w": member.workspace_id, "b": build_id, "f": file_id},
     )
     symbol_list = [dict(s._mapping) for s in symbols]
+    explained = (
+        await db.execute(
+            text(
+                "SELECT status, summary, chunks FROM file_explanations"
+                " WHERE workspace_id = :w AND build_id = :b AND source_file_id = :f"
+            ),
+            {"w": member.workspace_id, "b": build_id, "f": file_id},
+        )
+    ).one_or_none()
     await db.commit()  # no transaction open while reading object storage
     lines = (await objects.get(f.blob_key)).decode("utf-8").split("\n")
     first = max(1, start_line)
@@ -455,6 +467,16 @@ async def file_view(
         "end_line": last,
         "lines": lines[first - 1 : last],
         "symbols": symbol_list,
+        "explanation": None
+        if explained is None
+        else {
+            "status": explained.status,
+            "summary": explained.summary,
+            "chunks": [
+                {k: c[k] for k in ("start_line", "end_line", "incomplete", "summary", "notes", "status")}
+                for c in explained.chunks
+            ],
+        },
     }
 
 
@@ -491,3 +513,62 @@ async def symbol_view(db: AsyncSession, member: Member, build_id: UUID, symbol_i
         "uses": await related("from_symbol_id", "to_symbol_id"),
         "used_by": await related("to_symbol_id", "from_symbol_id"),
     }
+
+
+# ---------------------------------------------------------------- guide
+async def guide_index(
+    db: AsyncSession, objects: ObjectStore, member: Member, build_id: UUID
+) -> dict[str, Any]:
+    await _ready_build(db, member, build_id)
+    pages = await db.execute(
+        text(
+            "SELECT slug, title, ordinal, purpose, status, check_status, provenance FROM guide_pages"
+            " WHERE workspace_id = :w AND build_id = :b ORDER BY ordinal"
+        ),
+        {"w": member.workspace_id, "b": build_id},
+    )
+    page_list = [dict(p._mapping) for p in pages]
+    overview_key = (
+        await db.execute(
+            text(
+                "SELECT object_key FROM artifacts WHERE workspace_id = :w AND build_id = :b AND kind = 'overview'"
+            ),
+            {"w": member.workspace_id, "b": build_id},
+        )
+    ).scalar_one_or_none()
+    await db.commit()
+    overview = json.loads(await objects.get(overview_key)) if overview_key else None
+    return {"overview": overview, "pages": page_list}
+
+
+async def guide_page(
+    db: AsyncSession, objects: ObjectStore, member: Member, build_id: UUID, slug: str
+) -> dict[str, Any]:
+    build = await _ready_build(db, member, build_id)
+    page = (
+        await db.execute(
+            text(
+                "SELECT slug, title, ordinal, purpose, status, check_status, provenance, markdown_key FROM guide_pages"
+                " WHERE workspace_id = :w AND build_id = :b AND slug = :s"
+            ),
+            {"w": member.workspace_id, "b": build_id, "s": slug},
+        )
+    ).one_or_none()
+    if page is None or page.markdown_key is None:
+        raise ApiError(404, "NOT_FOUND", "Guide page not found.")
+    paths = {
+        str(r.id): r.path
+        for r in await db.execute(
+            text("SELECT id, path FROM source_files WHERE workspace_id = :w AND snapshot_id = :s"),
+            {"w": member.workspace_id, "s": build.snapshot_id},
+        )
+    }
+    await db.commit()
+    markdown = (await objects.get(page.markdown_key)).decode("utf-8")
+    citations = [
+        {"file_id": fid, "path": paths.get(fid), "start_line": int(a), "end_line": int(b)}
+        for fid, a, b in sorted(set(CITATION.findall(markdown)), key=lambda c: (c[0], int(c[1])))
+    ]
+    result = dict(page._mapping)
+    result.pop("markdown_key")
+    return {**result, "markdown": markdown, "citations": citations}

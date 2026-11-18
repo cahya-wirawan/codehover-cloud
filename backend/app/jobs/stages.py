@@ -12,7 +12,8 @@ import asyncio
 import hashlib
 import io
 import json
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -20,14 +21,19 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.github.app import GitHubApp, GitHubError
+from app.adapters.models.replay import ReplayGateway
 from app.adapters.storage import ObjectStore
 from app.core.tenancy import set_context
 from app.engine import ENGINE_VERSION, PARSER_VERSION, PROMPT_VERSION, sandbox
 from app.engine.acquire import MAX_COMPRESSED_BYTES, ArchiveRejected, extract
+from app.engine.catalog import Catalog
+from app.engine.catalog import builtin as builtin_catalog
+from app.engine.gateway import ModelGateway
 from app.engine.index import IndexedSymbol, build_index
 from app.engine.keys import blob_key, build_key
 from app.engine.replay import GENERATOR, explain_file
 from app.engine.scan import scan
+from app.jobs import generation
 from app.jobs.store import Apply, Claim
 
 TEXT_STATUSES = ("selected", "unsupported")
@@ -47,6 +53,10 @@ class Runtime:
     store: ObjectStore
     github: GitHubApp | None
     allow_unsandboxed: bool = False
+    catalog: Catalog = field(default_factory=builtin_catalog)
+    # Provider name -> gateway. Only configured providers are present; replay is always available.
+    gateways: dict[str, ModelGateway] = field(default_factory=lambda: {"replay": ReplayGateway()})
+    retry_delays: tuple[float, ...] = (2.0, 8.0, 30.0)
 
 
 async def _read(rt: Runtime, claimed: Claim, sql: str, **params: Any) -> list[Any]:
@@ -246,8 +256,29 @@ async def index(rt: Runtime, claimed: Claim) -> Apply | None:
     return apply
 
 
+async def _is_generation(rt: Runtime, claimed: Claim) -> bool:
+    rows = await _read(
+        rt, claimed, "SELECT config ? 'generation' AS g FROM builds WHERE workspace_id = :w AND id = :b"
+    )
+    return bool(rows[0].g)
+
+
+def _generation(
+    handler: Callable[[Runtime, Claim], Awaitable[Apply | None]],
+) -> Callable[[Runtime, Claim], Awaitable[Apply | None]]:
+    async def run(rt: Runtime, claimed: Claim) -> Apply | None:
+        try:
+            return await handler(rt, claimed)
+        except generation.StageStop as stop:
+            raise StageError(stop.code, transient=stop.code == "provider_unavailable") from stop
+
+    return run
+
+
 # ---------------------------------------------------------------- explain (replay)
 async def explain(rt: Runtime, claimed: Claim) -> Apply | None:
+    if await _is_generation(rt, claimed):
+        return await _generation(generation.explain)(rt, claimed)
     rows = await _read(
         rt,
         claimed,
@@ -292,7 +323,7 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
         await _read(
             rt,
             claimed,
-            "SELECT b.project_id, b.snapshot_id, s.commit_sha, s.digest,"
+            "SELECT b.project_id, b.snapshot_id, b.config, b.prompt_version, s.commit_sha, s.digest,"
             " (SELECT count(*) FROM symbols y WHERE y.workspace_id = b.workspace_id AND y.build_id = b.id) AS symbols,"
             " (SELECT count(*) FROM reference_edges e WHERE e.workspace_id = b.workspace_id AND e.build_id = b.id) AS edges"
             " FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
@@ -313,10 +344,29 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
         "snapshot_digest": build.digest,
         "engine_version": ENGINE_VERSION,
         "parser_version": PARSER_VERSION,
-        "prompt_version": PROMPT_VERSION,
-        "generator": GENERATOR,
+        "prompt_version": build.prompt_version,
+        "generator": build.config.get("generation", {}).get("model_preset", GENERATOR),
+        "catalog": build.config.get("catalog"),
         "explanation_schema": "urn:codehover-cloud:schema:explanation:2.0.0",
         "counts": {"files": len(files), "symbols": build.symbols, "edges": build.edges},
+        "guide": [
+            {"slug": g.slug, "title": g.title, "status": g.status, "markdown_key": g.markdown_key}
+            for g in await _read(
+                rt,
+                claimed,
+                "SELECT slug, title, status, markdown_key FROM guide_pages WHERE workspace_id = :w AND build_id = :b"
+                " ORDER BY ordinal",
+            )
+        ],
+        "artifacts": {
+            a.kind: {"key": a.object_key, "sha256": a.sha256}
+            for a in await _read(
+                rt,
+                claimed,
+                "SELECT kind, object_key, sha256 FROM artifacts WHERE workspace_id = :w AND build_id = :b"
+                " AND kind <> 'manifest' ORDER BY kind",
+            )
+        },
         "files": [
             {"id": str(f.id), "path": f.path, "sha256": f.sha256, "status": f.scan_status} for f in files
         ],
@@ -342,4 +392,12 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
     return apply
 
 
-HANDLERS = {"acquire": acquire, "index": index, "explain": explain, "render": render}
+HANDLERS = {
+    "acquire": acquire,
+    "index": index,
+    "explain": explain,
+    "overview": _generation(generation.overview),
+    "plan": _generation(generation.plan),
+    "guide": _generation(generation.guide),
+    "render": render,
+}
