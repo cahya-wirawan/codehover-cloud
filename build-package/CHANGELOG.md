@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-18
+
+### Security
+
+- 07: scope globs are matched by a bounded segment matcher instead of `PurePath.full_match`, whose regular-expression translation took exponential time on globs such as `*a*a*a*a*b`; a single estimate request could pin an API worker. Character classes are no longer accepted. Found by automated security review of T10.
+- 06: snapshot acquisitions are admitted under the usage-account lock, at most `MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE` at once (409 `ACQUISITION_LIMIT`). The build limit did not cover them, so a workspace could start unbounded archive downloads and scans. Found by automated security review of T10.
+
 ## [0.4.0] - 2026-11-18
 
 ### Changed

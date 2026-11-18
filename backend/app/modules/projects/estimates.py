@@ -16,11 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.github.app import GitHubApp, GitHubError
 from app.core.errors import ApiError
+from app.core.settings import Settings
 from app.core.tenancy import set_context
 from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION
 from app.engine.catalog import Catalog
 from app.engine.estimate import VALIDITY_SECONDS, GenerationConfig, ScannedFile, config_digest, estimate
 from app.jobs import store as jobs
+from app.modules.usage import ledger
 from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
 
@@ -79,11 +81,17 @@ async def upsert_snapshot(db: AsyncSession, member: Member, project_id: UUID, sh
 
 
 async def request_snapshot(
-    db: AsyncSession, github: GitHubApp | None, member: Member, project_id: UUID, ref: str | None
+    db: AsyncSession,
+    github: GitHubApp | None,
+    settings: Settings,
+    member: Member,
+    project_id: UUID,
+    ref: str | None,
 ) -> dict[str, Any]:
     requested, sha = await resolve_commit(db, github, member, project_id, ref)
     snapshot = await upsert_snapshot(db, member, project_id, sha, requested)
     if snapshot.status in ("pending", "acquiring", "failed"):  # rejected and scanned are final
+        await _admit_acquisition(db, settings, member, snapshot.id)
         await jobs.create_snapshot_task(db, member.workspace_id, snapshot.id)
         if snapshot.status == "failed":
             await db.execute(
@@ -97,6 +105,30 @@ async def request_snapshot(
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
     return await get_snapshot(db, member, project_id, snapshot.id)
+
+
+async def _admit_acquisition(db: AsyncSession, settings: Settings, member: Member, snapshot_id: UUID) -> None:
+    """Acquisitions download and scan archives, so a workspace may run only a few at once. The usage
+    account row lock serializes this check with build admission."""
+    await ledger.current_account(db, member.workspace_id, settings.generation_allowance_micro_usd, lock=True)
+    live = (
+        await db.execute(
+            text(
+                "SELECT count(*) FROM build_tasks WHERE workspace_id = :w AND snapshot_id IS NOT NULL"
+                " AND snapshot_id <> :s AND state IN ('pending', 'leased', 'retry_wait')"
+            ),
+            {"w": member.workspace_id, "s": snapshot_id},
+        )
+    ).scalar_one()
+    if live >= settings.max_active_acquisitions_per_workspace:
+        await db.rollback()
+        raise ApiError(
+            409,
+            "ACQUISITION_LIMIT",
+            "This workspace is already acquiring the maximum number of snapshots.",
+            details={"limit": settings.max_active_acquisitions_per_workspace},
+            retryable=True,
+        )
 
 
 async def get_snapshot(

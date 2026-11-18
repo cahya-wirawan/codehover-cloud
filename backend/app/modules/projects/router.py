@@ -385,7 +385,9 @@ async def request_snapshot(
     member: ProjectWriter,
 ) -> SnapshotOut:
     require_role(member, "editor")
-    snapshot = await estimates.request_snapshot(db, _github(request), member, project_id, body.ref)
+    snapshot = await estimates.request_snapshot(
+        db, _github(request), _settings(request), member, project_id, body.ref
+    )
     response.headers["Location"] = f"/api/v1/projects/{project_id}/snapshots/{snapshot['id']}"
     return SnapshotOut(**snapshot)
 

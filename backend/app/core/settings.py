@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     # Generation allowance of each workspace per calendar month until entitlements exist (11, M4/M5).
     generation_allowance_micro_usd: int = Field(default=0, ge=0)
     max_active_builds_per_workspace: int = Field(default=2, ge=1, le=20)
+    max_active_acquisitions_per_workspace: int = Field(default=2, ge=1, le=20)
 
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None

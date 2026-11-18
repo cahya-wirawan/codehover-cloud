@@ -316,7 +316,7 @@ async def get_build(db: AsyncSession, member: Member, build_id: UUID) -> dict[st
     stages = await db.execute(
         text(
             "SELECT stage, state, error_code FROM build_tasks WHERE workspace_id = :w AND build_id = :b"
-            " ORDER BY created_at"
+            " ORDER BY created_at, id"
         ),
         {"w": member.workspace_id, "b": build_id},
     )

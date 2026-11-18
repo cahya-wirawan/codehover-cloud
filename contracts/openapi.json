@@ -716,7 +716,7 @@
             "items": {
               "maxLength": 200,
               "minLength": 1,
-              "pattern": "^[^\\x00-\\x1f\\\\]+$",
+              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]]+$",
               "type": "string"
             },
             "maxItems": 50,
@@ -737,7 +737,7 @@
             "items": {
               "maxLength": 200,
               "minLength": 1,
-              "pattern": "^[^\\x00-\\x1f\\\\]+$",
+              "pattern": "^[^\\x00-\\x1f\\\\\\[\\]]+$",
               "type": "string"
             },
             "maxItems": 50,

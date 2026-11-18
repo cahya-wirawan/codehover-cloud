@@ -156,3 +156,56 @@ def test_estimate_range_and_prices(tmp_path: Path) -> None:
     assert replay_preset is not None
     free = estimate(scanned, config.model_copy(update={"model_preset": "replay-v2"}), replay, replay_preset)
     assert (free.low_micro_usd, free.high_micro_usd) == (0, 0)
+
+
+GLOB_PATHS = [
+    "a.py",
+    "src/a.py",
+    "src/x/y/b.ts",
+    "tests/test_a.py",
+    "x/fixtures/a.py",
+    "fixtures/a.py",
+    "a/b",
+    ".env",
+]
+GLOB_PATTERNS = [
+    "**",
+    "*",
+    "src/**",
+    "**/*.py",
+    "src/*.py",
+    "**/fixtures/**",
+    "*/*",
+    "src/**/b.ts",
+    "?.py",
+    "a/**/b",
+    "**/**",
+]
+
+
+def test_glob_matcher_agrees_with_pathlib_on_ordinary_globs() -> None:
+    from pathlib import PurePosixPath
+
+    from app.engine.globs import match
+
+    for path in GLOB_PATHS:
+        for glob in GLOB_PATTERNS:
+            assert match(path, glob) == PurePosixPath(path).full_match(glob), (path, glob)
+
+
+def test_glob_matching_is_bounded_on_hostile_globs() -> None:
+    """pathlib's regex translation backtracks exponentially on these; the scope matcher must not."""
+    import time
+
+    from app.engine.globs import match
+
+    path = "a/" * 30 + "a" * 900
+    started = time.perf_counter()
+    for glob in ["*a*a*a*a*a*a*a*a*a*a*b", "*" * 199 + "b", "/".join(["**"] * 60), "**/*a*a*a*a*a*a*a*b"]:
+        assert not match(path, glob + "z") or glob.startswith("**/**")
+    assert time.perf_counter() - started < 1.0
+
+
+def test_character_classes_are_rejected() -> None:
+    with pytest.raises(ValidationError):
+        GenerationConfig(model_preset="replay-v2", include=["src/[a-z]*.py"])

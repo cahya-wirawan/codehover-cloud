@@ -399,3 +399,21 @@ async def test_account_lock_serializes_reservations(
             await second.rollback()
     finally:
         await engine.dispose()
+
+
+async def test_workspace_snapshot_acquisition_limit(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, ws, project = await setup_project(client, idp, github)
+    app = client.app  # type: ignore[attr-defined]
+    app.state.settings = app.state.settings.model_copy(update={"max_active_acquisitions_per_workspace": 1})
+    second = await create_second_project(owner, ws, project)
+    first = await unsafe(owner, "POST", f"/api/v1/projects/{project}/snapshots", json={})
+    assert first.status_code == 202
+    again = await unsafe(owner, "POST", f"/api/v1/projects/{project}/snapshots", json={})
+    assert again.status_code == 202  # the same pending snapshot does not count against itself
+    blocked = await unsafe(owner, "POST", f"/api/v1/projects/{second}/snapshots", json={})
+    assert blocked.status_code == 409 and blocked.json()["error"]["code"] == "ACQUISITION_LIMIT"
+    await drive_snapshot(app, first.json()["id"])
+    allowed = await unsafe(owner, "POST", f"/api/v1/projects/{second}/snapshots", json={})
+    assert allowed.status_code == 202, allowed.text

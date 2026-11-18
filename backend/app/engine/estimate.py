@@ -19,6 +19,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.engine.catalog import Catalog, Preset, cost_micro_usd
+from app.engine.globs import match as globs_match
 
 CHUNK_LINES = 450  # target 400-500 lines per explanation chunk (07)
 PROMPT_OVERHEAD_TOKENS = 1500  # system text, schema, repo map excerpt per call
@@ -31,7 +32,8 @@ VALIDITY_SECONDS = 30 * 60
 _TEST_PATH = re.compile(
     r"(^|/)(tests?|__tests__|spec|specs)/|(_test|\.test|\.spec|_spec)\.[^/]+$|(^|/)test_[^/]+$"
 )
-Glob = Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\\]+$")]
+# Printable path globs without character classes or backslashes; matched in bounded time (globs.py).
+Glob = Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\\\[\]]+$")]
 
 
 class GenerationConfig(BaseModel):
@@ -83,8 +85,7 @@ class ScannedFile:
 
 
 def _matches(path: str, globs: list[str]) -> bool:
-    pure = PurePosixPath(path)
-    return any(pure.full_match(glob) for glob in globs)
+    return any(globs_match(path, glob) for glob in globs)
 
 
 def select_files(files: list[ScannedFile], config: GenerationConfig) -> tuple[list[ScannedFile], int]:
