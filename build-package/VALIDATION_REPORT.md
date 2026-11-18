@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.3.11
+Date: 2026-11-18 · Package version 0.3.12
+
+0.3.12 hardens the sandbox. The Linux probe ran with a world-readable `/run/secrets/github_app_key` present. Inside the sandbox it could not read the parent's environ, `/etc` or the secret, and could not exec or open any socket; the parser still works under Landlock. On the Compose stack, the hardened worker passed the stricter self-check, and its own environ is unreadable to same-UID processes (`PR_SET_DUMPABLE=0`). 146 backend tests pass.
 
 0.3.11 records the M1 implementation. M1 exit criteria are met by these tests:
 - **End-to-end build:** an immutable fixture build runs from a GitHub ref through acquire, index, explain and render to the private viewer, with secrets excluded or blocked, Unicode columns, name-based references and a manifest stored last.

@@ -16,6 +16,7 @@ import platform
 import resource
 import runpy
 import sys
+from pathlib import Path
 
 ALLOWED_MODULES = frozenset({"app.engine.parse_worker", "app.engine.sandbox_probe"})
 LIMITS = {
@@ -26,10 +27,37 @@ LIMITS = {
     resource.RLIMIT_CORE: 0,
 }
 
-# (AUDIT_ARCH, socket, io_uring_setup, io_uring_enter, io_uring_register)
+# AUDIT_ARCH and the syscalls the parser never needs: network (socket, io_uring), inspecting or
+# controlling other processes (ptrace, process_vm_readv/writev) and running programs (execve, execveat).
 ARCHES = {
-    "x86_64": (0xC000003E, 41, 425, 426, 427),
-    "aarch64": (0xC00000B7, 198, 425, 426, 427),
+    "x86_64": (
+        0xC000003E,
+        {
+            "socket": 41,
+            "io_uring_setup": 425,
+            "io_uring_enter": 426,
+            "io_uring_register": 427,
+            "ptrace": 101,
+            "process_vm_readv": 310,
+            "process_vm_writev": 311,
+            "execve": 59,
+            "execveat": 322,
+        },
+    ),
+    "aarch64": (
+        0xC00000B7,
+        {
+            "socket": 198,
+            "io_uring_setup": 425,
+            "io_uring_enter": 426,
+            "io_uring_register": 427,
+            "ptrace": 117,
+            "process_vm_readv": 270,
+            "process_vm_writev": 271,
+            "execve": 221,
+            "execveat": 281,
+        },
+    ),
 }
 PR_SET_NO_NEW_PRIVS = 38
 PR_SET_SECCOMP = 22
@@ -38,6 +66,13 @@ RET_ALLOW = 0x7FFF0000
 RET_KILL_PROCESS = 0x80000000
 RET_ERRNO = 0x00050000
 X32_SYSCALL_BIT = 0x40000000
+
+# Landlock (Linux >= 5.13): syscall numbers are the same on x86_64 and aarch64.
+LANDLOCK_CREATE_RULESET, LANDLOCK_ADD_RULE, LANDLOCK_RESTRICT_SELF = 444, 445, 446
+LANDLOCK_CREATE_RULESET_VERSION = 1
+LANDLOCK_RULE_PATH_BENEATH = 1
+FS_EXECUTE, FS_READ_FILE, FS_READ_DIR = 1, 4, 8
+FS_ALL_V1 = (1 << 13) - 1  # every filesystem right of ABI v1: nothing is allowed unless granted below
 
 
 class _SockFilter(ctypes.Structure):
@@ -53,29 +88,39 @@ class _SockFprog(ctypes.Structure):
     _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.POINTER(_SockFilter))]
 
 
-def _program(arch: int, socket_nr: int, uring: tuple[int, int, int]) -> list[tuple[int, int, int, int]]:
+class _RulesetAttr(ctypes.Structure):
+    _fields_ = [("handled_access_fs", ctypes.c_uint64)]
+
+
+class _PathBeneathAttr(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [("allowed_access", ctypes.c_uint64), ("parent_fd", ctypes.c_int32)]
+
+
+def _program(arch: int, denied: list[int]) -> list[tuple[int, int, int, int]]:
     ld, jeq, jge, ret = 0x20, 0x15, 0x35, 0x06
-    deny = RET_ERRNO | errno.EACCES
-    return [
-        (ld, 0, 0, 4),  # 0: A = seccomp_data.arch
-        (jeq, 1, 0, arch),  # 1: native ABI? skip the kill
-        (ret, 0, 0, RET_KILL_PROCESS),  # 2
-        (ld, 0, 0, 0),  # 3: A = syscall number
-        (jge, 5, 0, X32_SYSCALL_BIT),  # 4: x32 -> deny (index 10)
-        (jeq, 4, 0, socket_nr),  # 5: socket -> deny
-        (jeq, 3, 0, uring[0]),  # 6: io_uring_setup -> deny
-        (jeq, 2, 0, uring[1]),  # 7: io_uring_enter -> deny
-        (jeq, 1, 0, uring[2]),  # 8: io_uring_register -> deny
-        (ret, 0, 0, RET_ALLOW),  # 9
-        (ret, 0, 0, deny),  # 10
+    # Layout: 0-4 header (arch check, kill, load nr, x32 check), 5..4+n denied checks, 5+n ALLOW, 6+n DENY.
+    deny_index = 6 + len(denied)
+    program = [
+        (ld, 0, 0, 4),  # A = seccomp_data.arch
+        (jeq, 1, 0, arch),  # native ABI? skip the kill
+        (ret, 0, 0, RET_KILL_PROCESS),
+        (ld, 0, 0, 0),  # A = syscall number
+        (jge, deny_index - 5, 0, X32_SYSCALL_BIT),  # x32 -> deny
     ]
+    for position, number in enumerate(denied):
+        here = 5 + position
+        program.append((jeq, deny_index - here - 1, 0, number))
+    program.append((ret, 0, 0, RET_ALLOW))
+    program.append((ret, 0, 0, RET_ERRNO | errno.EACCES))
+    return program
 
 
 def install_seccomp() -> None:
     arch = ARCHES.get(platform.machine())
     if arch is None:
         raise RuntimeError(f"no seccomp profile for {platform.machine()}")
-    instructions = _program(arch[0], arch[1], arch[2:])
+    instructions = _program(arch[0], sorted(arch[1].values()))
     filters = (_SockFilter * len(instructions))(*[_SockFilter(c, t, f, k) for c, t, f, k in instructions])
     program = _SockFprog(len(instructions), filters)
     libc = ctypes.CDLL(None, use_errno=True)
@@ -83,6 +128,54 @@ def install_seccomp() -> None:
         raise OSError(ctypes.get_errno(), "PR_SET_NO_NEW_PRIVS failed")
     if libc.prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, ctypes.byref(program), 0, 0) != 0:
         raise OSError(ctypes.get_errno(), "seccomp filter failed")
+
+
+def readable_roots() -> list[str]:
+    """Code and runtime the parser needs. Notably absent: /run (secrets), /proc, /etc, /tmp, /home."""
+    import site
+    import sysconfig
+
+    candidates = {
+        sys.prefix,
+        sys.base_prefix,
+        sys.exec_prefix,
+        *site.getsitepackages(),
+        sysconfig.get_paths()["stdlib"],
+        str(Path.cwd()),
+        "/lib",
+        "/lib64",
+        "/usr/lib",
+        "/usr/lib64",
+    }
+    return sorted(path for path in candidates if path and Path(path).is_dir())
+
+
+def install_landlock(roots: list[str]) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    syscall = libc.syscall
+    syscall.restype = ctypes.c_long
+    if syscall(LANDLOCK_CREATE_RULESET, None, 0, LANDLOCK_CREATE_RULESET_VERSION) < 1:
+        raise OSError(ctypes.get_errno(), "landlock unavailable")
+    attr = _RulesetAttr(FS_ALL_V1)
+    ruleset = syscall(LANDLOCK_CREATE_RULESET, ctypes.byref(attr), ctypes.sizeof(attr), 0)
+    if ruleset < 0:
+        raise OSError(ctypes.get_errno(), "landlock ruleset failed")
+    try:
+        for root in roots:
+            fd = os.open(root, getattr(os, "O_PATH", 0) | os.O_CLOEXEC)  # O_PATH is Linux-only
+            try:
+                rule = _PathBeneathAttr(FS_READ_FILE | FS_READ_DIR | FS_EXECUTE, fd)
+                if (
+                    syscall(LANDLOCK_ADD_RULE, ruleset, LANDLOCK_RULE_PATH_BENEATH, ctypes.byref(rule), 0)
+                    != 0
+                ):
+                    raise OSError(ctypes.get_errno(), f"landlock rule failed for {root}")
+            finally:
+                os.close(fd)
+        if syscall(LANDLOCK_RESTRICT_SELF, ruleset, 0) != 0:
+            raise OSError(ctypes.get_errno(), "landlock restrict failed")
+    finally:
+        os.close(ruleset)
 
 
 def lock_down() -> bool:
@@ -94,7 +187,9 @@ def lock_down() -> bool:
         target = value if hard == resource.RLIM_INFINITY else min(value, hard)
         resource.setrlimit(limit, (target, target))
     if sys.platform == "linux":
-        install_seccomp()
+        roots = readable_roots()  # computed before the filesystem is locked
+        install_seccomp()  # also sets PR_SET_NO_NEW_PRIVS, which Landlock requires
+        install_landlock(roots)
         return True
     if os.environ.get("CODEHOVER_ALLOW_UNSANDBOXED") != "1":
         raise RuntimeError("network isolation unavailable on this platform")

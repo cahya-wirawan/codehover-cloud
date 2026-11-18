@@ -98,9 +98,24 @@ def test_sandbox_blocks_network_and_inherits_no_environment() -> None:
     assert report["isolated"] is True
     assert (report["inet"], report["inet6"], report["unix"]) == (False, False, False)
     assert report["environment"] == []
+    # Same UID as the worker, so the filesystem and other processes must be off limits too.
+    assert (report["parent_environ"], report["etc"], report["secrets"], report["exec"]) == (False,) * 4
 
 
 @pytest.mark.skipif(sys.platform == "linux", reason="non-Linux behavior")
 def test_non_linux_refuses_to_run_without_explicit_development_override() -> None:
     with pytest.raises(sandbox.SandboxError, match="exit_3"):
         asyncio.run(sandbox.run("app.engine.sandbox_probe", {}))
+
+
+def test_seccomp_program_jumps_land_on_deny() -> None:
+    """Every denied syscall and the x32 check must jump to the final DENY, never to ALLOW (a past bug)."""
+    from app.engine.sandbox_exec import RET_ALLOW, RET_ERRNO, _program
+
+    denied = [41, 59, 101]
+    program = _program(0xC000003E, denied)
+    deny_at, allow_at = len(program) - 1, len(program) - 2
+    assert program[allow_at][3] == RET_ALLOW and program[deny_at][3] & 0xFFFF0000 == RET_ERRNO
+    for index, (code, jt, _jf, k) in enumerate(program):
+        if code in (0x15, 0x35) and index >= 4:  # x32 check and per-syscall checks
+            assert index + 1 + jt == deny_at, (index, k)

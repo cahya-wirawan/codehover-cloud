@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ctypes
 import logging
+import sys
 
 import aio_pika
 from pydantic import ValidationError
@@ -20,7 +22,17 @@ from app.workers._shell import run
 logger = logging.getLogger("app.workers.main")
 
 
+def _not_dumpable() -> None:
+    """PR_SET_DUMPABLE=0: same-UID processes (the sandboxed parser) can neither ptrace this worker nor read
+    its /proc/<pid>/environ, which holds database, broker and storage credentials."""
+    if sys.platform == "linux":
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.prctl(4, 0, 0, 0, 0) != 0:  # PR_SET_DUMPABLE
+            raise OSError(ctypes.get_errno(), "PR_SET_DUMPABLE failed")
+
+
 async def body(stop: asyncio.Event) -> None:
+    _not_dumpable()
     settings = get_settings()
     runtime, http = build_runtime(settings, "worker")
     report = await sandbox.self_check(allow_unsandboxed=runtime.allow_unsandboxed)

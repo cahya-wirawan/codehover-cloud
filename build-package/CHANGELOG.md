@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-11-18
+
+### Security
+
+- 22: the parser sandbox adds a Landlock filesystem allowlist, denies process inspection (`ptrace`, `process_vm_*`) and program execution, and the worker becomes non-dumpable. A compromised parser could otherwise read credentials as the same UID and leak them through parse output. Found by automated security review. While implementing this, a jump-offset error in the rewritten seccomp program briefly allowed every denied syscall; the Linux probe caught it, and a unit test now pins the jump targets.
+
 ## [0.3.11] - 2026-11-18
 
 ### Changed

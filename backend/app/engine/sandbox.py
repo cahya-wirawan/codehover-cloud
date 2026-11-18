@@ -65,4 +65,6 @@ async def self_check(*, allow_unsandboxed: bool = False) -> dict[str, Any]:
     report = await run("app.engine.sandbox_probe", {}, allow_unsandboxed=allow_unsandboxed)
     if report.get("inet") or report.get("inet6") or (sys.platform == "linux" and not report.get("isolated")):
         raise SandboxError("network_not_isolated")
+    if sys.platform == "linux" and any(report.get(k) for k in ("parent_environ", "etc", "secrets", "exec")):
+        raise SandboxError("filesystem_or_process_not_isolated")
     return report

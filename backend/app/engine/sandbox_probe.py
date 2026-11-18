@@ -7,6 +7,7 @@ import os
 import resource
 import socket
 import sys
+from pathlib import Path
 
 
 def _can_open(family: int) -> bool:
@@ -18,8 +19,35 @@ def _can_open(family: int) -> bool:
     return True
 
 
+def _can_read(path: str) -> bool:
+    try:
+        with Path(path).open("rb") as handle:
+            handle.read(1)
+    except OSError:
+        return False
+    return True
+
+
+def _can_exec() -> bool:
+    try:
+        pid = os.fork()
+    except OSError:
+        return False
+    if pid == 0:  # child: try to run a program; exit 0 only if exec somehow succeeded
+        try:
+            os.execv(sys.executable, [sys.executable, "-c", "pass"])  # noqa: S606 - probing that exec is blocked
+        finally:
+            os._exit(99)
+    _, status = os.waitpid(pid, 0)
+    return os.waitstatus_to_exitcode(status) == 0
+
+
 def main() -> int:
     report = {
+        "parent_environ": _can_read(f"/proc/{os.getppid()}/environ"),
+        "etc": _can_read("/etc/hostname") or _can_read("/etc/passwd"),
+        "secrets": _can_read("/run/secrets/github_app_key"),
+        "exec": _can_exec(),
         "isolated": os.environ.get("CODEHOVER_SANDBOX_ISOLATED") == "1",
         "inet": _can_open(socket.AF_INET),
         "inet6": _can_open(socket.AF_INET6),
