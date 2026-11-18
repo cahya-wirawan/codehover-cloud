@@ -86,8 +86,15 @@ async def _process(rt: Runtime, envelope: TaskEnvelope, seen: list[str]) -> str:
             logger.exception("stage crashed", extra=log)
             async with rt.sessions() as db:
                 return await store.fail(db, claimed, f"internal_{type(error).__name__}", transient=True)
-        async with rt.sessions() as db:
-            await store.complete(db, claimed, apply)
+        try:
+            async with rt.sessions() as db:
+                await store.complete(db, claimed, apply)
+        except store.LeaseLost:
+            raise
+        except Exception as error:  # the stage's writes failed: retry within the budget, never hang leased
+            logger.exception("stage apply failed", extra=log)
+            async with rt.sessions() as db:
+                return await store.fail(db, claimed, f"internal_{type(error).__name__}", transient=True)
         logger.info("stage completed", extra=log)
         return "completed"
     except store.LeaseLost:

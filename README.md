@@ -94,6 +94,16 @@ npm run test:e2e
 
 `frontend/.npmrc` pins exact versions and applies a `before` cutoff, the same cooling-off period as the Python locks.
 
+## Local demo
+
+Try the whole product in a browser without real Google or GitHub accounts. You need the Compose stack's db and objectstore running and the frontend built (`cd frontend && npm run build`):
+
+```bash
+cd backend && set -a && . ../deployment/.env && set +a && .venv/bin/python -m tests.e2e.demo   # --reset starts over
+```
+
+Open http://127.0.0.1:8770 (use `127.0.0.1`, not `localhost`). "Continue with Google" signs you in as a fresh local demo user. Each workspace comes with two repositories: `demo-api`, a tiny fixture, and `codehover-engine`, this project's engine package. Builds are free replay builds (source-only cards, no model calls). The demo has its own database (`codehover_demo`) and bucket, so the stack's workers never touch it.
+
 ## Load check and restore drill (M4)
 
 Both run against the local Compose stack (db and objectstore up, workers stopped) with `deployment/.env` sourced, from `backend/`:

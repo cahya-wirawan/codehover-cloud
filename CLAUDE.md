@@ -62,6 +62,7 @@ cd frontend && npm run test:e2e           # Playwright + axe journey; same TEST_
 .venv/bin/python -m app.ops.operators grant <user-id> "<note>"   # operations role (DDL role: MIGRATION_DATABASE_URL)
 .venv/bin/python -m app.ops.tombstones reapply && .venv/bin/python -m app.ops.tombstones purge && .venv/bin/python -m app.ops.verify_restore  # after a restore, before traffic
 .venv/bin/python -m tests.e2e.restore_drill    # local drill (deployment/.env sourced; scratch DBs and bucket)
+.venv/bin/python -m tests.e2e.demo             # browser demo at http://127.0.0.1:8770 (fake Google/GitHub; own DB and bucket)
 .venv/bin/python -m app.ops.loadcheck --base <url> --site <slug> --users 50   # NFR p95 targets (see README)
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
 cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \

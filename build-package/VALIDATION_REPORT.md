@@ -1,6 +1,10 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.21
+Date: 2026-11-18 · Package version 0.5.22
+
+0.5.22 fixes two defects found by building this project's own engine package in the local demo.
+- Symbol keys collided across files: the index stage failed on `extract` defined in two modules. A regression test now builds two files that both define `main` and `Tool.run`.
+- A stage whose writes fail no longer hangs leased. A regression test makes `apply` raise and expects `retry_wait` with no lease held.
 
 0.5.21 records the M4 exit checks for SLOs, load and recovery. All were run locally on a laptop: one uvicorn process for the E2E server, PostgreSQL 18 and SeaweedFS in Compose.
 - **Load (NFR-003, NFR-005):** a published replay site of 200 files with 20,000 definitions (20,200 search documents), with 50 readers for 60 s.

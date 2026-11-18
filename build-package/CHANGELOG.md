@@ -4,6 +4,17 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.22] - 2026-11-18
+
+### Fixed
+
+- 05: symbol keys are unique per file, not per build (migration 0021). Any repository that defined the same top-level name in two files (`main`, `run`) failed to index. Found by the local demo on a real package.
+- 07: a stage whose database writes fail is now a transient task failure, retried within the attempt budget. Before, it left the task leased until the reconciler noticed.
+
+### Added
+
+- 22: a local demo (`python -m tests.e2e.demo`), with fake Google and GitHub, its own database and bucket, and two demo repositories.
+
 ## [0.5.21] - 2026-11-18
 
 ### Added
