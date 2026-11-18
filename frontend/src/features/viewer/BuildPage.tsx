@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import { ApiError } from "../../lib/api/client";
 import { api, formatUsd, TERMINAL } from "../../lib/api/resources";
 import { CodeViewer } from "./CodeViewer";
 import { GuidePanel } from "./GuidePanel";
+import { pollInterval, streamingSupported, useBuildEvents } from "./useBuildEvents";
 
 const STATE_LABEL: Record<string, string> = {
   pending: "Pending",
@@ -29,12 +31,18 @@ export function BuildPage() {
   const { pid = "", bid = "" } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const [streamFailed, setStreamFailed] = useState(false);
+  const streaming = streamingSupported() && !streamFailed;
+  const onUnavailable = useCallback(() => setStreamFailed(true), []);
   const build = useQuery({
     queryKey: ["build", bid],
     queryFn: () => api.build(bid),
-    // Polling fallback (02 S09); counts, not fake progress.
-    refetchInterval: (query) => (query.state.data && TERMINAL.has(query.state.data.status) ? false : 2000),
+    // Events drive refetches; polling (5 s with jitter) only when streaming is unavailable (10).
+    refetchInterval: (query) =>
+      (query.state.data && TERMINAL.has(query.state.data.status)) || streaming ? false : pollInterval(),
   });
+  const terminal = build.data ? TERMINAL.has(build.data.status) : false;
+  useBuildEvents(bid, build.data !== undefined && !terminal, onUnavailable);
   const cancel = useMutation({
     mutationFn: () => api.cancelBuild(bid),
     onSuccess: (value) => client.setQueryData(["build", bid], value),

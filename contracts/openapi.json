@@ -3129,6 +3129,7 @@
     },
     "/api/v1/builds/{build_id}/events": {
       "get": {
+        "description": "`Accept: text/event-stream` streams events (resume with Last-Event-ID); otherwise a JSON page.",
         "operationId": "build_events_api_v1_builds__build_id__events_get",
         "parameters": [
           {
@@ -3163,6 +3164,23 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
           }
         ],
         "responses": {
@@ -3172,9 +3190,10 @@
                 "schema": {
                   "$ref": "#/components/schemas/EventList"
                 }
-              }
+              },
+              "text/event-stream": {}
             },
-            "description": "Successful Response"
+            "description": "JSON page, or an SSE stream"
           },
           "422": {
             "content": {

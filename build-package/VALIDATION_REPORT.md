@@ -1,6 +1,14 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.4
+Date: 2026-11-18 · Package version 0.5.5
+
+0.5.5 adds the SSE build stream. Integration tests cover:
+- history replay and resume from Last-Event-ID;
+- a running build followed to `build.ready`;
+- heartbeats on an idle stream, and a revoked session ending it with `access.revoked` (A17);
+- 404 for strangers, and the per-session and per-workspace stream limits.
+
+The frontend follows builds with EventSource and falls back to polling every 5 s with jitter. 268 backend and 10 frontend tests pass.
 
 0.5.4 adds the M2 evaluation baseline. On the corpus, the replay run passes every hard gate:
 - scan as labeled;

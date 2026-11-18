@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
@@ -24,7 +26,7 @@ from app.core.settings import Settings
 from app.engine.catalog import Catalog
 from app.engine.estimate import GenerationConfig
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
-from app.modules.projects import estimates, quality, service
+from app.modules.projects import estimates, events, quality, service
 from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
 
 router = APIRouter(tags=["projects"])
@@ -706,12 +708,50 @@ async def retry_build(
     return BuildOut(**payload)
 
 
-@router.get("/builds/{build_id}/events", response_model=EventList)
+@router.get(
+    "/builds/{build_id}/events",
+    response_model=EventList,
+    responses={200: {"content": {"text/event-stream": {}}, "description": "JSON page, or an SSE stream"}},
+)
 async def build_events(
     build_id: UUID,
+    request: Request,
     db: Db,
     member: BuildReader,
     after: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
-) -> EventList:
-    return EventList(**await service.build_events(db, member, build_id, after, limit))
+    last_event_id: Annotated[str | None, Header(max_length=20)] = None,
+) -> Any:
+    """`Accept: text/event-stream` streams events (resume with Last-Event-ID); otherwise a JSON page."""
+    if "text/event-stream" not in request.headers.get("accept", ""):
+        return EventList(**await service.build_events(db, member, build_id, after, limit))
+    await service.build_events(db, member, build_id, 0, 1)  # 404 for unknown builds before streaming
+    start = int(last_event_id) if last_event_id and last_event_id.isdigit() else after
+    slot = events.StreamSlot(member.principal.session_id, member.workspace_id).__enter__()
+    try:
+        await db.commit()
+    except BaseException:
+        slot.__exit__()
+        raise
+
+    async def body() -> AsyncIterator[str]:
+        try:
+            async for chunk in events.stream(
+                request.app.state.sessions,
+                token=member.principal.session_token,
+                user_id=member.user_id,
+                workspace_id=member.workspace_id,
+                build_id=build_id,
+                after=start,
+                timing=getattr(request.app.state, "event_timing", events.Timing()),
+                disconnected=request.is_disconnected,
+            ):
+                yield chunk
+        finally:
+            slot.__exit__()
+
+    return StreamingResponse(
+        body(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )

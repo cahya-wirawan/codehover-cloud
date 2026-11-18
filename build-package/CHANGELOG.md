@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-11-18
+
+### Added
+
+- 06: the build event stream as implemented in T13, negotiated on `Accept` beside the JSON polling form, with the `access.revoked` and `reset` events and the `STREAM_LIMIT` error.
+
 ## [0.5.4] - 2026-11-18
 
 ### Added
