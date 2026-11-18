@@ -28,6 +28,10 @@ RabbitMQ local template is a single node for development; durable queues/message
 
 Object store uses private bucket and per-service limited credentials; root console credential in Compose is local-only. Local object store: MinIO stopped publishing community images in October 2025, entered maintenance mode in December 2025 and was later archived, so the example tag in `.env.example` receives no security fixes. Decided in M0: SeaweedFS (`weed mini`, the image's default command), pinned by digest. It was chosen over Garage (more setup, narrower S3 coverage) and RustFS (not yet stable). Environment variables seed one admin S3 identity, which disables anonymous access. The S3 API is on port 8333. Production uses managed object storage. The application depends only on the S3 API (`S3_ENDPOINT_URL`, path-style addressing, checksums). Image tags in reference config are examples: verify availability/security and pin tested digests in the real deployment. Database/broker/object storage ports bind localhost for local debugging; production publishes none of them. Templates are not a network isolation policy for hostile repositories.
 
+## Client addresses
+
+Rate limits by address trust `X-Forwarded-For` only from `TRUSTED_PROXIES`. Compose trusts the private ranges, because only the gateway reaches the API there. In production, list the ingress addresses alone, so a client cannot choose its own bucket.
+
 ## Metrics and alerts
 
 The application services expose metrics on `METRICS_PORT` (9100) inside the services network only. `docker compose --profile ops up -d prometheus` starts Prometheus on `127.0.0.1:${PROMETHEUS_HOST_PORT:-9090}` with `deployment/prometheus/prometheus.yml` and `alerts.yml`, from `PROMETHEUS_IMAGE` (pinned by digest in `.env.example`). Production routes the alerts to operators through its own Alertmanager. Check rule changes with `promtool test rules alerts.test.yml`.

@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.18] - 2026-11-18
+
+### Added
+
+- 06, 22: rate limits as implemented (migration 0019). Fixed windows are counted in PostgreSQL and shared by all replicas, with HMAC buckets, 429 `RATE_LIMITED` and `Retry-After`. The spec's policies for users, sign-in starts, site delivery, estimates, acquisitions and build starts are now enforced. `TRUSTED_PROXIES` controls which peers' `X-Forwarded-For` is believed; it is in Compose for both copies. Retention removes windows older than two days.
+
 ## [0.5.17] - 2026-11-18
 
 ### Added

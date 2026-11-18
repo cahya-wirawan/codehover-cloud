@@ -1,6 +1,13 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.17
+Date: 2026-11-18 · Package version 0.5.18
+
+0.5.18 records shared rate limits (`test_rate_limits.py`, `tests/unit/test_ratelimit.py`):
+- a user's sixth request in a minute at a limit of 5 gets 429 with a consistent `Retry-After`, while another user is unaffected;
+- sign-in starts per address redirect to `/login?error=rate_limited`, while another address continues;
+- public delivery per address returns 429 on the fourth request, while another address is served;
+- build starts count new work and not idempotent replays; estimates and acquisitions count attempts;
+- buckets hold no address; forwarded addresses are believed only from trusted networks (a spoofed header from an untrusted peer is ignored), and an invalid network setting is refused.
 
 0.5.17 records platform operations (`test_operations.py`, 6 tests):
 - Non-operators get 404 from every `/ops` route, and the database functions refuse them too (42501); the event helper is not callable by the runtime at all.

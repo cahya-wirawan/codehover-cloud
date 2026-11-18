@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
 from app.adapters.storage import ObjectStore
+from app.core import ratelimit
 from app.core.errors import ApiError
 from app.core.idempotency import run_once
 from app.core.pagination import (
@@ -47,6 +48,11 @@ async def build_reader(build_id: UUID, db: Db, principal: CurrentPrincipal) -> M
 
 async def build_writer(build_id: UUID, db: Db, principal: CsrfPrincipal) -> Member:
     return await resource_member("build", build_id, db, principal, write=True)
+
+
+async def _limit(request: Request, policy: str, member: Member) -> None:
+    """Workspace-wide quotas (06): estimates and acquisitions per hour, build starts per day."""
+    await ratelimit.hit(request.app.state.sessions, _settings(request), policy, str(member.workspace_id))
 
 
 ProjectReader = Annotated[Member, Depends(project_reader)]
@@ -460,6 +466,7 @@ async def start_build(
     require_role(member, "editor")
 
     async def produce() -> tuple[int, dict[str, Any]]:
+        await _limit(request, "build", member)  # only new work counts; an idempotent replay does not
         if body.estimate_id is not None:
             build = await service.start_generation_build(
                 db,
@@ -534,6 +541,7 @@ async def request_snapshot(
     member: ProjectWriter,
 ) -> SnapshotOut:
     require_role(member, "editor")
+    await _limit(request, "acquire", member)
     snapshot = await estimates.request_snapshot(
         db, _github(request), _settings(request), member, project_id, body.ref
     )
@@ -585,6 +593,7 @@ async def create_estimate(
     require_role(member, "editor")
 
     async def produce() -> tuple[int, dict[str, Any]]:
+        await _limit(request, "estimate", member)
         created = await estimates.create_estimate(
             db, _catalog(request), _settings(request), member, project_id, body.snapshot_id, body.config
         )
@@ -686,6 +695,7 @@ async def retry_build(
     require_role(member, "editor")
 
     async def produce() -> tuple[int, dict[str, Any]]:
+        await _limit(request, "build", member)
         build = await service.retry_build(
             db,
             _github(request),

@@ -32,6 +32,8 @@ x-app-env: &app-env
   STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
   # Internal metrics port per process (12); scraped on the services network, never published.
   METRICS_PORT: ${METRICS_PORT:-9100}
+  # Only the gateway reaches the API (its port is not published); in production name the ingress only (22).
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
 x-backend: &backend
   profiles: [app]
   image: codehover-cloud-backend:local

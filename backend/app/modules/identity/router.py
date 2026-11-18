@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.adapters.oauth import OAuthError, OAuthProvider
-from app.core import metrics
+from app.core import metrics, ratelimit
 from app.core.errors import ApiError
 from app.core.security import safe_return_path
 from app.core.settings import Settings
@@ -103,6 +103,13 @@ def _redirect(path: str, **query: str) -> RedirectResponse:
 async def start(
     provider: Provider, request: Request, db: Db, return_to: str | None = Query(default=None, max_length=512)
 ) -> RedirectResponse:
+    settings = _settings(request)
+    try:
+        await ratelimit.hit(
+            request.app.state.sessions, settings, "signin", ratelimit.client_address(request, settings)
+        )
+    except ApiError:
+        return _redirect(LOGIN_PAGE, error="rate_limited")  # a browser navigation: never a JSON error
     impl = _provider(request, provider)
     if impl is None:
         return _redirect(LOGIN_PAGE, error="unavailable")

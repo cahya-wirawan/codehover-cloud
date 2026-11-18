@@ -680,3 +680,12 @@ class SupportGrant(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     expires_at: Mapped[datetime] = ts()
     revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class RateLimit(Base):
+    """A fixed-window counter shared by all replicas; the bucket is an HMAC (0019)."""
+
+    __tablename__ = "rate_limits"
+    bucket: Mapped[str] = mapped_column(Text, primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer)

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.adapters.storage import ObjectStore
+from app.core import ratelimit
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Db, OptionalPrincipal
@@ -47,7 +48,11 @@ class Site:
     visibility: str
 
 
-async def resolve_site(slug: SlugPath, db: Db, principal: OptionalPrincipal) -> Site:
+async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: OptionalPrincipal) -> Site:
+    settings = request.app.state.settings
+    await ratelimit.hit(
+        request.app.state.sessions, settings, "public", ratelimit.client_address(request, settings)
+    )
     found = (
         await db.execute(
             text(
