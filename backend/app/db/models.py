@@ -582,3 +582,23 @@ class Publication(Base):
     published_by: Mapped[UUID] = ref("users.id")
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+class Export(Base):
+    """A downloadable package of one ready build (0011)."""
+
+    __tablename__ = "exports"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    format: Mapped[str] = mapped_column(Text)
+    variant: Mapped[str] = mapped_column(Text, server_default=text("'en-standard'"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    requested_by: Mapped[UUID] = ref("users.id")
+    object_key: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    byte_count: Mapped[int | None] = mapped_column(BigInteger)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    completed_at: Mapped[datetime | None] = ts(nullable=True)
+    expires_at: Mapped[datetime | None] = ts(nullable=True)

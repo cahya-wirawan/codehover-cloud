@@ -1,6 +1,13 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.10
+Date: 2026-11-18 · Package version 0.5.11
+
+0.5.11 records T16, the remaining part of the M3 exit criterion. Integration tests open the ZIP and check:
+- exactly the fixed entries, with no excluded or blocked content anywhere (A19, A07);
+- no network references, every referenced asset present, and manifest hashes that match;
+- a KB that validates against its contract, and byte-identical archives across exports.
+
+Further tests cover the KB format, requester-or-admin downloads with the editor role required to export, a 410 after expiry, audit events, the ready-build precondition and the hourly quota. Exports never change the build. Opening the archive in a network-blocked browser is part of the E2E step. 287 backend and 17 frontend tests pass.
 
 0.5.10: unpublishing an operator-suspended publication is refused by the API (409) and by the database trigger (IntegrityError). Removing the service check makes the test fail.
 

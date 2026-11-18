@@ -913,6 +913,114 @@
         "title": "EventOut",
         "type": "object"
       },
+      "ExportIn": {
+        "properties": {
+          "format": {
+            "enum": [
+              "static_zip",
+              "kb_json"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "ExportIn",
+        "type": "object"
+      },
+      "ExportOut": {
+        "properties": {
+          "build_id": {
+            "format": "uuid",
+            "title": "Build Id",
+            "type": "string"
+          },
+          "byte_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byte Count"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "build_id",
+          "format",
+          "status",
+          "byte_count",
+          "error_code",
+          "created_at",
+          "completed_at",
+          "expires_at",
+          "expired"
+        ],
+        "title": "ExportOut",
+        "type": "object"
+      },
       "FileExplanationOut": {
         "properties": {
           "chunks": {
@@ -3484,6 +3592,75 @@
         ]
       }
     },
+    "/api/v1/builds/{build_id}/exports": {
+      "post": {
+        "operationId": "request_export_api_v1_builds__build_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Export",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/builds/{build_id}/files/{file_id}": {
       "get": {
         "operationId": "file_view_api_v1_builds__build_id__files__file_id__get",
@@ -4129,6 +4306,85 @@
         "summary": "Presets",
         "tags": [
           "usage"
+        ]
+      }
+    },
+    "/api/v1/exports/{export_id}": {
+      "get": {
+        "operationId": "get_export_api_v1_exports__export_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Export",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/exports/{export_id}/download": {
+      "get": {
+        "operationId": "download_export_api_v1_exports__export_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Export",
+        "tags": [
+          "projects"
         ]
       }
     },

@@ -27,6 +27,7 @@ from app.engine.catalog import Catalog
 from app.engine.estimate import GenerationConfig
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
 from app.modules.projects import estimates, events, publication, quality, service
+from app.modules.projects import exports as export_service
 from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
 
 router = APIRouter(tags=["projects"])
@@ -876,3 +877,77 @@ async def unpublish(
     require_role(member, "admin")
     await publication.unpublish(db, member, project_id, if_match)
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------- exports
+class ExportIn(BaseModel):
+    format: Literal["static_zip", "kb_json"]
+
+
+class ExportOut(BaseModel):
+    id: UUID
+    build_id: UUID
+    format: str
+    status: str
+    byte_count: int | None
+    error_code: str | None
+    created_at: datetime
+    completed_at: datetime | None
+    expires_at: datetime | None
+    expired: bool
+
+
+async def export_reader(export_id: UUID, db: Db, principal: CurrentPrincipal) -> Member:
+    return await resource_member("export", export_id, db, principal)
+
+
+ExportReader = Annotated[Member, Depends(export_reader)]
+
+
+@router.post("/builds/{build_id}/exports", response_model=ExportOut, status_code=202)
+async def request_export(
+    build_id: UUID,
+    body: ExportIn,
+    response: Response,
+    db: Db,
+    member: BuildWriter,
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> ExportOut:
+    require_role(member, "editor")
+
+    async def produce() -> tuple[int, dict[str, Any]]:
+        created = await export_service.request_export(db, member, build_id, body.format)
+        return 202, ExportOut(**created).model_dump(mode="json")
+
+    status, payload = await run_once(
+        db,
+        user_id=member.user_id,
+        workspace_id=member.workspace_id,
+        route=f"POST /builds/{build_id}/exports",
+        key=idempotency_key,
+        body=body.model_dump(mode="json"),
+        produce=produce,
+    )
+    response.status_code = status
+    response.headers["Location"] = f"/api/v1/exports/{payload['id']}"
+    return ExportOut(**payload)
+
+
+@router.get("/exports/{export_id}", response_model=ExportOut)
+async def get_export(export_id: UUID, db: Db, member: ExportReader) -> ExportOut:
+    return ExportOut(**await export_service.get_export(db, member, export_id))
+
+
+@router.get("/exports/{export_id}/download", response_class=Response)
+async def download_export(export_id: UUID, request: Request, db: Db, member: ExportReader) -> Response:
+    key, content_type, name, _row = await export_service.download(db, member, export_id)
+    body = await _objects(request).get(key)  # no transaction is open while reading object storage
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

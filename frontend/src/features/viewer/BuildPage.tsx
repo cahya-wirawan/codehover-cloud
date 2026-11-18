@@ -5,6 +5,7 @@ import { NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react
 import { ApiError } from "../../lib/api/client";
 import { api, type Build, buildSource, formatUsd, TERMINAL } from "../../lib/api/resources";
 import { CodeViewer } from "./CodeViewer";
+import { ExportPanel } from "./ExportPanel";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { SearchPanel } from "./SearchPanel";
@@ -34,6 +35,7 @@ interface BuildContext {
   base: string;
   generation: boolean;
   canWaive: boolean;
+  canExport: boolean;
 }
 
 const useBuild = () => useOutletContext<BuildContext>();
@@ -118,7 +120,7 @@ export function BuildPage() {
               </>
             ) : null}
           </nav>
-          <Outlet context={{ build: data, base, generation, canWaive: role === "admin" || role === "owner" } satisfies BuildContext} />
+          <Outlet context={{ build: data, base, generation, canWaive: role === "admin" || role === "owner", canExport: role !== undefined && role !== "viewer" } satisfies BuildContext} />
         </>
       ) : (
         <p role="status" className="mt-3 text-muted">Loading build…</p>
@@ -128,7 +130,7 @@ export function BuildPage() {
 }
 
 export function BuildOverview() {
-  const { build } = useBuild();
+  const { build, canExport } = useBuild();
   return (
     <>
       <ol className="mt-4 flex flex-wrap gap-2" aria-label="Stages">
@@ -140,9 +142,12 @@ export function BuildOverview() {
         ))}
       </ol>
       {build.status === "ready" ? (
-        <p className="mt-4 text-muted">
-          {build.counts.files} files · {build.counts.symbols} definitions · prompts {build.prompt_version}
-        </p>
+        <>
+          <p className="mt-4 text-muted">
+            {build.counts.files} files · {build.counts.symbols} definitions · prompts {build.prompt_version}
+          </p>
+          <ExportPanel buildId={build.id} canExport={canExport} />
+        </>
       ) : null}
     </>
   );

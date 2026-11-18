@@ -1,4 +1,4 @@
-import { apiGetWithEtag, apiJson, apiSend } from "./client";
+import { API_BASE, apiGetWithEtag, apiJson, apiSend } from "./client";
 
 export type Role = "viewer" | "editor" | "admin" | "owner";
 export interface Page<T> {
@@ -168,6 +168,19 @@ export interface Site {
   visibility: string;
   generated: boolean;
   published_at: string;
+}
+
+export interface ExportJob {
+  id: string;
+  build_id: string;
+  format: "static_zip" | "kb_json";
+  status: "pending" | "ready" | "failed";
+  byte_count: number | null;
+  error_code: string | null;
+  created_at: string;
+  completed_at: string | null;
+  expires_at: string | null;
+  expired: boolean;
 }
 
 /** Where the reading views get their data: a build of a project, or a published site (02 S11-S13, S20). */
@@ -345,6 +358,10 @@ export const api = {
   unpublish: async (pid: string, ifMatch: string) =>
     apiSend("DELETE", `/projects/${pid}/publication`, undefined, { "If-Match": ifMatch }),
   site: (slug: string) => apiJson<Site>(`/published/${encodeURIComponent(slug)}`),
+  requestExport: async (bid: string, format: ExportJob["format"]) =>
+    json<ExportJob>(await apiSend("POST", `/builds/${bid}/exports`, { format }, { "Idempotency-Key": crypto.randomUUID() })),
+  exportStatus: (eid: string) => apiJson<ExportJob>(`/exports/${eid}`),
+  exportDownloadUrl: (eid: string) => `${API_BASE}/exports/${encodeURIComponent(eid)}/download`,
   qualityChecks: (bid: string, status: string | null, cursor: string | null) => {
     const params = new URLSearchParams({ limit: "100" });
     if (status) params.set("status", status);

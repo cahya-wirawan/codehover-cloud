@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 
 import { buildSource } from "../../lib/api/resources";
+import { ExportPanel } from "./ExportPanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { SearchPanel } from "./SearchPanel";
 
@@ -83,4 +84,28 @@ test("review explains blockers; only admins can select claims to waive", async (
   expect(screen.getByRole("button", { name: "Waive" })).toBeDisabled(); // a reason is required
   fireEvent.change(screen.getByRole("textbox", { name: /Reason for waiving/ }), { target: { value: "Documented elsewhere in the repo." } });
   expect(screen.getByRole("button", { name: "Waive" })).toBeEnabled();
+});
+
+test("export warns that source is included and links the authorized download when ready", async () => {
+  const job = { id: "e1", build_id: "b1", format: "static_zip", status: "ready", byte_count: 10, error_code: null, created_at: "", completed_at: "", expires_at: "2026-11-19T00:00:00Z", expired: false };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/auth/csrf") return new Response(JSON.stringify({ csrf_token: "t" }), { status: 200 });
+      if (url === "/api/v1/builds/b1/exports" && init?.method === "POST") return new Response(JSON.stringify({ ...job, status: "pending" }), { status: 202 });
+      if (url === "/api/v1/exports/e1") return new Response(JSON.stringify(job), { status: 200 });
+      return new Response("{}", { status: 404 });
+    }),
+  );
+  wrap(<ExportPanel buildId="b1" canExport />);
+  expect(screen.getByText(/contain this build's source code/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Offline site (ZIP)" }));
+  const link = await screen.findByRole("link", { name: "Download" });
+  expect(link).toHaveAttribute("href", "/api/v1/exports/e1/download");
+});
+
+test("viewers do not see export controls", () => {
+  const { container } = wrap(<ExportPanel buildId="b1" canExport={false} />);
+  expect(container).toBeEmptyDOMElement();
 });

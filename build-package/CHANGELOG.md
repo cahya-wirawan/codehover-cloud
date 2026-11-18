@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-11-18
+
+### Added
+
+- `contracts/kb-export.schema.json` 1.0.0: the knowledge-base export.
+- 05, 06, 10: exports as implemented in T16: the `exports` table, the request, status and download contracts with requester-or-admin access, the 24-hour expiry, the hourly quota, and the fixed-entry offline ZIP.
+
 ## [0.5.10] - 2026-11-18
 
 ### Security

@@ -16,7 +16,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-ResourceKind = Literal["project", "build"]
+ResourceKind = Literal["project", "build", "export"]
 
 _SET_CONTEXT = text(
     "SELECT set_config('app.workspace_id', :workspace_id, true), set_config('app.user_id', :user_id, true)"

@@ -222,7 +222,9 @@ async def claim(db: AsyncSession, envelope: TaskEnvelope) -> Claim | None:
                 " FROM builds b"
                 " WHERE t.id = :t AND t.workspace_id = :w AND t.build_id = :b"
                 "   AND b.workspace_id = t.workspace_id AND b.id = t.build_id"
-                "   AND b.status IN ('queued', 'running') AND b.cancel_requested_at IS NULL"
+                # Pipeline stages run on live builds; an export runs on a ready build (0011).
+                "   AND ((t.stage <> 'export' AND b.status IN ('queued', 'running') AND b.cancel_requested_at IS NULL)"
+                "        OR (t.stage = 'export' AND b.status = 'ready'))"
                 "   AND ((t.state IN ('pending', 'retry_wait') AND (t.next_attempt_at IS NULL OR t.next_attempt_at <= now()))"
                 "        OR (t.state = 'leased' AND t.lease_until < now()))"
                 " RETURNING t.id, t.stage, t.work_key, t.lease_generation, t.attempt_count"
@@ -254,7 +256,8 @@ async def claim(db: AsyncSession, envelope: TaskEnvelope) -> Claim | None:
         ),
         {"w": envelope.workspace_id, "t": row.id, "g": row.lease_generation},
     )
-    await event(db, envelope.workspace_id, envelope.build_id, "stage.started", {"stage": row.stage})
+    if row.stage != "export":  # exports of a ready build do not belong to its progress stream
+        await event(db, envelope.workspace_id, envelope.build_id, "stage.started", {"stage": row.stage})
     await db.commit()
     return Claim(
         row.id,
@@ -323,7 +326,7 @@ async def complete(db: AsyncSession, claimed: Claim, apply: Apply | None = None)
     await _fence(db, claimed, "succeeded")
     if apply is not None:
         await apply(db)
-    if claimed.build_id is None:  # snapshot acquisition: the stage's apply recorded the scan
+    if claimed.build_id is None or claimed.stage == "export":  # the stage's apply recorded the outcome
         await db.commit()
         return
     await event(db, claimed.workspace_id, claimed.build_id, "stage.completed", {"stage": claimed.stage})
@@ -415,6 +418,17 @@ async def fail(
                     " updated_at = now() WHERE workspace_id = :w AND id = :s AND status IN ('pending', 'acquiring')"
                 ),
                 {"e": error_code, "w": claimed.workspace_id, "s": claimed.snapshot_id},
+            )
+        await db.commit()
+        return "retry_wait" if retry else "failed"
+    if claimed.stage == "export":  # a failed export never fails its (ready) build
+        if not retry:
+            await db.execute(
+                text(
+                    "UPDATE exports SET status = 'failed', error_code = :e, completed_at = now()"
+                    " WHERE workspace_id = :w AND id = CAST(:x AS uuid) AND status = 'pending'"
+                ),
+                {"e": error_code, "w": claimed.workspace_id, "x": claimed.work_key},
             )
         await db.commit()
         return "retry_wait" if retry else "failed"

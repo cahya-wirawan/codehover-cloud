@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:codehover-cloud:schema:kb-export:1.0.0",
+  "title": "codehover-cloud knowledge-base export v1 (10)",
+  "description": "One published-or-ready build as data: exactly the source files the viewer shows (text files that passed the scan), their definitions with cards, file explanations, guide pages with their checked claims, and the overview. Readers dispatch on the MAJOR of `schema`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generator", "project", "build", "files", "symbols", "guide", "overview"],
+  "properties": {
+    "schema": {"const": "urn:codehover-cloud:schema:kb-export:1.0.0"},
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "parser", "prompts", "preset", "explanation_schema"],
+      "properties": {
+        "engine": {"type": "string"},
+        "parser": {"type": "string"},
+        "prompts": {"type": "string"},
+        "preset": {"type": "string"},
+        "explanation_schema": {"type": "string"}
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "repository"],
+      "properties": {"name": {"type": "string"}, "repository": {"type": "string"}}
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit_sha", "created_at", "variant"],
+      "properties": {
+        "commit_sha": {"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"},
+        "created_at": {"type": "string"},
+        "variant": {"type": "string"}
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "language", "sha256", "lines", "explanation"],
+        "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "language": {"type": ["string", "null"]},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "lines": {"type": "array", "items": {"type": "string"}},
+          "explanation": {"type": ["object", "null"]}
+        }
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "file_id", "key", "name", "kind", "start_line", "end_line", "signature", "card", "uses"],
+        "properties": {
+          "id": {"type": "string"},
+          "file_id": {"type": "string"},
+          "key": {"type": "string"},
+          "name": {"type": "string"},
+          "kind": {"type": "string"},
+          "start_line": {"type": "integer", "minimum": 1},
+          "end_line": {"type": "integer", "minimum": 1},
+          "signature": {"type": ["string", "null"]},
+          "card": {"type": "object"},
+          "uses": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "guide": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "title", "markdown", "check_status", "claims"],
+        "properties": {
+          "slug": {"type": "string"},
+          "title": {"type": "string"},
+          "markdown": {"type": "string"},
+          "check_status": {"type": "string"},
+          "claims": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "text", "status", "reason", "waived"],
+              "properties": {
+                "key": {"type": "string"},
+                "text": {"type": "string"},
+                "status": {"enum": ["supported", "partial", "unsupported", "unchecked", "invalid"]},
+                "reason": {"type": "string"},
+                "waived": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "overview": {"type": ["object", "null"]}
+  }
+}

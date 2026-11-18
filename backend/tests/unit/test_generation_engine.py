@@ -50,7 +50,7 @@ def prepared(file: generate.FileInfo, chunk: generate.Chunk) -> generate.Prepare
 
 
 # ---------------------------------------------------------------- contracts and chunks
-@pytest.mark.parametrize("name", ["overview", "guide-plan", "guide-page"])
+@pytest.mark.parametrize("name", ["overview", "guide-plan", "guide-page", "kb-export"])
 def test_engine_schemas_equal_the_spec_contracts(name: str) -> None:
     spec = Path(__file__).resolve().parents[3] / "build-package" / "contracts" / f"{name}.schema.json"
     assert json.loads(spec.read_text()) == generate.schema(name)
