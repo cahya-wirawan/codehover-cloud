@@ -18,7 +18,8 @@ function fakeApi(replies: Record<string, unknown>) {
     "fetch",
     vi.fn(async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input.toString();
-      const body = replies[url];
+      // These pages need a signed-in user (RequireSignIn); tests may override /me.
+      const body = url === "/api/v1/me" && !(url in replies) ? { id: "u1", display_name: "Ada" } : replies[url];
       return body === undefined
         ? new Response(JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "x", request_id: null, retryable: false, details: {} } }), { status: 401 })
         : new Response(JSON.stringify(body), { status: 200 });

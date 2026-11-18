@@ -111,3 +111,20 @@ test("sign out sends the CSRF token and returns to the login page", async () => 
   const logout = calls.find((c) => c.key === "POST /api/v1/auth/logout");
   expect(new Headers(logout?.init?.headers).get("X-CSRF-Token")).toBe("csrf-abc");
 });
+
+test("signed-out visitors of workspace pages go to the login page and come back afterwards", async () => {
+  fakeApi({ "GET /api/v1/me": SIGNED_OUT });
+  renderAt("/w/w1/usage?checkout=returned");
+  const google = await screen.findByRole("link", { name: "Continue with Google" });
+  expect(google).toHaveAttribute(
+    "href",
+    `/api/v1/auth/google/start?${new URLSearchParams({ return_to: "/w/w1/usage?checkout=returned" }).toString()}`,
+  );
+  expect(screen.queryByRole("heading", { name: "New workspace" })).toBeNull();
+});
+
+test("the privacy, terms and support pages stay public", async () => {
+  fakeApi({ "GET /api/v1/me": SIGNED_OUT });
+  renderAt("/terms");
+  expect(await screen.findByRole("heading", { level: 1, name: "Terms of service" })).toBeInTheDocument();
+});

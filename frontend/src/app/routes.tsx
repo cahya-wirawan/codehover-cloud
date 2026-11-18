@@ -22,6 +22,7 @@ import { WorkspacePage } from "../features/workspaces/WorkspacePage";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
 import { AppShell } from "./AppShell";
 import { HomePage, NotFoundPage, RouteError } from "./pages";
+import { RequireSignIn } from "./RequireSignIn";
 
 export const routes: RouteObject[] = [
   {
@@ -31,27 +32,32 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <HomePage /> },
       { path: "login", element: <LoginPage /> },
-      { path: "account", element: <AccountPage /> },
-      { path: "ops", element: <OpsPage /> },
-      { path: "w", element: <WorkspacesPage /> },
-      { path: "w/:wid", element: <WorkspacePage /> },
-      { path: "w/:wid/connections", element: <ConnectionsPage /> },
-      { path: "w/:wid/audit", element: <AuditPage /> },
-      { path: "w/:wid/usage", element: <UsagePage /> },
       { path: "privacy", element: <PrivacyPage /> },
       { path: "terms", element: <TermsPage /> },
       { path: "support", element: <SupportPage /> },
-      { path: "p/:pid", element: <ProjectPage /> },
       {
-        path: "p/:pid/builds/:bid",
-        element: <BuildPage />,
+        element: <RequireSignIn />,
         children: [
-          { index: true, element: <BuildOverview /> },
-          { path: "code", element: <BuildCode /> },
-          { path: "guide", element: <BuildGuide /> },
-          { path: "guide/:slug", element: <BuildGuide /> },
-          { path: "search", element: <BuildSearch /> },
-          { path: "review", element: <BuildReview /> },
+          { path: "account", element: <AccountPage /> },
+          { path: "ops", element: <OpsPage /> },
+          { path: "w", element: <WorkspacesPage /> },
+          { path: "w/:wid", element: <WorkspacePage /> },
+          { path: "w/:wid/connections", element: <ConnectionsPage /> },
+          { path: "w/:wid/audit", element: <AuditPage /> },
+          { path: "w/:wid/usage", element: <UsagePage /> },
+          { path: "p/:pid", element: <ProjectPage /> },
+          {
+            path: "p/:pid/builds/:bid",
+            element: <BuildPage />,
+            children: [
+              { index: true, element: <BuildOverview /> },
+              { path: "code", element: <BuildCode /> },
+              { path: "guide", element: <BuildGuide /> },
+              { path: "guide/:slug", element: <BuildGuide /> },
+              { path: "search", element: <BuildSearch /> },
+              { path: "review", element: <BuildReview /> },
+            ],
+          },
         ],
       },
       { path: "invitations/accept", element: <AcceptInvitationPage /> },
