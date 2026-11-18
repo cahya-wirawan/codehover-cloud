@@ -20,7 +20,7 @@ Template: “Use selected FILE_SUMMARIES and repository evidence to write `{over
 
 ## P04 Guide generation
 
-Template: “Write one Markdown guide page for PAGE_PLAN using only SOURCE_EVIDENCE. Attach exact citations `[[file_id:start-end]]` to implementation claims. Explain the flow in connected prose. Use bounded Mermaid only when it adds understanding. Do not use raw HTML, external images, links with executable schemes, or unsupported claims. Explicitly identify unknown behavior.” Citations resolve by immutable file ID; renderer displays safe path labels. Mermaid runs strict mode and disallows click/config/HTML directives; parse and cap graph nodes to 30.
+Template: “Write one Markdown guide page for PAGE_PLAN using only SOURCE_EVIDENCE. Attach exact citations `[[file_id:start-end]]` to implementation claims. Explain the flow in connected prose. Use bounded Mermaid only when it adds understanding. Do not use raw HTML, external images, links with executable schemes, or unsupported claims. Explicitly identify unknown behavior.” Citations resolve by immutable file ID; renderer displays safe path labels. Mermaid runs strict mode and disallows click/config/HTML directives; parse and cap graph nodes to 30. The allowlist is checked on CommonMark tokens (markdown-it), with HTML recognized so it can be rejected and the parser's own link filter disabled so that every link target, including reference-style links and autolinks, must be `https://` or an in-page anchor. Renderers must still render with raw HTML disabled.
 
 ## P05 Claim support classifier
 

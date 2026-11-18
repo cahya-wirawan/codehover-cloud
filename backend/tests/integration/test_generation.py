@@ -48,8 +48,11 @@ class ScriptedProvider:
     calls: list[str] = field(default_factory=list)
     replay: ReplayGateway = field(default_factory=ReplayGateway)
 
+    prompts: list[str] = field(default_factory=list)
+
     async def generate(self, request: GenerationRequest) -> GenerationResult:
         self.calls.append(request.purpose)
+        self.prompts.append(request.user)
         queue = self.faults.get(request.purpose, [])
         if queue:
             fault = queue.pop(0)
@@ -81,12 +84,20 @@ def runtime_for(app: Any, provider: ScriptedProvider | None = None) -> Runtime:
 
 
 async def generation_build(
-    client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub, *, preset: str, cap: int | None = None
+    client: httpx.AsyncClient,
+    idp: FakeIdP,
+    gh: FakeGitHub,
+    *,
+    preset: str,
+    cap: int | None = None,
+    **config: Any,
 ) -> tuple[httpx.AsyncClient, str, str, Any]:
     owner, ws, project = await setup_project(client, idp, gh)
     app = configure(client)
     snapshot = await scanned_snapshot(owner, app, project)
-    estimate = (await make_estimate(owner, project, snapshot["id"], preset=preset, guide_pages=3)).json()
+    estimate = (
+        await make_estimate(owner, project, snapshot["id"], preset=preset, guide_pages=3, **config)
+    ).json()
     started = await start_from(owner, project, estimate["id"], cap=cap)
     assert started.status_code == 202, started.text
     return owner, ws, started.json()["id"], app
@@ -390,3 +401,19 @@ async def test_reclaimed_task_marks_unsettled_attempts_unknown_and_keeps_their_h
     done = (await owner.get(f"/api/v1/builds/{build}")).json()
     assert done["status"] == "ready" and done["usage"]["reserved_micro_usd"] == holds
     assert account_counters(ws) == (50_000_000, holds, settled)
+
+
+async def test_files_outside_the_scope_never_reach_a_provider_prompt(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """src/app.py calls `helper` from src/util.py; with util.py outside the approved scope, no prompt may
+    carry its path, signature or definitions (07), even as related context."""
+    _owner, _ws, build, app = await generation_build(
+        client, idp, github, preset="balanced-v1", cap=5_000_000, include=["src/app.py"]
+    )
+    provider = ScriptedProvider()
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 6
+    assert provider.prompts
+    for prompt in provider.prompts:
+        assert "src/util.py" not in prompt and "def helper" not in prompt and "web/index.ts" not in prompt
+        assert "hunter2" not in prompt and "AKIAABCDEFGHIJKLMNOP" not in prompt

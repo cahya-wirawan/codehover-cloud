@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-18
+
+### Security
+
+- 07: related context for explanations included definitions (name, kind, signature, path) from files outside the approved scope, which would be sent to the provider. It is now limited to references whose both ends are in scope; an integration test captures every prompt. Found by automated security review of T11.
+- 19: the guide Markdown allowlist used regular expressions, which can disagree with a renderer (for example reference-style `javascript:` links). It now checks CommonMark tokens. Found by automated security review of T11.
+
 ## [0.5.0] - 2026-11-18
 
 ### Added

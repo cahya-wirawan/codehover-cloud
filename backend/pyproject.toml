@@ -22,6 +22,7 @@ dependencies = [
   "tree-sitter-typescript>=0.23",
   "jsonschema>=4.23",
   "anthropic>=1.0",  # official SDK for the Anthropic adapter (07 provider gateway)
+  "markdown-it-py>=3.0",  # CommonMark tokens for the guide Markdown allowlist (19 P04)
 ]
 
 [project.optional-dependencies]

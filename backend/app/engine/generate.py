@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
 
 from app.engine import ENGINE_VERSION, prompts
 from app.engine.catalog import Model, Role
@@ -34,10 +36,6 @@ GUIDE_EVIDENCE_MAX_LINES = 600
 MIN_PAGES, MAX_PAGES = 3, 8
 MAX_RANGE_LINES = 200
 CITATION = re.compile(r"\[\[([0-9a-f-]{36}):(\d+)-(\d+)\]\]")
-RAW_HTML = re.compile(r"<\s*/?\s*[A-Za-z][A-Za-z0-9-]*(\s[^>]*)?>")
-LINK = re.compile(r"(!?)\[[^\]]*\]\(\s*([^)\s]+)[^)]*\)")
-AUTOLINK = re.compile(r"<\s*([a-zA-Z][a-zA-Z0-9+.-]*:[^>\s]*)\s*>")
-MERMAID_BLOCK = re.compile(r"```mermaid\n(.*?)```", re.S)
 MERMAID_FORBIDDEN = re.compile(r"(?i)\b(click|style|classDef|linkStyle|%%\{|init)\b|<[a-z/]")
 MERMAID_NODE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*)\s*[\[({>]")
 SCHEMA_MAJOR_MINOR = ENGINE_VERSION.rsplit(".", 1)[0]
@@ -453,6 +451,45 @@ def bounded_evidence(
     return result
 
 
+def _markdown_parser() -> MarkdownIt:
+    """CommonMark with HTML recognized (so it can be rejected) and link validation off (so every link
+    target is visible to the allowlist instead of being dropped by this parser but not by another)."""
+    parser = MarkdownIt("commonmark", {"html": True})
+    parser.validateLink = lambda url: True  # type: ignore[method-assign]
+    return parser
+
+
+def markdown_problems(markdown: str) -> list[str]:
+    """Allowlist over CommonMark tokens (19 P04): no raw HTML, no images, links only to https URLs or
+    in-page anchors, bounded strict Mermaid. Checking tokens rather than regexes avoids parser
+    differentials between this check and a renderer."""
+    problems: list[str] = []
+    tokens = _markdown_parser().parse(markdown)
+    if not tokens or tokens[0].type != "heading_open" or tokens[0].tag != "h1":
+        problems.append("start with a level-one heading")
+
+    def walk(items: list[Token]) -> None:
+        for token in items:
+            if token.type in ("html_block", "html_inline"):
+                problems.append("raw HTML is not allowed")
+            elif token.type == "image":
+                problems.append("images are not allowed")
+            elif token.type == "link_open":
+                href = str(token.attrGet("href") or "")
+                if not (href.startswith("https://") or href.startswith("#")):
+                    problems.append(f"link target {href[:80]!r} is not an https URL")
+            elif token.type == "fence" and token.info.strip().lower().startswith("mermaid"):
+                if MERMAID_FORBIDDEN.search(token.content):
+                    problems.append("mermaid diagrams may not use click, style, init or HTML")
+                if len(set(MERMAID_NODE.findall(token.content))) > 30:
+                    problems.append("mermaid diagrams may have at most 30 nodes")
+            if token.children:
+                walk(token.children)
+
+    walk(tokens)
+    return sorted(set(problems), key=problems.index)
+
+
 def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> list[str]:
     """Allowlisted Markdown (19 P04). Citation correctness against the snapshot is the verify stage's job;
     here a citation must at least point into the supplied evidence."""
@@ -460,24 +497,7 @@ def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> li
     if problems:
         return problems
     markdown: str = output["markdown"]
-    if not markdown.lstrip().startswith("# "):
-        problems.append("start with a level-one heading")
-    outside_code = re.sub(r"```.*?```", "", markdown, flags=re.S)
-    outside_code = re.sub(r"`[^`\n]*`", "", outside_code)
-    if RAW_HTML.search(outside_code):
-        problems.append("raw HTML is not allowed")
-    for bang, target in LINK.findall(outside_code):
-        if bang:
-            problems.append("images are not allowed")
-        elif not target.startswith("https://") and not target.startswith("#"):
-            problems.append(f"link target {target[:80]!r} is not an https URL")
-    if AUTOLINK.search(outside_code):
-        problems.append("autolinks are not allowed")
-    for diagram in MERMAID_BLOCK.findall(markdown):
-        if MERMAID_FORBIDDEN.search(diagram):
-            problems.append("mermaid diagrams may not use click, style, init or HTML")
-        if len(set(MERMAID_NODE.findall(diagram))) > 30:
-            problems.append("mermaid diagrams may have at most 30 nodes")
+    problems.extend(markdown_problems(markdown))
     ranges = [(e["file_id"], e["start_line"], e["end_line"]) for e in evidence]
     citations = CITATION.findall(markdown)
     if not citations:

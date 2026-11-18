@@ -205,13 +205,17 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
     related_rows = await _rows(
         rt,
         claimed,
-        "SELECT DISTINCT e.source_file_id, o.name, o.kind, o.signature, f.path FROM reference_edges e"
+        "SELECT DISTINCT e.source_file_id, o.source_file_id AS target_file_id, o.name, o.kind, o.signature, f.path"
+        " FROM reference_edges e"
         " JOIN symbols o ON o.workspace_id = e.workspace_id AND o.id = e.to_symbol_id"
         " JOIN source_files f ON f.workspace_id = o.workspace_id AND f.id = o.source_file_id"
         " WHERE e.workspace_id = :w AND e.build_id = :b AND o.source_file_id <> e.source_file_id",
     )
     related: dict[str, list[dict[str, Any]]] = {}
+    in_scope = {f.file_id for f in files}
     for r in related_rows:
+        if str(r.source_file_id) not in in_scope or str(r.target_file_id) not in in_scope:
+            continue  # files outside the approved scope never reach a provider prompt (07)
         items = related.setdefault(str(r.source_file_id), [])
         if len(items) < 20:
             items.append(

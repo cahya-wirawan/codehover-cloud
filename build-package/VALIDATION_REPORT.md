@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.0
+Date: 2026-11-18 · Package version 0.5.1
+
+0.5.1 fixes two findings of the automated review of T11. With the scope narrowed to `src/app.py`, no captured prompt contains `src/util.py`, its `helper` definition, or the excluded secrets; removing the new filter makes that test fail. New allowlist cases reject reference-style and autolink `javascript:` targets and raw HTML in list items and blocks. 232 backend tests pass.
 
 0.5.0 records T11, the provider gateway and generation stages. Integration tests run the real pipeline with the deterministic replay gateway, and a scripted fake stands in for a priced provider; no real provider is called. They cover:
 - a free replay-preset build through explain, overview, plan, guide and render, with labeled cards, file explanations, cited guide pages, a manifest listing the guide, and the guide endpoints private to the workspace;

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:codehover-cloud:schema:claim-repair:1.0.0",
+  "title": "codehover-cloud claim repair v1 (19 P06)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["replacements"],
+  "properties": {
+    "replacements": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "text", "citations", "action"],
+        "properties": {
+          "claim_id": {"type": "string", "maxLength": 64},
+          "text": {"type": "string", "maxLength": 1500},
+          "action": {"enum": ["replace", "remove"]},
+          "citations": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["file_id", "start_line", "end_line"],
+              "properties": {
+                "file_id": {"type": "string", "maxLength": 36},
+                "start_line": {"type": "integer", "minimum": 1},
+                "end_line": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

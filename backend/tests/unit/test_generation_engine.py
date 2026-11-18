@@ -196,6 +196,18 @@ EVIDENCE = [
             "mermaid",
         ),
         ("# T\n\nGeneric `Map<string, number>` is fine [[FID:1-2]].".replace("FID", FILE_ID), None),
+        ("# T\n\n[a][r] [[FID:1-2]]\n\n[r]: javascript:alert(1)".replace("FID", FILE_ID), "not an https URL"),
+        ("# T\n\n<javascript:alert(1)> [[FID:1-2]]".replace("FID", FILE_ID), "not an https URL"),
+        ("# T\n\n- item <img src=x onerror=alert(1)> [[FID:1-2]]".replace("FID", FILE_ID), "raw HTML"),
+        ("# T\n\n<div>\nblock\n</div>\n\n[[FID:1-2]]".replace("FID", FILE_ID), "raw HTML"),
+        ("# T\n\n[ok](https://example.com) [[FID:1-2]]".replace("FID", FILE_ID), None),
+        (
+            "# T\n\n```mermaid foo\ngraph TD\nA[x] --> B[y]\nclick A cb\n```\n[[FID:1-2]]".replace(
+                "FID", FILE_ID
+            ),
+            "mermaid",
+        ),
+        ("## Not h1\n\nx [[FID:1-2]]".replace("FID", FILE_ID), "level-one heading"),
     ],
 )
 def test_guide_markdown_allowlist(markdown: str, problem: str | None) -> None:
