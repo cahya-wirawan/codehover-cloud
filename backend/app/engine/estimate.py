@@ -19,6 +19,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.engine.catalog import Catalog, Preset, cost_micro_usd
+from app.engine.globs import Budget
 from app.engine.globs import match as globs_match
 
 CHUNK_LINES = 450  # target 400-500 lines per explanation chunk (07)
@@ -28,12 +29,14 @@ EXPLAIN_OUTPUT_LOW, EXPLAIN_OUTPUT_HIGH = 300, 2500
 SUMMARY_TOKENS = 150
 GUIDE_EVIDENCE_TOKENS = 6000
 VALIDITY_SECONDS = 30 * 60
+MAX_GLOB_STARS = 8
+MAX_GLOB_SEGMENTS = 16
 
 _TEST_PATH = re.compile(
     r"(^|/)(tests?|__tests__|spec|specs)/|(_test|\.test|\.spec|_spec)\.[^/]+$|(^|/)test_[^/]+$"
 )
 # Printable path globs without character classes or backslashes; matched in bounded time (globs.py).
-Glob = Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\\\[\]]+$")]
+Glob = Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\\\[\]?]+$")]
 
 
 class GenerationConfig(BaseModel):
@@ -41,8 +44,8 @@ class GenerationConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    include: Annotated[list[Glob], Field(max_length=50)] = ["**"]
-    exclude: Annotated[list[Glob], Field(max_length=50)] = []
+    include: Annotated[list[Glob], Field(max_length=20)] = ["**"]
+    exclude: Annotated[list[Glob], Field(max_length=20)] = []
     languages: Annotated[list[str], Field(min_length=1, max_length=1)] = ["en"]
     levels: Annotated[list[str], Field(min_length=1, max_length=1)] = ["standard"]
     max_files: Annotated[int, Field(ge=1, le=500)] = 100
@@ -55,6 +58,10 @@ class GenerationConfig(BaseModel):
         for glob in globs:
             if glob.startswith("/") or ".." in PurePosixPath(glob).parts:
                 raise ValueError("globs are relative to the repository root and cannot contain '..'")
+            if glob.count("*") > MAX_GLOB_STARS or glob.count("/") >= MAX_GLOB_SEGMENTS:
+                raise ValueError(
+                    f"globs may have at most {MAX_GLOB_STARS} '*' and {MAX_GLOB_SEGMENTS} segments"
+                )
         return sorted(set(globs))
 
     @field_validator("languages")
@@ -84,18 +91,20 @@ class ScannedFile:
     line_count: int
 
 
-def _matches(path: str, globs: list[str]) -> bool:
-    return any(globs_match(path, glob) for glob in globs)
+def _matches(path: str, globs: list[str], budget: Budget) -> bool:
+    return any(globs_match(path, glob, budget) for glob in globs)
 
 
 def select_files(files: list[ScannedFile], config: GenerationConfig) -> tuple[list[ScannedFile], int]:
-    """Returns (selected in deterministic order, number of selectable files left out by scope)."""
+    """Returns (selected in deterministic order, number of selectable files left out by scope).
+    Raises GlobBudgetExceeded when the globs are too expensive for these paths."""
+    budget = Budget()
     eligible = [
         f
         for f in files
         if f.status == "selected"
-        and _matches(f.path, config.include)
-        and not _matches(f.path, config.exclude)
+        and _matches(f.path, config.include, budget)
+        and not _matches(f.path, config.exclude, budget)
     ]
     eligible.sort(key=lambda f: (bool(_TEST_PATH.search(f.path)), f.path.count("/"), f.path))
     return eligible[: config.max_files], len(files) - min(len(eligible), config.max_files)

@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.4.1
+Date: 2026-11-18 · Package version 0.4.2
+
+0.4.2 bounds scope selection. Against 2000 files with 29 segments of 200 characters each and 40 hostile but valid globs, every selection finishes or stops at the budget within 1.6 s (previously 61 s); ordinary globs take 0.2 s on those paths and 37 ms on a realistic repository. 183 backend tests pass.
 
 0.4.1 fixes two findings of the automated review of T10. A probe of `PurePath.full_match` with `*a*a*a*a*a*a*a*a*a*a*b` against a 960-character path did not finish in two minutes; the new matcher agrees with it on ordinary globs and handles the hostile ones in milliseconds (unit tests). An integration test shows a second project's acquisition refused while the first is pending, and admitted after it finishes. 180 backend tests pass (one Linux-only test skipped on macOS).
 

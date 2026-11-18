@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-18
+
+### Security
+
+- 07, 06: the bounded glob matcher of 0.4.1 was still polynomial in tenant-controlled paths and globs; a probe of the committed code took 61 s for one selection. Selection now has a fixed work budget (422 `SCOPE_TOO_COMPLEX`), segments match literal pieces with `str.find` and are memoized, `?` is no longer accepted, globs are limited to 20 per list with at most 8 `*` and 16 segments, and the estimate runs off the API event loop. Found by automated security review of 0.4.1.
+
 ## [0.4.1] - 2026-11-18
 
 ### Security

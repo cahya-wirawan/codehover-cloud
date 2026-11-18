@@ -1,37 +1,71 @@
-"""Linear-time path globs for scope selection (07).
+"""Bounded path globs for scope selection (07).
 
 `PurePath.full_match` compiles globs to backtracking regular expressions, and a glob such as
-`*a*a*a*a*b` against a long path takes exponential time: a request could pin an API worker. This matcher
-is polynomial and bounded: `**` matches zero or more whole segments, `*` any run of characters inside a
-segment, `?` one character. Character classes are not supported (rejected by validation).
+`*a*a*a*a*b` against a long path takes exponential time; both the globs and the repository paths are
+tenant-controlled, so a request could pin a worker.
+
+Supported syntax: `**` matches zero or more whole segments; `*` matches any run of characters inside a
+segment. `?` and character classes are rejected by validation. A segment pattern is split at `*` into
+literal pieces matched greedily with `str.find` (linear, in C): prefix, suffix, then each middle piece
+at its leftmost position, which is exact for `*`-only patterns. Whole paths are matched by dynamic
+programming over segments. Segment results are memoized per selection, and every evaluated segment is
+charged, with each cell of the path DP, to a `Budget`; a selection that exceeds it stops with `GlobBudgetExceeded`.
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
 
+# Work units per selection: one per dynamic-programming cell, plus one per distinct segment evaluation.
+# The worst accepted selection takes about a second; ordinary scopes on 2000 files use well under 10%.
+DEFAULT_BUDGET = 2_000_000
 
-def _segment(name: str, pattern: str) -> bool:
-    """Classic two-pointer wildcard match: O(len(name) * len(pattern)) worst case, no backtracking blowup."""
-    n = p = 0
-    star = -1
-    mark = 0
-    while n < len(name):
-        if p < len(pattern) and (pattern[p] == "?" or pattern[p] == name[n]):
-            n += 1
-            p += 1
-        elif p < len(pattern) and pattern[p] == "*":
-            star, mark = p, n
-            p += 1
-        elif star != -1:
-            p = star + 1
-            mark += 1
-            n = mark
-        else:
+
+class GlobBudgetExceeded(Exception):
+    """The scope is too expensive to evaluate."""
+
+
+class Budget:
+    def __init__(self, limit: int = DEFAULT_BUDGET) -> None:
+        self.remaining = limit
+        self.memo: dict[tuple[str, str], bool] = {}
+
+    def charge(self, cost: int = 1) -> None:
+        self.remaining -= cost
+        if self.remaining < 0:
+            raise GlobBudgetExceeded("scope too complex")
+
+
+@lru_cache(maxsize=1024)
+def _pieces(pattern: str) -> tuple[str, ...]:
+    return tuple(pattern.split("*"))
+
+
+def _segment_uncached(name: str, pattern: str) -> bool:
+    pieces = _pieces(pattern)
+    if len(pieces) == 1:
+        return name == pattern
+    first, last = pieces[0], pieces[-1]
+    if len(name) < len(first) + len(last) or not name.startswith(first) or not name.endswith(last):
+        return False
+    position, end = len(first), len(name) - len(last)
+    for piece in pieces[1:-1]:
+        if not piece:
+            continue
+        found = name.find(piece, position, end)
+        if found < 0:
             return False
-    while p < len(pattern) and pattern[p] == "*":
-        p += 1
-    return p == len(pattern)
+        position = found + len(piece)
+    return True
+
+
+def _segment(name: str, pattern: str, budget: Budget) -> bool:
+    key = (name, pattern)
+    cached = budget.memo.get(key)
+    if cached is None:
+        budget.charge(1 + len(name) // 64)
+        cached = budget.memo[key] = _segment_uncached(name, pattern)
+    return cached
 
 
 @lru_cache(maxsize=256)
@@ -39,16 +73,18 @@ def _parts(glob: str) -> tuple[str, ...]:
     return tuple(glob.split("/"))
 
 
-def match(path: str, glob: str) -> bool:
-    """Whole-path match. Dynamic programming over segments: O(segments * pattern parts * segment cost)."""
+def match(path: str, glob: str, budget: Budget | None = None) -> bool:
+    """Whole-path match by dynamic programming over segments."""
+    budget = budget or Budget()
     names = path.split("/")
     parts = _parts(glob)
-    # reachable[j]: the first i names can be matched by the first j pattern parts.
+    budget.charge(len(names) * len(parts))  # every DP cell, even when its segment result is memoized
+    # reachable[j]: the names consumed so far can be matched by the first j pattern parts.
     reachable = [False] * (len(parts) + 1)
     reachable[0] = True
     for j, part in enumerate(parts):
-        if part == "**":
-            reachable[j + 1] = reachable[j + 1] or reachable[j]
+        if part == "**" and reachable[j]:
+            reachable[j + 1] = True
     for name in names:
         nxt = [False] * (len(parts) + 1)
         for j, part in enumerate(parts):
@@ -56,8 +92,8 @@ def match(path: str, glob: str) -> bool:
                 continue
             if part == "**":
                 nxt[j] = True  # ** absorbs this segment and may absorb more
-                nxt[j + 1] = nxt[j + 1] or _segment(name, "*")
-            elif _segment(name, part):
+                nxt[j + 1] = True  # ** consumes exactly this segment
+            elif _segment(name, part, budget):
                 nxt[j + 1] = True
         for j, part in enumerate(parts):  # ** may also match zero further segments
             if part == "**" and nxt[j]:

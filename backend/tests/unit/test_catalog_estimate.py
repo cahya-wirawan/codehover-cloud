@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 
@@ -177,7 +178,8 @@ GLOB_PATTERNS = [
     "**/fixtures/**",
     "*/*",
     "src/**/b.ts",
-    "?.py",
+    "a*.py",
+    "*a*b*",
     "a/**/b",
     "**/**",
 ]
@@ -194,18 +196,31 @@ def test_glob_matcher_agrees_with_pathlib_on_ordinary_globs() -> None:
 
 
 def test_glob_matching_is_bounded_on_hostile_globs() -> None:
-    """pathlib's regex translation backtracks exponentially on these; the scope matcher must not."""
+    """pathlib's regex translation takes exponential time on these; a selection must stay within its budget
+    and stop with GlobBudgetExceeded rather than run unbounded (paths and globs are tenant-controlled)."""
     import time
 
-    from app.engine.globs import match
+    from app.engine.globs import GlobBudgetExceeded
 
-    path = "a/" * 30 + "a" * 900
-    started = time.perf_counter()
-    for glob in ["*a*a*a*a*a*a*a*a*a*a*b", "*" * 199 + "b", "/".join(["**"] * 60), "**/*a*a*a*a*a*a*a*b"]:
-        assert not match(path, glob + "z") or glob.startswith("**/**")
-    assert time.perf_counter() - started < 1.0
+    name = "a" * 200
+    scanned = [ScannedFile(str(i), "/".join([name] * 29) + f"/{i}", "selected", 1, 1) for i in range(2000)]
+    for glob in ["**/*a*a*a*b/**", "**/**/**/**/b", "*a*a*a*a*a*a*a*b"]:
+        config = GenerationConfig(
+            model_preset="replay-v2",
+            include=[f"{glob}{i}" for i in range(20)],
+            exclude=[f"{glob}x{i}" for i in range(20)],
+        )
+        started = time.perf_counter()
+        with contextlib.suppress(GlobBudgetExceeded):
+            select_files(scanned, config)
+        assert time.perf_counter() - started < 5.0, glob
+    ordinary = GenerationConfig(
+        model_preset="replay-v2", include=["src/**", "**/*.py"], exclude=["**/tests/**"]
+    )
+    select_files(scanned, ordinary)  # deep, long paths with ordinary globs stay within budget
 
 
-def test_character_classes_are_rejected() -> None:
+@pytest.mark.parametrize("glob", ["src/[a-z]*.py", "src/?.py", "*a*a*a*a*a*a*a*a*a*b", "/".join(["d"] * 17)])
+def test_unsupported_or_oversized_globs_are_rejected(glob: str) -> None:
     with pytest.raises(ValidationError):
-        GenerationConfig(model_preset="replay-v2", include=["src/[a-z]*.py"])
+        GenerationConfig(model_preset="replay-v2", include=[glob])

@@ -7,6 +7,7 @@ expires after 30 minutes. Starting a generation build later requires that exact 
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 from uuid import UUID
@@ -21,6 +22,7 @@ from app.core.tenancy import set_context
 from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION
 from app.engine.catalog import Catalog
 from app.engine.estimate import VALIDITY_SECONDS, GenerationConfig, ScannedFile, config_digest, estimate
+from app.engine.globs import GlobBudgetExceeded
 from app.jobs import store as jobs
 from app.modules.usage import ledger
 from app.modules.workspaces.access import Member
@@ -208,7 +210,12 @@ async def create_estimate(
     preset = catalog.preset(config.model_preset)
     if preset is None:
         raise ApiError(422, "PRESET_UNKNOWN", "This model preset is not in the approved catalog.")
-    result = estimate(await scanned_files(db, member.workspace_id, snapshot_id), config, catalog, preset)
+    try:
+        files = await scanned_files(db, member.workspace_id, snapshot_id)
+        # Bounded but CPU-bound: keep the event loop serving other requests meanwhile.
+        result = await asyncio.to_thread(estimate, files, config, catalog, preset)
+    except GlobBudgetExceeded as error:
+        raise ApiError(422, "SCOPE_TOO_COMPLEX", "Simplify the include and exclude patterns.") from error
     if not result.selected:
         raise ApiError(422, "SCOPE_EMPTY", "No supported source files match this scope.")
     digest = config_digest(
