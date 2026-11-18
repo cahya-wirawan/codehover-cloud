@@ -51,3 +51,7 @@ htmlcov/
 
 # Frontend
 frontend/coverage/
+
+# Playwright output
+frontend/test-results/
+frontend/playwright-report/

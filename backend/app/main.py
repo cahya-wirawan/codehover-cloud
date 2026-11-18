@@ -27,6 +27,7 @@ from app.engine import catalog
 from app.modules.github import router as github
 from app.modules.identity import router as identity
 from app.modules.projects import router as projects
+from app.modules.published import router as published
 from app.modules.usage import router as usage
 from app.modules.webhooks import router as webhooks
 from app.modules.workspaces import router as workspaces
@@ -138,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(workspaces.router)
     api.include_router(github.router)
     api.include_router(projects.router)
+    api.include_router(published.router)
     api.include_router(usage.router)
     api.include_router(webhooks.router)
     app.include_router(api)

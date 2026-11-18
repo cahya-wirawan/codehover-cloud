@@ -1,9 +1,18 @@
 import type { RouteObject } from "react-router";
 
 import { LoginPage } from "../features/auth/LoginPage";
+import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
-import { BuildPage } from "../features/viewer/BuildPage";
+import {
+  BuildCode,
+  BuildGuide,
+  BuildOverview,
+  BuildPage,
+  BuildReview,
+  BuildSearch,
+} from "../features/viewer/BuildPage";
 import { AcceptInvitationPage } from "../features/workspaces/AcceptInvitationPage";
+import { AuditPage } from "../features/workspaces/AuditPage";
 import { ConnectionsPage } from "../features/workspaces/ConnectionsPage";
 import { WorkspacePage } from "../features/workspaces/WorkspacePage";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
@@ -21,9 +30,32 @@ export const routes: RouteObject[] = [
       { path: "w", element: <WorkspacesPage /> },
       { path: "w/:wid", element: <WorkspacePage /> },
       { path: "w/:wid/connections", element: <ConnectionsPage /> },
+      { path: "w/:wid/audit", element: <AuditPage /> },
       { path: "p/:pid", element: <ProjectPage /> },
-      { path: "p/:pid/builds/:bid", element: <BuildPage /> },
+      {
+        path: "p/:pid/builds/:bid",
+        element: <BuildPage />,
+        children: [
+          { index: true, element: <BuildOverview /> },
+          { path: "code", element: <BuildCode /> },
+          { path: "guide", element: <BuildGuide /> },
+          { path: "guide/:slug", element: <BuildGuide /> },
+          { path: "search", element: <BuildSearch /> },
+          { path: "review", element: <BuildReview /> },
+        ],
+      },
       { path: "invitations/accept", element: <AcceptInvitationPage /> },
+      {
+        path: "sites/:site",
+        element: <SitePage />,
+        children: [
+          { index: true, element: <SiteGuide /> },
+          { path: "guide", element: <SiteGuide /> },
+          { path: "guide/:slug", element: <SiteGuide /> },
+          { path: "code", element: <SiteCode /> },
+          { path: "search", element: <SiteSearch /> },
+        ],
+      },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

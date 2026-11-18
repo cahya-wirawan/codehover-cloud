@@ -30,6 +30,120 @@
         "title": "Accepted",
         "type": "object"
       },
+      "AuditEntry": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "actor_user_id",
+          "actor_name",
+          "resource_type",
+          "resource_id",
+          "metadata",
+          "request_id",
+          "created_at"
+        ],
+        "title": "AuditEntry",
+        "type": "object"
+      },
+      "AuditList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AuditList",
+        "type": "object"
+      },
       "BuildList": {
         "properties": {
           "items": {
@@ -913,6 +1027,114 @@
         "title": "EventOut",
         "type": "object"
       },
+      "ExportIn": {
+        "properties": {
+          "format": {
+            "enum": [
+              "static_zip",
+              "kb_json"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "ExportIn",
+        "type": "object"
+      },
+      "ExportOut": {
+        "properties": {
+          "build_id": {
+            "format": "uuid",
+            "title": "Build Id",
+            "type": "string"
+          },
+          "byte_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byte Count"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "build_id",
+          "format",
+          "status",
+          "byte_count",
+          "error_code",
+          "created_at",
+          "completed_at",
+          "expires_at",
+          "expired"
+        ],
+        "title": "ExportOut",
+        "type": "object"
+      },
       "FileExplanationOut": {
         "properties": {
           "chunks": {
@@ -1089,6 +1311,103 @@
           "summary"
         ],
         "title": "FileSymbol",
+        "type": "object"
+      },
+      "FreshnessOut": {
+        "properties": {
+          "last_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Observed At"
+          },
+          "last_observed_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Observed Sha"
+          },
+          "latest_ready_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Ready Sha"
+          },
+          "latest_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Sha"
+          },
+          "published_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Sha"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "current",
+              "update_available",
+              "never_built",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tracked_ref": {
+            "title": "Tracked Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tracked_ref",
+          "state",
+          "reason",
+          "latest_sha",
+          "last_observed_sha",
+          "last_observed_at",
+          "published_sha",
+          "latest_ready_sha"
+        ],
+        "title": "FreshnessOut",
         "type": "object"
       },
       "GenerationConfig": {
@@ -1851,6 +2170,135 @@
         "title": "ProjectOut",
         "type": "object"
       },
+      "PublicationIn": {
+        "properties": {
+          "acknowledge_partial": {
+            "default": false,
+            "title": "Acknowledge Partial",
+            "type": "boolean"
+          },
+          "build_id": {
+            "format": "uuid",
+            "title": "Build Id",
+            "type": "string"
+          },
+          "confirmation": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation"
+          },
+          "public_slug": {
+            "anyOf": [
+              {
+                "maxLength": 63,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Slug"
+          },
+          "visibility": {
+            "default": "private",
+            "enum": [
+              "private",
+              "public"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "build_id"
+        ],
+        "title": "PublicationIn",
+        "type": "object"
+      },
+      "PublicationOut": {
+        "properties": {
+          "acknowledged_partial": {
+            "title": "Acknowledged Partial",
+            "type": "boolean"
+          },
+          "build_id": {
+            "format": "uuid",
+            "title": "Build Id",
+            "type": "string"
+          },
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "public_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Slug"
+          },
+          "suspended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspended At"
+          },
+          "suspended_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspended Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "build_id",
+          "visibility",
+          "public_slug",
+          "version",
+          "acknowledged_partial",
+          "suspended_at",
+          "suspended_reason",
+          "updated_at",
+          "commit_sha"
+        ],
+        "title": "PublicationOut",
+        "type": "object"
+      },
       "QualityOut": {
         "properties": {
           "blockers": {
@@ -2004,6 +2452,11 @@
             "title": "Ambiguous",
             "type": "boolean"
           },
+          "file_id": {
+            "format": "uuid",
+            "title": "File Id",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -2024,6 +2477,10 @@
           "resolution": {
             "title": "Resolution",
             "type": "string"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
           }
         },
         "required": [
@@ -2031,6 +2488,8 @@
           "name",
           "kind",
           "path",
+          "file_id",
+          "start_line",
           "resolution",
           "ambiguous"
         ],
@@ -2146,6 +2605,101 @@
         "title": "RoleChange",
         "type": "object"
       },
+      "SearchHit": {
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "ref_id": {
+            "format": "uuid",
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "symbol_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol Kind"
+          }
+        },
+        "required": [
+          "kind",
+          "ref_id",
+          "name",
+          "path",
+          "line",
+          "symbol_kind",
+          "snippet",
+          "basis",
+          "score"
+        ],
+        "title": "SearchHit",
+        "type": "object"
+      },
+      "SearchOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SearchOut",
+        "type": "object"
+      },
       "SessionList": {
         "properties": {
           "items": {
@@ -2201,6 +2755,43 @@
           "current"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SiteOut": {
+        "properties": {
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "generated": {
+            "title": "Generated",
+            "type": "boolean"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "published_at": {
+            "title": "Published At"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "repository",
+          "commit_sha",
+          "visibility",
+          "generated",
+          "published_at"
+        ],
+        "title": "SiteOut",
         "type": "object"
       },
       "SnapshotFile": {
@@ -3129,6 +3720,7 @@
     },
     "/api/v1/builds/{build_id}/events": {
       "get": {
+        "description": "`Accept: text/event-stream` streams events (resume with Last-Event-ID); otherwise a JSON page.",
         "operationId": "build_events_api_v1_builds__build_id__events_get",
         "parameters": [
           {
@@ -3163,6 +3755,23 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
           }
         ],
         "responses": {
@@ -3171,6 +3780,76 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventList"
+                }
+              },
+              "text/event-stream": {}
+            },
+            "description": "JSON page, or an SSE stream"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Events",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/builds/{build_id}/exports": {
+      "post": {
+        "operationId": "request_export_api_v1_builds__build_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
                 }
               }
             },
@@ -3187,7 +3866,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Build Events",
+        "summary": "Request Export",
         "tags": [
           "projects"
         ]
@@ -3630,6 +4309,89 @@
         ]
       }
     },
+    "/api/v1/builds/{build_id}/search": {
+      "get": {
+        "operationId": "search_build_api_v1_builds__build_id__search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Build Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(symbol|file|guide)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Build",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/builds/{build_id}/symbols/{symbol_id}": {
       "get": {
         "operationId": "symbol_view_api_v1_builds__build_id__symbols__symbol_id__get",
@@ -3755,6 +4517,85 @@
         "summary": "Presets",
         "tags": [
           "usage"
+        ]
+      }
+    },
+    "/api/v1/exports/{export_id}": {
+      "get": {
+        "operationId": "get_export_api_v1_exports__export_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Export",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/exports/{export_id}/download": {
+      "get": {
+        "operationId": "download_export_api_v1_exports__export_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Export",
+        "tags": [
+          "projects"
         ]
       }
     },
@@ -4416,6 +5257,227 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/freshness": {
+      "get": {
+        "operationId": "project_freshness_api_v1_projects__project_id__freshness_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreshnessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Project Freshness",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/publication": {
+      "delete": {
+        "operationId": "unpublish_api_v1_projects__project_id__publication_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unpublish",
+        "tags": [
+          "projects"
+        ]
+      },
+      "get": {
+        "operationId": "get_publication_api_v1_projects__project_id__publication_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Publication",
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "operationId": "publish_api_v1_projects__project_id__publication_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/snapshots": {
       "post": {
         "operationId": "request_snapshot_api_v1_projects__project_id__snapshots_post",
@@ -4627,6 +5689,416 @@
         ]
       }
     },
+    "/api/v1/published/{slug}": {
+      "get": {
+        "operationId": "site_api_v1_published__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Site",
+        "tags": [
+          "published"
+        ]
+      }
+    },
+    "/api/v1/published/{slug}/files/{file_id}": {
+      "get": {
+        "operationId": "file_view_api_v1_published__slug__files__file_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_line",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Start Line",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_line",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File View",
+        "tags": [
+          "published"
+        ]
+      }
+    },
+    "/api/v1/published/{slug}/guide": {
+      "get": {
+        "operationId": "guide_index_api_v1_published__slug__guide_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideIndexOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guide Index",
+        "tags": [
+          "published"
+        ]
+      }
+    },
+    "/api/v1/published/{slug}/guide/{page}": {
+      "get": {
+        "operationId": "guide_page_api_v1_published__slug__guide__page__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "page",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$",
+              "title": "Page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuidePageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guide Page",
+        "tags": [
+          "published"
+        ]
+      }
+    },
+    "/api/v1/published/{slug}/search": {
+      "get": {
+        "operationId": "search_api_v1_published__slug__search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(symbol|file|guide)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "published"
+        ]
+      }
+    },
+    "/api/v1/published/{slug}/symbols/{symbol_id}": {
+      "get": {
+        "operationId": "symbol_view_api_v1_published__slug__symbols__symbol_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "symbol_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Symbol Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Symbol View",
+        "tags": [
+          "published"
+        ]
+      }
+    },
+    "/api/v1/published/{slug}/tree": {
+      "get": {
+        "operationId": "tree_api_v1_published__slug__tree_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1024,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Tree",
+        "tags": [
+          "published"
+        ]
+      }
+    },
     "/api/v1/webhooks/github": {
       "post": {
         "operationId": "github_webhook_api_v1_webhooks_github_post",
@@ -4811,6 +6283,103 @@
           }
         },
         "summary": "Rename Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/audit": {
+      "get": {
+        "description": "Workspace audit events, newest first; an action prefix like `publication.` filters (09: admins).",
+        "operationId": "audit_log_api_v1_workspaces__workspace_id__audit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "pattern": "^[a-z_]+(\\.[a-z_]+)*\\.?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Audit Log",
         "tags": [
           "workspaces"
         ]

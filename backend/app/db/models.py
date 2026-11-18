@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Computed,
     DateTime,
     Double,
     ForeignKey,
@@ -24,7 +25,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -189,6 +190,8 @@ class Project(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     deleted_at: Mapped[datetime | None] = ts(nullable=True)
+    last_observed_sha: Mapped[str | None] = mapped_column(Text)  # 0014
+    last_observed_at: Mapped[datetime | None] = ts(nullable=True)
 
 
 class Snapshot(Base):
@@ -542,3 +545,62 @@ class ClaimCheck(Base):
     waived_at: Mapped[datetime | None] = ts(nullable=True)
     created_at: Mapped[datetime] = ts(default_now=True)
     checked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class SearchDocument(Base):
+    """Build-scoped derived search row (0009); `name_lower` and `document` are generated columns."""
+
+    __tablename__ = "search_documents"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    kind: Mapped[str] = mapped_column(Text)
+    ref_id: Mapped[UUID] = ref()
+    name: Mapped[str] = mapped_column(Text)
+    name_lower: Mapped[str | None] = mapped_column(Text, Computed("lower(name)"))
+    path: Mapped[str | None] = mapped_column(Text)
+    line: Mapped[int | None] = mapped_column(Integer)
+    symbol_kind: Mapped[str | None] = mapped_column(Text)
+    snippet: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    terms: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    body: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    document: Mapped[Any] = mapped_column(TSVECTOR, Computed("document"), nullable=True)
+
+
+class Publication(Base):
+    """The mutable pointer from a project to one ready build (0010)."""
+
+    __tablename__ = "publications"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    project_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    visibility: Mapped[str] = mapped_column(Text)
+    public_slug: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    acknowledged_partial: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    suspended_at: Mapped[datetime | None] = ts(nullable=True)
+    suspended_reason: Mapped[str | None] = mapped_column(Text)
+    published_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+class Export(Base):
+    """A downloadable package of one ready build (0011)."""
+
+    __tablename__ = "exports"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    build_id: Mapped[UUID] = ref()
+    format: Mapped[str] = mapped_column(Text)
+    variant: Mapped[str] = mapped_column(Text, server_default=text("'en-standard'"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    requested_by: Mapped[UUID] = ref("users.id")
+    object_key: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    byte_count: Mapped[int | None] = mapped_column(BigInteger)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    completed_at: Mapped[datetime | None] = ts(nullable=True)
+    expires_at: Mapped[datetime | None] = ts(nullable=True)

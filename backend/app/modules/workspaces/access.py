@@ -8,7 +8,7 @@ workspace the caller can see are 403.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Protocol
 from uuid import UUID
 
 from fastapi import Depends
@@ -34,6 +34,22 @@ class Member:
 
     def at_least(self, role: Role) -> bool:
         return ROLE_RANK[self.role] >= ROLE_RANK[role]
+
+
+class Reader(Protocol):
+    """Read access to one workspace's build content: a member, or the publication resolver for a public
+    site (05 "Published sites"). Read paths use only the workspace; they never act for a user."""
+
+    @property
+    def workspace_id(self) -> UUID: ...
+
+
+@dataclass(frozen=True)
+class PublicReader:
+    """A visitor of an explicitly public publication; the workspace comes from the resolver, never from
+    request data."""
+
+    workspace_id: UUID
 
 
 def require_role(member: Member, minimum: Role) -> None:

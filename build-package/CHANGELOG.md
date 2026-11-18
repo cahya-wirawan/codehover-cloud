@@ -4,6 +4,74 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-11-18
+
+### Added
+
+- 13: the critical journey as automated for M3, with axe on every screen; project deletion joins it with purge in M4.
+
+### Changed
+
+- 02: a definition's trigger is its identifier, not the whole line, so visible text is part of the accessible name (WCAG 2.5.3), in the viewer and the offline export.
+
+## [0.5.12] - 2026-11-18
+
+### Added
+
+- 06, 05: project freshness (`GET /projects/{pid}/freshness`, `projects.last_observed_sha/at`): a 5-minute observation cache, and `unknown` with the last observation when GitHub is unreachable (A23). The workspace audit log adds an action-prefix filter and filter-bound cursors.
+
+## [0.5.11] - 2026-11-18
+
+### Added
+
+- `contracts/kb-export.schema.json` 1.0.0: the knowledge-base export.
+- 05, 06, 10: exports as implemented in T16: the `exports` table, the request, status and download contracts with requester-or-admin access, the 24-hour expiry, the hourly quota, and the fixed-entry offline ZIP.
+
+## [0.5.10] - 2026-11-18
+
+### Security
+
+- 06: an admin could unpublish an operator-suspended publication, which deleted the takedown with the row, and then publish afresh. Unpublishing such a publication is now refused, by the service and by a database trigger (migration 0012). Found by automated security review of 0.5.9.
+
+## [0.5.9] - 2026-11-18
+
+### Security
+
+- 06, 05: three findings of the automated review of T15, fixed with tests.
+  - The resolver ignored workspace status and project deletion. It now serves only live projects in active workspaces, and the members-only check requires an active workspace (migration 0011).
+  - Republishing cleared an operator's suspension. It is now refused with `SUSPENDED_BY_OPERATOR`.
+  - A revoke committed concurrently with a publish could leave an unsuspended pointer. The publish now reads the repository and connection FOR SHARE.
+
+## [0.5.8] - 2026-11-18
+
+### Added
+
+- 05, 06, 09: publication as implemented in T15:
+  - the pointer, with the review gate, partial acknowledgment, ETag concurrency, typed public confirmation and rollback;
+  - members-only private site addresses;
+  - suspension triggers on revoked connections and repositories;
+  - published-site delivery through the resolver on every request;
+  - the error codes `PUBLICATION_BLOCKED`, `ACKNOWLEDGMENT_REQUIRED`, `CONFIRMATION_REQUIRED` and `SLUG_INVALID`.
+
+## [0.5.7] - 2026-11-18
+
+### Added
+
+- 05, 06: build-scoped search (`search_documents`, `GET /builds/{bid}/search`) with ranking by exact name, name prefix and weighted text, and relations carrying file IDs and lines.
+- 02: the M3 code view: an accessible line renderer with deep links, hover preview, pin, Esc and focus return, the build tabs (Overview, Code, Guide, Search, Review), and admin waivers in Review. Adopting CodeMirror 6 is recorded as open.
+
+## [0.5.6] - 2026-11-18
+
+### Security
+
+- 06: an event-stream slot was released only by the response body's generator, which never runs when the client disconnects before the first byte. Repeated aborted requests could leak slots until a workspace's members could no longer stream. Release is now idempotent and tied to the response lifecycle. Found by automated security review of T13.
+
+## [0.5.5] - 2026-11-18
+
+### Added
+
+- 06: the build event stream as implemented in T13, negotiated on `Accept` beside the JSON polling form, with the `access.revoked` and `reset` events and the `STREAM_LIMIT` error.
+
 ## [0.5.4] - 2026-11-18
 
 ### Added

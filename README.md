@@ -86,6 +86,12 @@ npx vitest run src/app/routes.test.tsx   # a single test file
 npm run check:env    # allowlisted import.meta.env keys only; no secrets in the bundle
 ```
 
+The end-to-end journey (`frontend/e2e/`, Playwright with axe) builds the frontend and starts a test-only server, `backend/tests/e2e/server.py`. That server runs the real API on the integration-test database with fake Google and GitHub providers and an inline worker. It needs the backend venv, a migrated database with the same `TEST_MIGRATION_DATABASE_URL` and `TEST_DATABASE_URL` as the integration tests, and an installed Google Chrome (`PW_CHANNEL=""` uses Playwright's bundled Chromium instead). Stop the stack's workers first, as for the integration tests.
+
+```bash
+npm run test:e2e
+```
+
 `frontend/.npmrc` pins exact versions and applies a `before` cutoff, the same cooling-off period as the Python locks.
 
 ## Full stack (Docker Compose)

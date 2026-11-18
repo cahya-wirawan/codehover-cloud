@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
 from app.adapters.storage import ObjectStore
+from app.core.errors import ApiError
 from app.core.idempotency import run_once
 from app.core.pagination import (
     Position,
@@ -24,7 +26,8 @@ from app.core.settings import Settings
 from app.engine.catalog import Catalog
 from app.engine.estimate import GenerationConfig
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
-from app.modules.projects import estimates, quality, service
+from app.modules.projects import estimates, events, publication, quality, service
+from app.modules.projects import exports as export_service
 from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
 
 router = APIRouter(tags=["projects"])
@@ -373,6 +376,8 @@ class Related(BaseModel):
     name: str
     kind: str
     path: str
+    file_id: UUID
+    start_line: int
     resolution: str
     ambiguous: bool
 
@@ -706,12 +711,262 @@ async def retry_build(
     return BuildOut(**payload)
 
 
-@router.get("/builds/{build_id}/events", response_model=EventList)
+@router.get(
+    "/builds/{build_id}/events",
+    response_model=EventList,
+    responses={200: {"content": {"text/event-stream": {}}, "description": "JSON page, or an SSE stream"}},
+)
 async def build_events(
     build_id: UUID,
+    request: Request,
     db: Db,
     member: BuildReader,
     after: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
-) -> EventList:
-    return EventList(**await service.build_events(db, member, build_id, after, limit))
+    last_event_id: Annotated[str | None, Header(max_length=20)] = None,
+) -> Any:
+    """`Accept: text/event-stream` streams events (resume with Last-Event-ID); otherwise a JSON page."""
+    if "text/event-stream" not in request.headers.get("accept", ""):
+        return EventList(**await service.build_events(db, member, build_id, after, limit))
+    await service.build_events(db, member, build_id, 0, 1)  # 404 for unknown builds before streaming
+    start = int(last_event_id) if last_event_id and last_event_id.isdigit() else after
+    slot = events.StreamSlot(member.principal.session_id, member.workspace_id).__enter__()
+    try:
+        await db.commit()
+    except BaseException:
+        slot.__exit__()
+        raise
+
+    async def body() -> AsyncIterator[str]:
+        try:
+            async for chunk in events.stream(
+                request.app.state.sessions,
+                token=member.principal.session_token,
+                user_id=member.user_id,
+                workspace_id=member.workspace_id,
+                build_id=build_id,
+                after=start,
+                timing=getattr(request.app.state, "event_timing", events.Timing()),
+                disconnected=request.is_disconnected,
+            ):
+                yield chunk
+        finally:
+            slot.__exit__()
+
+    return events.SlotResponse(
+        body(),
+        slot,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------- search
+class SearchHit(BaseModel):
+    kind: str
+    ref_id: UUID
+    name: str
+    path: str | None
+    line: int | None
+    symbol_kind: str | None
+    snippet: str
+    basis: str
+    score: float
+
+
+class SearchOut(BaseModel):
+    items: list[SearchHit]
+    next_cursor: None = None
+
+
+@router.get("/builds/{build_id}/search", response_model=SearchOut)
+async def search_build(
+    build_id: UUID,
+    db: Db,
+    member: BuildReader,
+    q: Annotated[str, Query(min_length=1, max_length=200)],
+    kind: Annotated[str | None, Query(pattern=r"^(symbol|file|guide)$")] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> SearchOut:
+    return SearchOut(
+        items=[SearchHit(**h) for h in await service.search_build(db, member, build_id, q, kind, limit)]
+    )
+
+
+# ---------------------------------------------------------------- publication
+class PublicationIn(BaseModel):
+    build_id: UUID
+    visibility: Literal["private", "public"] = "private"
+    public_slug: Annotated[str | None, Field(max_length=63)] = None
+    confirmation: Annotated[str | None, Field(max_length=200)] = None
+    acknowledge_partial: bool = False
+
+
+class PublicationOut(BaseModel):
+    build_id: UUID
+    visibility: str
+    public_slug: str | None
+    version: int
+    acknowledged_partial: bool
+    suspended_at: datetime | None
+    suspended_reason: str | None
+    updated_at: datetime
+    commit_sha: str
+
+
+@router.get("/projects/{project_id}/publication", response_model=PublicationOut)
+async def get_publication(
+    project_id: UUID, response: Response, db: Db, member: ProjectReader
+) -> PublicationOut:
+    found = await publication.current(db, member, project_id)
+    if found is None:
+        raise ApiError(404, "NOT_PUBLISHED", "This project is not published.")
+    response.headers["ETag"] = publication.etag(found["version"])
+    return PublicationOut(**found)
+
+
+@router.post("/projects/{project_id}/publication", response_model=PublicationOut)
+async def publish(
+    project_id: UUID,
+    body: PublicationIn,
+    request: Request,
+    response: Response,
+    db: Db,
+    member: ProjectWriter,
+    idempotency_key: Annotated[str | None, Header()] = None,
+    if_match: Annotated[str | None, Header(max_length=100)] = None,
+) -> PublicationOut:
+    require_role(member, "admin")
+
+    async def produce() -> tuple[int, dict[str, Any]]:
+        result = await publication.publish(
+            db,
+            _objects(request),
+            member,
+            project_id,
+            build_id=body.build_id,
+            visibility=body.visibility,
+            public_slug=body.public_slug,
+            confirmation=body.confirmation,
+            acknowledge_partial=body.acknowledge_partial,
+            if_match=if_match,
+        )
+        return 200, PublicationOut(**result).model_dump(mode="json")
+
+    status, payload = await run_once(
+        db,
+        user_id=member.user_id,
+        workspace_id=member.workspace_id,
+        route=f"POST /projects/{project_id}/publication",
+        key=idempotency_key,
+        body={**body.model_dump(mode="json"), "if_match": if_match},
+        produce=produce,
+    )
+    response.status_code = status
+    response.headers["ETag"] = publication.etag(payload["version"])
+    return PublicationOut(**payload)
+
+
+@router.delete("/projects/{project_id}/publication", status_code=204)
+async def unpublish(
+    project_id: UUID,
+    db: Db,
+    member: ProjectWriter,
+    if_match: Annotated[str | None, Header(max_length=100)] = None,
+) -> Response:
+    require_role(member, "admin")
+    await publication.unpublish(db, member, project_id, if_match)
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------- exports
+class ExportIn(BaseModel):
+    format: Literal["static_zip", "kb_json"]
+
+
+class ExportOut(BaseModel):
+    id: UUID
+    build_id: UUID
+    format: str
+    status: str
+    byte_count: int | None
+    error_code: str | None
+    created_at: datetime
+    completed_at: datetime | None
+    expires_at: datetime | None
+    expired: bool
+
+
+async def export_reader(export_id: UUID, db: Db, principal: CurrentPrincipal) -> Member:
+    return await resource_member("export", export_id, db, principal)
+
+
+ExportReader = Annotated[Member, Depends(export_reader)]
+
+
+@router.post("/builds/{build_id}/exports", response_model=ExportOut, status_code=202)
+async def request_export(
+    build_id: UUID,
+    body: ExportIn,
+    response: Response,
+    db: Db,
+    member: BuildWriter,
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> ExportOut:
+    require_role(member, "editor")
+
+    async def produce() -> tuple[int, dict[str, Any]]:
+        created = await export_service.request_export(db, member, build_id, body.format)
+        return 202, ExportOut(**created).model_dump(mode="json")
+
+    status, payload = await run_once(
+        db,
+        user_id=member.user_id,
+        workspace_id=member.workspace_id,
+        route=f"POST /builds/{build_id}/exports",
+        key=idempotency_key,
+        body=body.model_dump(mode="json"),
+        produce=produce,
+    )
+    response.status_code = status
+    response.headers["Location"] = f"/api/v1/exports/{payload['id']}"
+    return ExportOut(**payload)
+
+
+@router.get("/exports/{export_id}", response_model=ExportOut)
+async def get_export(export_id: UUID, db: Db, member: ExportReader) -> ExportOut:
+    return ExportOut(**await export_service.get_export(db, member, export_id))
+
+
+@router.get("/exports/{export_id}/download", response_class=Response)
+async def download_export(export_id: UUID, request: Request, db: Db, member: ExportReader) -> Response:
+    key, content_type, name, _row = await export_service.download(db, member, export_id)
+    body = await _objects(request).get(key)  # no transaction is open while reading object storage
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+# ---------------------------------------------------------------- freshness
+class FreshnessOut(BaseModel):
+    tracked_ref: str
+    state: Literal["current", "update_available", "never_built", "unknown"]
+    reason: str | None
+    latest_sha: str | None
+    last_observed_sha: str | None
+    last_observed_at: datetime | None
+    published_sha: str | None
+    latest_ready_sha: str | None
+
+
+@router.get("/projects/{project_id}/freshness", response_model=FreshnessOut)
+async def project_freshness(
+    project_id: UUID, request: Request, db: Db, member: ProjectReader
+) -> FreshnessOut:
+    return FreshnessOut(**await service.freshness(db, _github(request), member, project_id))

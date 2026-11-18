@@ -4,12 +4,23 @@ import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 import { GenerationPanel } from "./GenerationPanel";
+import { PublicationPanel } from "./PublicationPanel";
+
+const FRESHNESS: Record<string, string> = {
+  current: "Up to date with the tracked branch.",
+  update_available: "Update available: the tracked branch has moved since the last build.",
+  never_built: "Not built yet.",
+  unknown: "Freshness unknown: GitHub could not be reached.",
+};
 
 export function ProjectPage() {
   const { pid = "" } = useParams();
   const navigate = useNavigate();
   const project = useQuery({ queryKey: ["project", pid], queryFn: () => api.project(pid) });
   const builds = useQuery({ queryKey: ["builds", pid], queryFn: () => api.builds(pid) });
+  const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
+  const freshness = useQuery({ queryKey: ["freshness", pid], queryFn: () => api.freshness(pid), retry: false });
+  const role = workspaces.data?.items.find((w) => w.id === project.data?.workspace_id)?.role;
   const start = useMutation({
     mutationFn: () => api.startBuild(pid),
     onSuccess: (build) => navigate(`/p/${pid}/builds/${build.id}`),
@@ -18,6 +29,17 @@ export function ProjectPage() {
   return (
     <section aria-labelledby="p-title" className="max-w-3xl">
       <h1 id="p-title" className="text-2xl font-medium">{project.data?.name ?? "Project"}</h1>
+      {freshness.data ? (
+        <p className="mt-1" role="status">
+          {FRESHNESS[freshness.data.state]}
+          {freshness.data.state === "unknown" && freshness.data.last_observed_at
+            ? ` Last seen ${freshness.data.last_observed_sha?.slice(0, 12)} at ${new Date(freshness.data.last_observed_at).toLocaleString()}.`
+            : null}
+          {freshness.data.state === "update_available" && freshness.data.latest_sha
+            ? ` Latest commit ${freshness.data.latest_sha.slice(0, 12)}.`
+            : null}
+        </p>
+      ) : null}
       {project.data ? (
         <p className="mt-1 font-mono text-muted">
           {project.data.owner}/{project.data.repository} · {project.data.tracked_ref}
@@ -34,6 +56,7 @@ export function ProjectPage() {
         </p>
       ) : null}
       {project.data ? <GenerationPanel projectId={pid} workspaceId={project.data.workspace_id} /> : null}
+      {project.data ? <PublicationPanel project={project.data} canPublish={role === "admin" || role === "owner"} /> : null}
       <h2 className="mt-8 text-lg font-medium">Builds</h2>
       <ul className="mt-3 divide-y divide-border rounded-lg border border-border bg-surface">
         {builds.data?.items.map((b) => (

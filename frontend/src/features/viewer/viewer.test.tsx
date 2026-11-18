@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { routes } from "../../app/routes";
@@ -39,7 +39,7 @@ test("ready build shows stages, file tree, source and a definition card", async 
   fakeApi({
     "/api/v1/builds/b1": BUILD,
     "/api/v1/builds/b1/tree?path=": { items: [{ name: "app.py", path: "app.py", type: "file", file_id: "f1", status: "selected", reason: null }], next_cursor: null },
-    "/api/v1/builds/b1/files/f1": {
+    "/api/v1/builds/b1/files/f1?start_line=1": {
       id: "f1", path: "app.py", start_line: 1, lines: ["def main():", "    return 1"],
       symbols: [{ id: "s1", name: "main", kind: "function", start_line: 1, end_line: 2, summary: "Entry point." }],
     },
@@ -50,11 +50,20 @@ test("ready build shows stages, file tree, source and a definition card", async 
   });
   renderAt("/p/p1/builds/b1");
   expect(await screen.findByText(/acquire: Done/)).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("link", { name: "Code" }));
   fireEvent.click(await screen.findByRole("button", { name: "app.py" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Explain function main" }));
-  const card = await screen.findByRole("article", { name: "function main" });
+  const trigger = await screen.findByRole("button", { name: "Explain function main" });
+  // WCAG 2.5.3: the control is the identifier, and the source line around it is unchanged.
+  expect(trigger).toHaveTextContent(/^main$/);
+  expect(document.getElementById("L1")).toHaveTextContent(/^1def main\(\):$/);
+  fireEvent.click(trigger);
+  const card = await screen.findByRole("dialog", { name: "function main" });
   expect(card).toHaveTextContent("Entry point.");
   expect(card).toHaveTextContent("helper · util.py · matched by name");
+  await waitFor(() => expect(screen.getByRole("heading", { name: "main" })).toHaveFocus()); // pinning moves focus
+  fireEvent.keyDown(card, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.getByRole("button", { name: "Explain function main" })).toHaveFocus(); // and Esc returns it
 });
 
 test("connection errors from the GitHub callback are explained", async () => {

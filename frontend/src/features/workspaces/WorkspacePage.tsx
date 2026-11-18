@@ -29,7 +29,8 @@ export function WorkspacePage() {
     <section aria-labelledby="w-title" className="max-w-3xl">
       <div className="flex items-center justify-between">
         <h1 id="w-title" className="text-2xl font-medium">Projects</h1>
-        <Link to={`/w/${wid}/connections`} className="text-primary">GitHub connections</Link>
+        <Link to={`/w/${wid}/connections`} className="text-primary underline">GitHub connections</Link>{" "}
+        · <Link to={`/w/${wid}/audit`} className="text-primary underline">Audit log</Link>
       </div>
       <ul className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface">
         {projects.data?.items.map((p) => (

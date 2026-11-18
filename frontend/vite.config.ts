@@ -14,6 +14,7 @@ export default defineConfig({
   build: { sourcemap: false, target: "es2022" },
   test: {
     environment: "jsdom",
+    include: ["src/**/*.test.{ts,tsx}"], // e2e/ belongs to Playwright
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,

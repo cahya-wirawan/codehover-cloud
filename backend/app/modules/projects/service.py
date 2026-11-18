@@ -15,18 +15,18 @@ from uuid import UUID
 from sqlalchemy import exc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.github.app import GitHubApp
+from app.adapters.github.app import GitHubApp, GitHubError
 from app.adapters.storage import ObjectStore
 from app.core.errors import ApiError
 from app.core.settings import Settings
 from app.core.tenancy import set_context
-from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION
+from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION, search
 from app.engine.catalog import Catalog
 from app.engine.generate import CITATION
 from app.jobs import store as jobs
 from app.modules.projects import estimates, quality
 from app.modules.usage import ledger
-from app.modules.workspaces.access import Member
+from app.modules.workspaces.access import Member, Reader
 from app.modules.workspaces.service import audit
 
 MAX_LINES_PER_REQUEST = 500
@@ -366,7 +366,7 @@ async def list_builds(db: AsyncSession, member: Member, project_id: UUID) -> lis
 
 
 # ---------------------------------------------------------------- viewer
-async def _ready_build(db: AsyncSession, member: Member, build_id: UUID) -> Any:
+async def _ready_build(db: AsyncSession, member: Reader, build_id: UUID) -> Any:
     row = (
         await db.execute(
             text("SELECT id, snapshot_id, status FROM builds WHERE workspace_id = :w AND id = :b"),
@@ -380,7 +380,7 @@ async def _ready_build(db: AsyncSession, member: Member, build_id: UUID) -> Any:
     return row
 
 
-async def tree(db: AsyncSession, member: Member, build_id: UUID, path: str) -> list[dict[str, Any]]:
+async def tree(db: AsyncSession, member: Reader, build_id: UUID, path: str) -> list[dict[str, Any]]:
     build = await _ready_build(db, member, build_id)
     prefix = path.strip("/")
     rows = await db.execute(
@@ -419,7 +419,7 @@ async def tree(db: AsyncSession, member: Member, build_id: UUID, path: str) -> l
 async def file_view(
     db: AsyncSession,
     objects: ObjectStore,
-    member: Member,
+    member: Reader,
     build_id: UUID,
     file_id: UUID,
     start_line: int,
@@ -489,7 +489,7 @@ async def file_view(
     }
 
 
-async def symbol_view(db: AsyncSession, member: Member, build_id: UUID, symbol_id: UUID) -> dict[str, Any]:
+async def symbol_view(db: AsyncSession, member: Reader, build_id: UUID, symbol_id: UUID) -> dict[str, Any]:
     await _ready_build(db, member, build_id)
     s = (
         await db.execute(
@@ -508,7 +508,8 @@ async def symbol_view(db: AsyncSession, member: Member, build_id: UUID, symbol_i
     async def related(column: str, other: str) -> list[dict[str, Any]]:
         rows = await db.execute(
             text(
-                f"SELECT DISTINCT o.id, o.name, o.kind, f.path, e.resolution, e.ambiguity_group IS NOT NULL AS ambiguous"  # noqa: S608 - fixed column names
+                f"SELECT DISTINCT o.id, o.name, o.kind, f.path, f.id AS file_id, o.start_line, e.resolution,"  # noqa: S608 - fixed column names
+                " e.ambiguity_group IS NOT NULL AS ambiguous"
                 f" FROM reference_edges e JOIN symbols o ON o.workspace_id = e.workspace_id AND o.id = e.{other}"
                 " JOIN source_files f ON f.workspace_id = o.workspace_id AND f.id = o.source_file_id"
                 f" WHERE e.workspace_id = :w AND e.build_id = :b AND e.{column} = :s ORDER BY f.path, o.name LIMIT 50"
@@ -526,7 +527,7 @@ async def symbol_view(db: AsyncSession, member: Member, build_id: UUID, symbol_i
 
 # ---------------------------------------------------------------- guide
 async def guide_index(
-    db: AsyncSession, objects: ObjectStore, member: Member, build_id: UUID
+    db: AsyncSession, objects: ObjectStore, member: Reader, build_id: UUID
 ) -> dict[str, Any]:
     await _ready_build(db, member, build_id)
     pages = await db.execute(
@@ -551,7 +552,7 @@ async def guide_index(
 
 
 async def guide_page(
-    db: AsyncSession, objects: ObjectStore, member: Member, build_id: UUID, slug: str
+    db: AsyncSession, objects: ObjectStore, member: Reader, build_id: UUID, slug: str
 ) -> dict[str, Any]:
     build = await _ready_build(db, member, build_id)
     page = (
@@ -694,3 +695,115 @@ async def build_events(
     )
     items = [dict(r._mapping) for r in rows]
     return {"items": items, "next_after": items[-1]["sequence"] if items else after}
+
+
+# ---------------------------------------------------------------- search
+async def search_build(
+    db: AsyncSession, member: Reader, build_id: UUID, query: str, kind: str | None, limit: int
+) -> list[dict[str, Any]]:
+    """Build-scoped search (06): exact name, then name prefix, then weighted full text. The workspace and
+    build filter come first; query text is sanitized into a prefix tsquery and never logged."""
+    await _ready_build(db, member, build_id)
+    lowered = query.strip().lower()
+    tsq = search.tsquery(query)
+    if not lowered:
+        return []
+    escaped = lowered.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = await db.execute(
+        text(
+            "SELECT d.kind, d.ref_id, d.name, d.path, d.line, d.symbol_kind, d.snippet,"
+            " CASE WHEN d.name_lower = :lower THEN 'exact_name' WHEN d.name_lower LIKE :prefix ESCAPE '\\'"
+            "   THEN 'name_prefix' ELSE 'text' END AS basis,"
+            " CASE WHEN CAST(:tsq AS text) IS NULL THEN 0"
+            "   ELSE ts_rank(d.document, to_tsquery('simple', CAST(:tsq AS text))) END AS score"
+            " FROM search_documents d"
+            " WHERE d.workspace_id = :w AND d.build_id = :b AND (CAST(:kind AS text) IS NULL OR d.kind = :kind)"
+            " AND (d.name_lower = :lower OR d.name_lower LIKE :prefix ESCAPE '\\'"
+            "   OR (CAST(:tsq AS text) IS NOT NULL AND d.document @@ to_tsquery('simple', CAST(:tsq AS text))))"
+            " ORDER BY CASE WHEN d.name_lower = :lower THEN 0 WHEN d.name_lower LIKE :prefix ESCAPE '\\' THEN 1 ELSE 2 END,"
+            " score DESC, d.name, d.path, d.id LIMIT :n"
+        ),
+        {
+            "w": member.workspace_id,
+            "b": build_id,
+            "kind": kind,
+            "lower": lowered,
+            "prefix": escaped + "%",
+            "tsq": tsq,
+            "n": limit,
+        },
+    )
+    return [dict(r._mapping) for r in rows]
+
+
+# ---------------------------------------------------------------- freshness (FR-019)
+OBSERVATION_TTL_SECONDS = 300  # repository authority is cached at most five minutes (09)
+
+
+async def freshness(
+    db: AsyncSession, github: GitHubApp | None, member: Member, project_id: UUID
+) -> dict[str, Any]:
+    """Latest upstream SHA of the tracked ref versus the published and latest ready builds. When GitHub
+    cannot answer, the state is `unknown` with the last observation, never a claim of being current."""
+    row = (
+        await db.execute(
+            text(
+                "SELECT p.tracked_ref, p.last_observed_sha, p.last_observed_at,"
+                " p.last_observed_at > now() - make_interval(secs => :ttl) AS recent,"
+                " r.provider_repo_id, r.access_revoked_at, c.installation_id, c.status,"
+                " (SELECT s.commit_sha FROM publications pub JOIN builds b ON b.workspace_id = pub.workspace_id AND b.id = pub.build_id"
+                "   JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
+                "   WHERE pub.workspace_id = p.workspace_id AND pub.project_id = p.id) AS published_sha,"
+                " (SELECT s.commit_sha FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
+                "   WHERE b.workspace_id = p.workspace_id AND b.project_id = p.id AND b.status = 'ready'"
+                "   ORDER BY b.created_at DESC, b.id DESC LIMIT 1) AS latest_ready_sha"
+                " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
+                " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
+                " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL"
+            ),
+            {"w": member.workspace_id, "p": project_id, "ttl": OBSERVATION_TTL_SECONDS},
+        )
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "NOT_FOUND", "Project not found.")
+    await db.commit()
+    observed_sha, observed_at, reason = row.last_observed_sha, row.last_observed_at, None
+    if not row.recent:
+        if row.status != "active" or row.access_revoked_at is not None or github is None:
+            reason = "repository_access_unavailable"
+        else:
+            try:  # no transaction is open during the GitHub call
+                observed_sha = await github.resolve_ref(
+                    row.installation_id, row.provider_repo_id, row.tracked_ref
+                )
+            except GitHubError:
+                reason = "github_unavailable"
+            else:
+                await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
+                observed_at = (
+                    await db.execute(
+                        text(
+                            "UPDATE projects SET last_observed_sha = :s, last_observed_at = now()"
+                            " WHERE workspace_id = :w AND id = :p RETURNING last_observed_at"
+                        ),
+                        {"s": observed_sha, "w": member.workspace_id, "p": project_id},
+                    )
+                ).scalar_one()
+                await db.commit()
+    reference = row.published_sha or row.latest_ready_sha
+    if reason is not None:
+        state = "unknown"
+    elif reference is None:
+        state = "never_built"
+    else:
+        state = "current" if observed_sha == reference else "update_available"
+    return {
+        "tracked_ref": row.tracked_ref,
+        "state": state,
+        "reason": reason,
+        "latest_sha": observed_sha if reason is None else None,
+        "last_observed_sha": observed_sha,
+        "last_observed_at": observed_at,
+        "published_sha": row.published_sha,
+        "latest_ready_sha": row.latest_ready_sha,
+    }

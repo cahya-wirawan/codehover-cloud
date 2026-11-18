@@ -1,4 +1,4 @@
-import { apiJson, apiSend } from "./client";
+import { API_BASE, apiGetWithEtag, apiJson, apiSend } from "./client";
 
 export type Role = "viewer" | "editor" | "admin" | "owner";
 export interface Page<T> {
@@ -143,6 +143,101 @@ export interface Quality {
   requires_acknowledgment: boolean;
 }
 
+export interface Publication {
+  build_id: string;
+  visibility: "private" | "public";
+  public_slug: string | null;
+  version: number;
+  acknowledged_partial: boolean;
+  suspended_at: string | null;
+  suspended_reason: string | null;
+  updated_at: string;
+  commit_sha: string;
+}
+export interface PublishRequest {
+  build_id: string;
+  visibility: "private" | "public";
+  public_slug: string | null;
+  confirmation: string | null;
+  acknowledge_partial: boolean;
+}
+export interface Site {
+  project: string;
+  repository: string;
+  commit_sha: string;
+  visibility: string;
+  generated: boolean;
+  published_at: string;
+}
+
+export interface ExportJob {
+  id: string;
+  build_id: string;
+  format: "static_zip" | "kb_json";
+  status: "pending" | "ready" | "failed";
+  byte_count: number | null;
+  error_code: string | null;
+  created_at: string;
+  completed_at: string | null;
+  expires_at: string | null;
+  expired: boolean;
+}
+
+export interface Freshness {
+  tracked_ref: string;
+  state: "current" | "update_available" | "never_built" | "unknown";
+  reason: string | null;
+  latest_sha: string | null;
+  last_observed_sha: string | null;
+  last_observed_at: string | null;
+  published_sha: string | null;
+  latest_ready_sha: string | null;
+}
+export interface AuditEntry {
+  id: string;
+  action: string;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  resource_type: string;
+  resource_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+/** Where the reading views get their data: a build of a project, or a published site (02 S11-S13, S20). */
+export interface ViewerSource {
+  key: string;
+  tree: (path: string) => Promise<Page<TreeEntry>>;
+  file: (fid: string, startLine: number) => Promise<FileView>;
+  symbol: (sid: string) => Promise<SymbolView>;
+  guide: () => Promise<GuideIndex>;
+  guidePage: (slug: string) => Promise<GuidePage>;
+  search: (q: string, kind: string | null) => Promise<Page<SearchHit>>;
+  quality: (() => Promise<Quality>) | null;
+}
+
+function viewerSource(prefix: string, key: string, quality: (() => Promise<Quality>) | null): ViewerSource {
+  return {
+    key,
+    tree: (path) => apiJson<Page<TreeEntry>>(`${prefix}/tree?path=${encodeURIComponent(path)}`),
+    file: (fid, startLine) => apiJson<FileView>(`${prefix}/files/${fid}?start_line=${startLine}`),
+    symbol: (sid) => apiJson<SymbolView>(`${prefix}/symbols/${sid}`),
+    guide: () => apiJson<GuideIndex>(`${prefix}/guide`),
+    guidePage: (slug) => apiJson<GuidePage>(`${prefix}/guide/${encodeURIComponent(slug)}`),
+    search: (q, kind) => {
+      const params = new URLSearchParams({ q });
+      if (kind) params.set("kind", kind);
+      return apiJson<Page<SearchHit>>(`${prefix}/search?${params.toString()}`);
+    },
+    quality,
+  };
+}
+
+export const buildSource = (bid: string): ViewerSource =>
+  viewerSource(`/builds/${bid}`, `build:${bid}`, () => apiJson<Quality>(`/builds/${bid}/quality`));
+export const siteSource = (slug: string): ViewerSource =>
+  viewerSource(`/published/${encodeURIComponent(slug)}`, `site:${slug}`, null);
+
 /** Integer USD micro-units to a display string, rounded up to the cent; no float arithmetic on stored amounts. */
 export function formatUsd(micro: number): string {
   const cents = Math.ceil(micro / 10_000);
@@ -169,16 +264,50 @@ export interface FileView {
   id: string;
   path: string;
   start_line: number;
+  end_line?: number;
+  line_count?: number | null;
   lines: string[];
   symbols: FileSymbol[];
+  explanation?: {
+    status: string;
+    summary: string;
+    chunks: { start_line: number; end_line: number; summary: string; status: string; notes: { start_line: number; end_line: number; text: string }[] }[];
+  } | null;
 }
 export interface Related {
   id: string;
   name: string;
   kind: string;
   path: string;
+  file_id?: string;
+  start_line?: number;
   resolution: string;
   ambiguous: boolean;
+}
+export interface SearchHit {
+  kind: "symbol" | "file" | "guide";
+  ref_id: string;
+  name: string;
+  path: string | null;
+  line: number | null;
+  symbol_kind: string | null;
+  snippet: string;
+  basis: "exact_name" | "name_prefix" | "text";
+}
+export interface QualityCheck {
+  id: string;
+  slug: string;
+  claim_key: string;
+  claim_text: string;
+  citation: string;
+  path: string | null;
+  start_line: number;
+  end_line: number;
+  deterministic: "valid" | "invalid";
+  status: CheckStatus;
+  reason: string;
+  waived: boolean;
+  waived_reason: string | null;
 }
 export interface SymbolView {
   id: string;
@@ -239,6 +368,43 @@ export const api = {
   guide: (bid: string) => apiJson<GuideIndex>(`/builds/${bid}/guide`),
   guidePage: (bid: string, slug: string) => apiJson<GuidePage>(`/builds/${bid}/guide/${encodeURIComponent(slug)}`),
   quality: (bid: string) => apiJson<Quality>(`/builds/${bid}/quality`),
+  publication: (pid: string) => apiGetWithEtag<Publication>(`/projects/${pid}/publication`),
+  publish: async (pid: string, body: PublishRequest, ifMatch: string | null) =>
+    json<Publication>(
+      await apiSend("POST", `/projects/${pid}/publication`, body, {
+        "Idempotency-Key": crypto.randomUUID(),
+        ...(ifMatch ? { "If-Match": ifMatch } : {}),
+      }),
+    ),
+  unpublish: async (pid: string, ifMatch: string) =>
+    apiSend("DELETE", `/projects/${pid}/publication`, undefined, { "If-Match": ifMatch }),
+  site: (slug: string) => apiJson<Site>(`/published/${encodeURIComponent(slug)}`),
+  freshness: (pid: string) => apiJson<Freshness>(`/projects/${pid}/freshness`),
+  audit: (wid: string, action: string | null, cursor: string | null) => {
+    const params = new URLSearchParams({ limit: "50" });
+    if (action) params.set("action", action);
+    if (cursor) params.set("cursor", cursor);
+    return apiJson<Page<AuditEntry>>(`/workspaces/${wid}/audit?${params.toString()}`);
+  },
+  requestExport: async (bid: string, format: ExportJob["format"]) =>
+    json<ExportJob>(await apiSend("POST", `/builds/${bid}/exports`, { format }, { "Idempotency-Key": crypto.randomUUID() })),
+  exportStatus: (eid: string) => apiJson<ExportJob>(`/exports/${eid}`),
+  exportDownloadUrl: (eid: string) => `${API_BASE}/exports/${encodeURIComponent(eid)}/download`,
+  qualityChecks: (bid: string, status: string | null, cursor: string | null) => {
+    const params = new URLSearchParams({ limit: "100" });
+    if (status) params.set("status", status);
+    if (cursor) params.set("cursor", cursor);
+    return apiJson<Page<QualityCheck>>(`/builds/${bid}/quality/checks?${params.toString()}`);
+  },
+  waive: async (bid: string, claimKeys: string[], reason: string) =>
+    json<{ waived: string[] }>(await apiSend("POST", `/builds/${bid}/quality/waivers`, { claim_keys: claimKeys, reason })),
+  search: (bid: string, q: string, kind: string | null) => {
+    const params = new URLSearchParams({ q });
+    if (kind) params.set("kind", kind);
+    return apiJson<Page<SearchHit>>(`/builds/${bid}/search?${params.toString()}`);
+  },
+  fileWindow: (bid: string, fid: string, startLine: number) =>
+    apiJson<FileView>(`/builds/${bid}/files/${fid}?start_line=${startLine}`),
   tree: (bid: string, path: string) =>
     apiJson<Page<TreeEntry>>(`/builds/${bid}/tree?path=${encodeURIComponent(path)}`),
   file: (bid: string, fid: string) => apiJson<FileView>(`/builds/${bid}/files/${fid}`),

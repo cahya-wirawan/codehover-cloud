@@ -168,3 +168,17 @@ def test_publication_gate() -> None:
     assert claims.page_status(["supported", "partial"]) == "partial"
     assert claims.page_status(["supported", "invalid", "unchecked"]) == "invalid"
     assert claims.page_status([]) == "unchecked"
+
+
+def test_search_terms_and_queries() -> None:
+    from app.engine import search
+
+    terms = search.identifier_terms("parse_shape", "ParseShape.toJSON").split()
+    assert {"parse", "shape", "parseshape", "to", "json", "tojson"} <= set(
+        terms
+    )  # whole names match by name_lower
+    assert search.identifier_terms("größe_in_metern").split()[:3] == ["größe", "in", "metern"]
+    assert search.tsquery("foo bar") == "foo:* & bar:*"
+    assert search.tsquery("a & b | !c ) ( : *") == "a:* & b:* & c:*"  # operators never pass through
+    assert search.tsquery("&|!()") is None
+    assert search.prose("# T\n\nRuns `main` [[x:1-2]].") == "T Runs main ."

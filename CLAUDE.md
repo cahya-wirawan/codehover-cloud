@@ -4,20 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-M0, M1 and M2 are implemented.
+M0 to M3 are implemented.
 
 - **M0–M1:** sign-in, workspaces, GitHub App connection with per-repository grants, snapshot acquisition with a safe scan, the outbox/RabbitMQ job system with fenced leases, a sandboxed tree-sitter parser, and a private viewer.
 - **M2:** the model catalog, estimates, single-envelope budget reservations, and the provider gateway. The Anthropic SDK and a deterministic replay gateway sit behind it. It adds explanation, overview, plan and guide stages, deterministic citation checks, the independent checker with one repair cycle, the quality gate and waivers, cancel and retry, and a labeled eval harness (`backend/evals/`).
+- **M3:** the build viewer with Overview, Code, Guide, Search and Review tabs, using a product-controlled line renderer rather than CodeMirror (an open decision). It adds the build SSE stream (`app/modules/projects/events.py`) and full-text search over `search_documents`. Publication (`publication.py`) covers private by default, a public opt-in with typed confirmation, ETags, rollback and suspension triggers. Published sites are served at `/published/{slug}`. Exports are a ZIP or KB JSON produced by the `export` stage, served to the requester or an admin and expiring after 24 h. M3 also adds project freshness, the admin audit log, and the Playwright + axe journey (`frontend/e2e/`, `backend/tests/e2e/server.py`).
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
 
 The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the JSON Schemas for explanations, overview, guide plan and page, claim checks and repairs, and task envelopes. Prompts live in `19_PROMPT_LIBRARY.md`.
 
-Next scope: **M3** (`14_IMPLEMENTATION_ROADMAP.md`):
-
-- the refined code and guide viewer, with search and the SSE event stream (T13–T14);
-- publication controls, which use the quality gate in `app/modules/projects/quality.py` (T15);
-- export, freshness and audit (T16–T17).
+Next scope: **M4** (`14_IMPLEMENTATION_ROADMAP.md`): metrics, purge/restore (project and account deletion, tombstones, which completes T17 and the journey's delete step), threat tests, support diagnostics and manual entitlement grants. Two items are known gaps: the stream limits are per process, and published delivery has no rate limit yet.
 
 Billing (Stripe) stays out until M5; generation spend is metered against `GENERATION_ALLOWANCE_MICRO_USD` until entitlements exist.
 
@@ -25,7 +22,7 @@ Billing (Stripe) stays out until M5; generation spend is metered against `GENERA
 
 - **Backend:** Python 3.13, FastAPI, Pydantic 2, SQLAlchemy 2.x async, psycopg 3, Alembic, aio-pika (explicit consumers, no Celery), httpx, Authlib.
 - **Data:** PostgreSQL 18 with native `uuidv7()` PKs (no UUID extension). RabbitMQ 4. S3-compatible private storage (SeaweedFS locally, pinned by digest). No Redis.
-- **Frontend:** React, TypeScript, Vite, Tailwind, shadcn/ui, TanStack Query, React Router, React Hook Form with Zod, and a read-only CodeMirror 6 viewer.
+- **Frontend:** React, TypeScript, Vite, Tailwind, shadcn/ui, TanStack Query, React Router, React Hook Form with Zod, and a read-only line renderer for code (CodeMirror 6 is an open decision).
 - **Tests:** pytest and pytest-asyncio against real PG18 and RabbitMQ containers; Vitest with RTL; Playwright with axe.
 
 Layout (`16_REPO_STRUCTURE.md`; modules, engine and adapters arrive from M1): `backend/app/{core,modules/<domain>,workers,engine/<stage>,adapters/<integration>}`, `backend/alembic/`, `backend/tests/{unit,integration,security,fixtures}`, `frontend/src/{app,features,components,lib}`, `frontend/e2e/`, `deployment/`, `contracts/`.
@@ -51,6 +48,7 @@ cd backend && uv venv --python 3.13 .venv && uv pip sync --require-hashes requir
 .venv/bin/pytest -m integration          # needs TEST_MIGRATION_DATABASE_URL / TEST_DATABASE_URL on a PG18 DB bootstrapped by deployment/init-db.sh; refuses to run while stack workers/dispatcher/scheduler are connected to that DB
 .venv/bin/python -m app.openapi_export   # regenerate contracts/openapi.json after API changes (CI checks drift)
 cd frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build && npm run check:env
+cd frontend && npm run test:e2e           # Playwright + axe journey; same TEST_* URLs as integration, installed Chrome
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
 cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \
   && docker compose --env-file .env -f compose.yaml --profile app up -d --build   # http://localhost:8080

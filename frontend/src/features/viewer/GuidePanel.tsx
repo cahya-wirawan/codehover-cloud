@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 
-import { api, type CheckStatus, type GuidePage } from "../../lib/api/resources";
+import type { CheckStatus, GuidePage, ViewerSource } from "../../lib/api/resources";
 
 const BADGE: Record<CheckStatus, { label: string; className: string }> = {
   supported: { label: "Supported", className: "border-border" },
@@ -19,14 +20,19 @@ export function Badge({ status }: { status: CheckStatus }) {
 }
 
 /** Guide Markdown is shown as text, never as HTML (19 P04); citations become labeled source ranges. */
-export function GuideText({ page }: { page: GuidePage }) {
+export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: string }) {
   const paths = new Map(page.citations.map((c) => [c.file_id, c.path ?? "unknown file"]));
-  const parts: (string | { label: string; key: string })[] = [];
+  const parts: (string | { label: string; key: string; href: string | null })[] = [];
   let last = 0;
   for (const match of page.markdown.matchAll(CITATION)) {
     parts.push(page.markdown.slice(last, match.index));
     const [, fileId = "", start = "", end = ""] = match;
-    parts.push({ label: `${paths.get(fileId) ?? "unknown file"}:${start}–${end}`, key: `${match.index}` });
+    const known = paths.has(fileId);
+    parts.push({
+      label: `${paths.get(fileId) ?? "unknown file"}:${start}–${end}`,
+      key: `${match.index}`,
+      href: known && codeBase ? `${codeBase}/code?file=${encodeURIComponent(fileId)}&line=${start}&end=${end}` : null,
+    });
     last = (match.index ?? 0) + match[0].length;
   }
   parts.push(page.markdown.slice(last));
@@ -36,20 +42,32 @@ export function GuideText({ page }: { page: GuidePage }) {
         typeof part === "string" ? (
           <Fragment key={i}>{part}</Fragment>
         ) : (
-          <span key={part.key} className="rounded bg-surface px-1 font-mono text-sm text-primary">[{part.label}]</span>
+          part.href ? (
+            <Link key={part.key} to={part.href} className="rounded bg-surface px-1 font-mono text-sm text-primary underline-offset-2 hover:underline">
+              [{part.label}]
+            </Link>
+          ) : (
+            <span key={part.key} className="rounded bg-surface px-1 font-mono text-sm text-primary">[{part.label}]</span>
+          )
         ),
       )}
     </div>
   );
 }
 
-export function GuidePanel({ buildId }: { buildId: string }) {
-  const [slug, setSlug] = useState<string | null>(null);
-  const guide = useQuery({ queryKey: ["guide", buildId], queryFn: () => api.guide(buildId) });
-  const quality = useQuery({ queryKey: ["quality", buildId], queryFn: () => api.quality(buildId) });
+/** Guide index and page (02 S12); the open page is part of the URL. */
+export function GuidePanel({ source, base }: { source: ViewerSource; base: string }) {
+  const { slug = null } = useParams();
+  const navigate = useNavigate();
+  const guide = useQuery({ queryKey: ["guide", source.key], queryFn: () => source.guide() });
+  const quality = useQuery({
+    queryKey: ["quality", source.key],
+    queryFn: () => (source.quality ? source.quality() : Promise.resolve(null)),
+    enabled: source.quality !== null,
+  });
   const page = useQuery({
-    queryKey: ["guide-page", buildId, slug],
-    queryFn: () => api.guidePage(buildId, slug ?? ""),
+    queryKey: ["guide-page", source.key, slug],
+    queryFn: () => source.guidePage(slug ?? ""),
     enabled: slug !== null,
   });
   if (!guide.data || guide.data.pages.length === 0) return null;
@@ -70,7 +88,7 @@ export function GuidePanel({ buildId }: { buildId: string }) {
       <ul className="mt-3 flex flex-wrap gap-2">
         {guide.data.pages.map((p) => (
           <li key={p.slug}>
-            <button type="button" onClick={() => setSlug(p.slug)} aria-pressed={slug === p.slug}
+            <button type="button" onClick={() => navigate(`${base}/guide/${encodeURIComponent(p.slug)}`)} aria-pressed={slug === p.slug}
               className="flex items-center gap-2 rounded-lg border border-border px-3 py-1">
               {p.title} <Badge status={p.check_status} />
             </button>
@@ -79,7 +97,7 @@ export function GuidePanel({ buildId }: { buildId: string }) {
       </ul>
       {page.data ? (
         <article className="mt-4 rounded-lg border border-border bg-surface p-4">
-          <GuideText page={page.data} />
+          <GuideText page={page.data} codeBase={base} />
           <h3 className="mt-4 font-medium">Claims</h3>
           <ul className="mt-2 space-y-1">
             {page.data.claims.map((c) => (

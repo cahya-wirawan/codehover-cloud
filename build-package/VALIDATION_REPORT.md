@@ -1,6 +1,63 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.4
+Date: 2026-11-18 · Package version 0.5.13
+
+0.5.13 records the M3 exit criterion "accessible full E2E". One Playwright journey runs in the installed Chrome against the real API with fake Google and GitHub, and aborts any request outside the app:
+- sign-in, workspace, project, snapshot with the exclusion summary, estimate and a replay build followed over SSE;
+- code with a pinned card and Esc, guide with claims, and review;
+- a private publish read by an invited member, with another tenant and an anonymous reader shown "Site not found";
+- public opt-in with the typed name, anonymous reading, and withdrawal;
+- a ZIP export read offline with every network request blocked (none attempted).
+
+axe (WCAG 2.1 A/AA) runs on twelve screens and found three real issues, now fixed: definition buttons whose visible line was not in their name (viewer and export), and links distinguished by colour alone. It passes three runs in a row. Project deletion is not yet in the journey (M4).
+
+0.5.12 adds freshness and the audit log.
+- Freshness: integration tests move through never-built, current, a cached observation, update-available after the branch moves, and `unknown` with the last observation when GitHub is unreachable (A23). Strangers get 404.
+- Audit: the log is newest first, paginates with filter-bound cursors, filters by action prefix, and is admin-only (403 for editors, 404 for strangers).
+
+289 backend and 17 frontend tests pass.
+
+0.5.11 records T16, the remaining part of the M3 exit criterion. Integration tests open the ZIP and check:
+- exactly the fixed entries, with no excluded or blocked content anywhere (A19, A07);
+- no network references, every referenced asset present, and manifest hashes that match;
+- a KB that validates against its contract, and byte-identical archives across exports.
+
+Further tests cover the KB format, requester-or-admin downloads with the editor role required to export, a 410 after expiry, audit events, the ready-build precondition and the hourly quota. Exports never change the build. Opening the archive in a network-blocked browser is part of the E2E step. 287 backend and 17 frontend tests pass.
+
+0.5.10: unpublishing an operator-suspended publication is refused by the API (409) and by the database trigger (IntegrityError). Removing the service check makes the test fail.
+
+0.5.9 hardens publication.
+- A suspended workspace or deleted project stops delivery, and reactivation restores it.
+- An operator suspension survives republishing.
+- In a two-connection race, the publish waits for an uncommitted revoke and then refuses.
+
+Removing FOR SHARE or the operator check makes a test fail. 9 publication tests pass.
+
+0.5.8 records T15, part of the M3 exit criterion (public opt-in and revocation). Integration tests cover:
+- private-by-default publication (A15), public only with an address and the typed project name, and anonymous reading of tree, source, guide, claims and search without the build ID ever appearing;
+- ETag preconditions (428, 409), rollback to an older build, and unpublishing that stops delivery at once;
+- the review gate (unchecked claims block), the acknowledgment for partly supported claims, admin-only publishing, a foreign build refused, and a stranger's 404;
+- a revoked connection or repository that suspends delivery at once and blocks republishing (A17, FR-027);
+- a members-only private site address.
+
+Mutations are caught for: the confirmation check, the gate, the ETag comparison, the private-site membership check, the access check and the suspension trigger. Frontend tests cover the publish form's confirmation and acknowledgment rules, the admin-only controls and a withdrawn site. 279 backend and 15 frontend tests pass.
+
+0.5.7 records T14. Search integration tests cover:
+- exact-name, prefix and docstring-text hits in that order;
+- kind filters, and inert LIKE and tsquery characters;
+- excluded secrets that are never searchable (A07), and 404 for other tenants (A04).
+
+A schema-wide tenancy test requires FORCE RLS and a runtime tenant policy on every table with `workspace_id`, so new tables cannot ship without them. Frontend tests cover the build tabs, deep-linked search results, the `/` shortcut, Review with admin-only waivers, and the pinned definition card taking focus, closing on Esc and returning focus. 273 backend and 12 frontend tests pass.
+
+0.5.6 fixes the stream-slot leak: a test runs more aborted responses than the session limit allows, and every slot comes back; removing the fix makes it fail.
+
+0.5.5 adds the SSE build stream. Integration tests cover:
+- history replay and resume from Last-Event-ID;
+- a running build followed to `build.ready`;
+- heartbeats on an idle stream, and a revoked session ending it with `access.revoked` (A17);
+- 404 for strangers, and the per-session and per-workspace stream limits.
+
+The frontend follows builds with EventSource and falls back to polling every 5 s with jitter. 268 backend and 10 frontend tests pass.
 
 0.5.4 adds the M2 evaluation baseline. On the corpus, the replay run passes every hard gate:
 - scan as labeled;

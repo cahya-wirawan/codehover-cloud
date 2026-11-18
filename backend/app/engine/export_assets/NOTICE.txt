@@ -1,0 +1,8 @@
+This archive is an export from codehover-cloud.
+
+It contains source code from the exported repository and explanations generated for it. Explanations
+marked as AI-generated can be wrong; check them against the cited source lines. Copies of this archive
+cannot be recalled by the service once downloaded.
+
+Open index.html through a local web server (for example `python3 -m http.server` in this directory).
+Some browsers restrict scripts on file:// pages; the archive needs no network access either way.
