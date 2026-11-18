@@ -45,15 +45,43 @@ from tests.integration.test_github import APP_CLIENT_ID, APP_ID, APP_KEY, FakeGi
 DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 
+def large_tarball(files: int, functions: int) -> bytes:
+    """A synthetic Python repository: `files` modules of `functions` documented functions each."""
+    import io
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for f in range(files):
+            body = "\n\n".join(
+                f'def handler_{f}_{n}(value):\n    """Handle case {n} of module {f}."""\n    return value + {n}'
+                for n in range(functions)
+            )
+            data = (f'"""Synthetic module {f}."""\n\n' + body + "\n").encode()
+            info = tarfile.TarInfo(f"octo-api-c0ffee/pkg/module_{f:04d}.py")
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
 def build(port: int) -> FastAPI:
     runtime_url = os.environ["TEST_DATABASE_URL"]
     origin = f"http://127.0.0.1:{port}"
+    storage: dict[str, Any] = {}
+    if os.environ.get("S3_ENDPOINT_URL"):  # the restore drill keeps objects in a real S3 bucket
+        storage = {
+            "s3_endpoint_url": os.environ["S3_ENDPOINT_URL"],
+            "s3_access_key_id": SecretStr(os.environ["S3_ACCESS_KEY_ID"]),
+            "s3_secret_access_key": SecretStr(os.environ["S3_SECRET_ACCESS_KEY"]),
+            "s3_bucket": os.environ.get("S3_BUCKET", "codehover"),
+        }
     settings = make_settings(
         database_url=SecretStr(runtime_url),
         public_origin=origin,
         session_cookie_secure=False,  # plain-HTTP localhost: the explicit development cookie (09)
         google_client_id=CLIENT_ID,
         google_client_secret=SecretStr("g-secret"),
+        **storage,
     )
     app = create_app(settings)
     idp = FakeIdP()
@@ -80,10 +108,12 @@ def build(port: int) -> FastAPI:
         return RedirectResponse(f"/api/v1/auth/google/callback?code={code}&state={state}", status_code=302)
 
     @app.post("/__e2e__/seed-github")
-    async def seed_github(body: dict[str, str], principal: CurrentPrincipal) -> dict[str, Any]:
+    async def seed_github(body: dict[str, Any], principal: CurrentPrincipal) -> dict[str, Any]:
         installation = gh.add_installation(idp.github_id)
+        files, functions = int(body.get("files", 0)), int(body.get("functions", 0))
         for repo in gh.repos[installation]:
-            gh.tarballs[repo["id"]] = fixture_tarball()
+            # The load check's large repository (NFR-005: a 20k-symbol search fixture) or the small one.
+            gh.tarballs[repo["id"]] = large_tarball(files, functions) if files else fixture_tarball()
         connection = ddl(
             "INSERT INTO repository_connections(workspace_id, installation_id, github_account_id, github_account_login,"
             " connected_by) VALUES (:w, :i, 77, 'octo-org', :u) RETURNING id",

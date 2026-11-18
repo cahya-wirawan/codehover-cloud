@@ -1,4 +1,4 @@
-"""`python -m app.ops.tombstones reapply`: replay deletions after a restore, before traffic (05, 22, A22).
+"""`python -m app.ops.tombstones reapply|purge`: replay deletions after a restore, before traffic (05, 22, A22).
 
 A database restored from a backup taken before a deletion has lost that deletion. Its tombstone survives
 in object storage (`tombstones/`, written when the deletion was requested). This command:
@@ -155,8 +155,36 @@ async def _main() -> int:
     return 1 if result["invalid"] else 0
 
 
+async def _purge() -> int:
+    """Purge every due deletion now (a restore runs this right after `reapply`, before traffic)."""
+    from app.core.db import create_engine, session_factory
+    from app.core.settings import get_settings
+    from app.jobs.purge import purge_once
+    from app.main import object_store
+
+    settings = get_settings()
+    engine = create_engine(settings, application_name="tombstones")
+    outcomes: list[Any] = []
+    try:
+        sessions, store = session_factory(engine), object_store(settings)
+        while (outcome := await purge_once(sessions, store)) is not None:
+            outcomes.append(outcome)
+    finally:
+        await engine.dispose()
+    print(
+        json.dumps(
+            {
+                "purged": sum(o["outcome"] == "completed" for o in outcomes),
+                "failed": sum(o["outcome"] == "failed" for o in outcomes),
+            }
+        )
+    )
+    return 1 if any(o["outcome"] == "failed" for o in outcomes) else 0
+
+
 if __name__ == "__main__":
-    if sys.argv[1:] != ["reapply"]:
-        print("usage: python -m app.ops.tombstones reapply", file=sys.stderr)
+    commands = {"reapply": _main, "purge": _purge}
+    if sys.argv[1:2] == [] or sys.argv[1] not in commands or len(sys.argv) != 2:
+        print("usage: python -m app.ops.tombstones reapply|purge", file=sys.stderr)
         sys.exit(2)
-    sys.exit(asyncio.run(_main()))
+    sys.exit(asyncio.run(commands[sys.argv[1]]()))

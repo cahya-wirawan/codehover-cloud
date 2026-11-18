@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.21] - 2026-11-18
+
+### Added
+
+- 12, 13, 22: the synthetic probe and load check (`app.ops.loadcheck`), restore verification (`app.ops.verify_restore`) and `tombstones purge`, the local restore drill (`tests.e2e.restore_drill`), and the drilled restore order in the runbook.
+
+### Security
+
+- 05: runtime privileges now come from migrations alone (0020). Purge needed `DELETE` on exports and claim checks, granted only by the bootstrap defaults. The defaults also gave the runtime table-wide `UPDATE` on support grants (enough to extend one), `DELETE` on provider attempts and webhook receipts, and `UPDATE` on search documents; 0020 revokes those. Found by the restore drill.
+
 ## [0.5.20] - 2026-11-18
 
 ### Added

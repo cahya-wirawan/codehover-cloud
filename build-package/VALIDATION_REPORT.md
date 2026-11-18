@@ -1,6 +1,19 @@
 # Package validation
 
-Date: 2026-11-18 · Package version 0.5.20
+Date: 2026-11-18 · Package version 0.5.21
+
+0.5.21 records the M4 exit checks for SLOs, load and recovery. All were run locally on a laptop: one uvicorn process for the E2E server, PostgreSQL 18 and SeaweedFS in Compose.
+- **Load (NFR-003, NFR-005):** a published replay site of 200 files with 20,000 definitions (20,200 search documents), with 50 readers for 60 s.
+  - Run 1: read p50 30 / p95 131 ms (1724 requests, 0 errors), search p50 69 / p95 175 ms (568 requests, 0 errors), card p50 32 / p95 139 ms (563 requests, 0 errors); 47.6 requests/s. Passed.
+  - Run 2: read p50 49 / p95 321 ms (1637 requests, 0 errors), search p50 99 / p95 376 ms (554 requests, 0 errors), card p50 48 / p95 361 ms (556 requests, 0 errors); 45.8 requests/s. Passed.
+  - Targets: reads and cards p95 < 500 ms, search p95 < 700 ms, no errors.
+  - Stress (no pauses, 50 concurrent loops): the single process saturates at 71.6 requests/s with p95 about 1616 ms and no errors. Capacity beyond that needs more API processes or replicas, which the shared rate limits and stateless API allow.
+  - One reader (the probe's shape): read p50 21 / p95 49 ms (182 requests, 0 errors), search p50 56 / p95 89 ms (67 requests, 0 errors), card p50 22 / p95 52 ms (59 requests, 0 errors).
+  - NFR-005's "cached card opens <100 ms" refers to a card already in the viewer's memory, which makes no request; server-side card fetches are held to the read target.
+- **Restore drill (NFR-009, A22):** backup 277661 bytes in 0.54 s. Restore 2.28 s, reapply 2.71 s, purge 2.78 s, verify 2.97 s: RTO 10.73 s for this data set (target ≤ 4 h).
+  - All checks passed: backup_predates_deletion, tombstone_reapplied, deleted_stays_deleted, no_source_resurrected, kept_site_consistent, rto_under_4h.
+  - The first run failed: purge could not delete export and claim-check rows, because those privileges came only from the bootstrap's default privileges. 0020 makes every runtime grant explicit and removes four the defaults had added. A test now migrates a database without defaults and compares.
+  - RPO ≤ 15 min depends on the managed database's continuous WAL archiving (PITR), which a local Compose stack does not have. It must be drilled on the staging database before paid launch (18).
 
 0.5.20 records the threat tests for the M4 exit criterion "zero critical isolation/XSS issues":
 - The isolation sweep covers 66 routes (27 unsafe). It finds no route that admits another tenant or anonymous visitors, leaks a victim ID or changes the victim's state.

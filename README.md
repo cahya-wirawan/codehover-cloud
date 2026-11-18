@@ -94,6 +94,21 @@ npm run test:e2e
 
 `frontend/.npmrc` pins exact versions and applies a `before` cutoff, the same cooling-off period as the Python locks.
 
+## Load check and restore drill (M4)
+
+Both run against the local Compose stack (db and objectstore up, workers stopped) with `deployment/.env` sourced, from `backend/`:
+
+```bash
+# A 20k-definition published site on the E2E server, then 50 readers for 60 s (NFR-003/005 targets).
+TEST_DATABASE_URL=... TEST_MIGRATION_DATABASE_URL=... .venv/bin/python -m tests.e2e.server --port 8766 &
+.venv/bin/python -m tests.e2e.seed_site --base http://127.0.0.1:8766 --files 200 --functions 100
+.venv/bin/python -m app.ops.loadcheck --base http://127.0.0.1:8766 --site <slug> --users 50 --seconds 60
+# Backup, delete after the backup, restore, reapply tombstones, purge, verify; prints the RTO.
+.venv/bin/python -m tests.e2e.restore_drill
+```
+
+The drill uses its own scratch databases and bucket, and removes them afterwards.
+
 ## Full stack (Docker Compose)
 
 ```bash
