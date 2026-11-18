@@ -79,9 +79,11 @@ async def test_logs_and_metrics_carry_no_source_secrets_queries_paths_or_ids(
     session_cookie = next(iter(owner.cookies.values()))
     csrf = (await owner.get("/api/v1/auth/csrf")).json()["csrf_token"]
     files = [f["path"] for f in (await owner.get(f"/api/v1/builds/{build}/tree")).json()["items"]]
-    forbidden = [*FIXTURE_SECRETS, query, session_cookie, csrf, "def main", "Entry point.", *files]
+    forbidden = [*FIXTURE_SECRETS, query, session_cookie, csrf, "def main", "Entry point."]
     for text in (logs, exposition):
         leaked = [f for f in forbidden if f and f in text]
+        # Paths as whole names: a short directory like `web` is not leaked by the route `/webhooks/...`.
+        leaked += [f for f in files if re.search(rf"(?<![\w.-]){re.escape(f)}(?![\w.-])", text)]
         assert not leaked, leaked
     assert not UUID_RE.search(exposition)  # no tenant, build, user or request IDs as label values
     for entity in (ws, project, build):

@@ -30,6 +30,11 @@ x-app-env: &app-env
   MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE: ${MAX_ACTIVE_ACQUISITIONS_PER_WORKSPACE:-2}
   STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
   STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+  STRIPE_PRICE_TEAM: ${STRIPE_PRICE_TEAM:-}
+  BILLING_ENFORCED: ${BILLING_ENFORCED:-false}
+  OPERATOR_NAME: ${OPERATOR_NAME:-codehover-cloud}
+  SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
   # Internal metrics port per process (12); scraped on the services network, never published.
   METRICS_PORT: ${METRICS_PORT:-9100}
   # Only the gateway reaches the API (its port is not published); in production name the ingress only (22).

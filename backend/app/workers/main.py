@@ -1,8 +1,9 @@
 """`python -m app.workers.main`: task consumer (04). Refuses to start without network isolation on Linux.
 
-Beside the consumer, a maintenance loop purges due deletions (app.jobs.purge) and, hourly, sweeps
-retention (app.jobs.retention), with the same runtime role, object store and tenant context rules as
-every stage."""
+Beside the consumer, a maintenance loop purges due deletions (app.jobs.purge), processes Stripe webhook
+receipts and applies the billing hosting rules (app.modules.billing.sync), hourly sweeps retention
+(app.jobs.retention) and daily reconciles billing with the provider, with the same runtime role, object
+store and tenant context rules as every stage."""
 
 from __future__ import annotations
 
@@ -16,8 +17,9 @@ import time
 import aio_pika
 from pydantic import ValidationError
 
+from app.adapters.billing import billing_provider
 from app.core import metrics
-from app.core.settings import get_settings
+from app.core.settings import Settings, get_settings
 from app.engine import sandbox
 from app.jobs import retention
 from app.jobs.envelope import TaskEnvelope
@@ -26,11 +28,13 @@ from app.jobs.queue import topology
 from app.jobs.runner import process
 from app.jobs.runtime import build_runtime
 from app.jobs.stages import Runtime
+from app.modules.billing import sync as billing_sync
 from app.workers._shell import run
 
 logger = logging.getLogger("app.workers.main")
 MAINTENANCE_SECONDS = 30.0
 RETENTION_SECONDS = 3600.0
+RECONCILE_SECONDS = 86400.0
 
 
 def _not_dumpable() -> None:
@@ -42,13 +46,32 @@ def _not_dumpable() -> None:
             raise OSError(ctypes.get_errno(), "PR_SET_DUMPABLE failed")
 
 
-async def maintenance(runtime: Runtime, stop: asyncio.Event) -> None:
+async def maintenance(
+    runtime: Runtime,
+    stop: asyncio.Event,
+    settings: Settings | None = None,
+    provider: billing_sync.Provider | None = None,
+) -> None:
     last_sweep = 0.0
+    last_reconcile = time.monotonic()  # the first reconciliation runs a day after start
     while not stop.is_set():
         try:
             await purge_due(runtime.sessions, runtime.store)
+            if settings is not None and provider is not None:
+                counts = await billing_sync.process_pending(runtime.sessions, provider, settings)
+                if counts:
+                    logger.info("stripe receipts processed", extra=counts)
+                if time.monotonic() - last_reconcile >= RECONCILE_SECONDS:
+                    logger.info(
+                        "billing reconciled",
+                        extra=await billing_sync.reconcile(runtime.sessions, provider, settings),
+                    )
+                    last_reconcile = time.monotonic()
             if time.monotonic() - last_sweep >= RETENTION_SECONDS:
                 counts = await retention.sweep(runtime.sessions, runtime.store)
+                counts["billing_hosting"] = await billing_sync.sweep_hosting(
+                    runtime.sessions, enforced=settings is not None and settings.billing_enforced
+                )
                 last_sweep = time.monotonic()
                 logger.info("retention swept", extra=counts)
         except Exception:
@@ -83,7 +106,9 @@ async def body(stop: asyncio.Event) -> None:
             await message.ack()  # after the SQL outcome is durable; never requeue
 
         tag = await queue.consume(on_message)
-        housekeeping = asyncio.create_task(maintenance(runtime, stop))
+        housekeeping = asyncio.create_task(
+            maintenance(runtime, stop, settings, billing_provider(settings, http))
+        )
         logger.info("process ready", extra={"role": "worker"})
         await stop.wait()
         await housekeeping

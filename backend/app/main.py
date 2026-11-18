@@ -12,6 +12,7 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from starlette.middleware.base import RequestResponseEndpoint
 
 from app import __version__
+from app.adapters.billing import billing_provider
 from app.adapters.github.app import GitHubApp
 from app.adapters.oauth import OAuthProvider
 from app.adapters.oauth.github import GitHubProvider
@@ -26,6 +27,7 @@ from app.core.request_context import RequestIdMiddleware
 from app.core.security import Sealer
 from app.core.settings import Environment, Settings, get_settings
 from app.engine import catalog
+from app.modules.billing import router as billing
 from app.modules.deletion import router as deletion
 from app.modules.github import router as github
 from app.modules.identity import router as identity
@@ -151,6 +153,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.github_app = github_app(settings, http)
     app.state.objects = object_store(settings)
     app.state.catalog = catalog.load(settings.model_catalog_file)
+    app.state.billing = billing_provider(settings, http)
 
     install_error_handlers(app)
     app.middleware("http")(no_store)
@@ -165,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(projects.router)
     api.include_router(published.router)
     api.include_router(usage.router)
+    api.include_router(billing.router)
     api.include_router(webhooks.router)
     api.include_router(deletion.router)
     api.include_router(ops.router)

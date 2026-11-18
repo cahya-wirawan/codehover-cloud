@@ -45,6 +45,8 @@ UNSCOPED = {
     ("POST", "/api/v1/me/identities/{provider}/link"),
     ("GET", "/api/v1/me/sessions"),
     ("POST", "/api/v1/webhooks/github"),
+    ("POST", "/api/v1/webhooks/stripe"),
+    ("GET", "/api/v1/meta"),
     ("GET", "/api/v1/workspaces"),
     ("POST", "/api/v1/workspaces"),
     ("GET", "/api/v1/ops/summary"),
@@ -141,6 +143,9 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
             "slug": "mine",
         },
         ("POST", "/api/v1/workspaces/{workspace_id}/support-access"): {"hours": 72, "reason": "let me in"},
+        ("POST", "/api/v1/workspaces/{workspace_id}/billing/checkout"): {"plan": "team"},
+        ("POST", "/api/v1/workspaces/{workspace_id}/billing/portal"): {},
+        ("POST", "/api/v1/workspaces/{workspace_id}/billing/trial"): {},
         ("POST", "/api/v1/ops/projects/{project_id}/suspension"): {"reason": "takedown"},
         ("POST", "/api/v1/ops/workspaces/{workspace_id}/entitlements"): {
             "allowance_micro_usd": 1_000_000_000,

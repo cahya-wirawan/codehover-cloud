@@ -213,3 +213,29 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   expect((await page.request.get(`/api/v1/projects/${projectId}`)).status()).toBe(404);
   expect((await page.request.get(`/api/v1/builds/${buildUrl.split("/builds/")[1]}`)).status()).toBe(404);
 });
+
+test("plan and usage: the trial, then the privacy, terms and support pages", async ({ page, baseURL }) => {
+  const base = baseURL ?? "";
+  const run = Math.random().toString(36).slice(2, 8);
+  await signIn(page, base);
+  await expect(page.getByRole("heading", { name: "Plans" })).toBeVisible();
+  await accessible(page, "start page with plans");
+  await page.goto("/w");
+  await page.getByLabel("Name", { exact: true }).fill("Plan Team");
+  await page.getByLabel("Address", { exact: true }).fill(`plan-${run}`);
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await page.getByRole("link", { name: /Plan Team/ }).click();
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Plan and usage" }).click();
+  await expect(page.getByRole("heading", { name: "Plan and usage" })).toBeVisible();
+  await expect(page.getByText("Paid plans are not offered on this deployment yet.")).toBeVisible();
+  await accessible(page, "plan and usage");
+  await page.getByRole("button", { name: "Start the trial" }).click();
+  await expect(page.getByText(/The trial ends on/)).toBeVisible();
+  await accessible(page, "plan and usage on the trial");
+
+  for (const [link, heading] of [["Privacy", "Privacy notice"], ["Terms", "Terms of service"], ["Support", "Support"]] as const) {
+    await page.getByRole("navigation", { name: "About this service" }).getByRole("link", { name: link }).click();
+    await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
+    await accessible(page, heading);
+  }
+});

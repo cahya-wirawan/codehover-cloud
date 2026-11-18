@@ -119,6 +119,23 @@ TEST_DATABASE_URL=... TEST_MIGRATION_DATABASE_URL=... .venv/bin/python -m tests.
 
 The drill uses its own scratch databases and bucket, and removes them afterwards.
 
+## Billing (M5)
+
+Billing stays off until `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are set. The trial still works without them. For Stripe test mode:
+
+1. Create Pro and Team prices and put their IDs in `STRIPE_PRICE_PRO` and `STRIPE_PRICE_TEAM`.
+2. Point a webhook endpoint at `{PUBLIC_ORIGIN}/api/v1/webhooks/stripe`. The event list is in spec 22. Locally, `stripe listen --forward-to localhost:8080/api/v1/webhooks/stripe` prints the signing secret to use.
+3. Restart api and worker.
+
+The worker processes webhook receipts every 30 s and reconciles daily. From `backend/` with the runtime role:
+
+```bash
+.venv/bin/python -m app.ops.billing process     # receipts now
+.venv/bin/python -m app.ops.billing reconcile   # every customer from Stripe (after an outage or a restore)
+```
+
+`BILLING_ENFORCED=true` makes plans required for new projects and members. `OPERATOR_NAME` and `SUPPORT_EMAIL` fill the privacy, terms and support pages, which are drafts for legal review.
+
 ## Full stack (Docker Compose)
 
 ```bash

@@ -224,6 +224,114 @@
         "title": "AuditList",
         "type": "object"
       },
+      "BillingOut": {
+        "properties": {
+          "cancel_at_period_end": {
+            "title": "Cancel At Period End",
+            "type": "boolean"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "enforced": {
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "generation_blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Blocked"
+          },
+          "has_customer": {
+            "title": "Has Customer",
+            "type": "boolean"
+          },
+          "hosting_suspended": {
+            "title": "Hosting Suspended",
+            "type": "boolean"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/PlanOut"
+            },
+            "title": "Plans",
+            "type": "array"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "trial_available": {
+            "title": "Trial Available",
+            "type": "boolean"
+          },
+          "trial_ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trial Ends At"
+          }
+        },
+        "required": [
+          "configured",
+          "enforced",
+          "plan",
+          "status",
+          "period_end",
+          "cancel_at_period_end",
+          "trial_ends_at",
+          "trial_available",
+          "generation_blocked",
+          "hosting_suspended",
+          "has_customer",
+          "plans"
+        ],
+        "title": "BillingOut",
+        "type": "object"
+      },
       "BuildDiagnostics": {
         "properties": {
           "cancel_requested_at": {
@@ -768,6 +876,23 @@
           "waived_reason"
         ],
         "title": "CheckOut",
+        "type": "object"
+      },
+      "CheckoutIn": {
+        "properties": {
+          "plan": {
+            "enum": [
+              "pro",
+              "team"
+            ],
+            "title": "Plan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan"
+        ],
+        "title": "CheckoutIn",
         "type": "object"
       },
       "ChunkExplanation": {
@@ -2328,6 +2453,50 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "MetaOut": {
+        "description": "Public facts the start, plans, legal and support pages show (02 S01, S23).",
+        "properties": {
+          "billing_available": {
+            "title": "Billing Available",
+            "type": "boolean"
+          },
+          "operator_name": {
+            "title": "Operator Name",
+            "type": "string"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/PublicPlan"
+            },
+            "title": "Plans",
+            "type": "array"
+          },
+          "support_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Email"
+          },
+          "trial_days": {
+            "title": "Trial Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operator_name",
+          "support_email",
+          "billing_available",
+          "trial_days",
+          "plans"
+        ],
+        "title": "MetaOut",
+        "type": "object"
+      },
       "OperatorEvent": {
         "properties": {
           "action": {
@@ -2489,6 +2658,54 @@
           "reason"
         ],
         "title": "PauseIn",
+        "type": "object"
+      },
+      "PlanOut": {
+        "properties": {
+          "active_builds": {
+            "title": "Active Builds",
+            "type": "integer"
+          },
+          "allowance_micro_usd": {
+            "title": "Allowance Micro Usd",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "projects": {
+            "title": "Projects",
+            "type": "integer"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          },
+          "storage_gib": {
+            "title": "Storage Gib",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "allowance_micro_usd",
+          "seats",
+          "projects",
+          "storage_gib",
+          "active_builds",
+          "available"
+        ],
+        "title": "PlanOut",
         "type": "object"
       },
       "PresetList": {
@@ -2656,6 +2873,49 @@
           "repository"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "PublicPlan": {
+        "properties": {
+          "active_builds": {
+            "title": "Active Builds",
+            "type": "integer"
+          },
+          "allowance_micro_usd": {
+            "title": "Allowance Micro Usd",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "projects": {
+            "title": "Projects",
+            "type": "integer"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          },
+          "storage_gib": {
+            "title": "Storage Gib",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "allowance_micro_usd",
+          "seats",
+          "projects",
+          "storage_gib",
+          "active_builds"
+        ],
+        "title": "PublicPlan",
         "type": "object"
       },
       "PublicationIn": {
@@ -2885,6 +3145,19 @@
           "checks"
         ],
         "title": "ReadyResponse",
+        "type": "object"
+      },
+      "RedirectOut": {
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "RedirectOut",
         "type": "object"
       },
       "RefList": {
@@ -5793,6 +6066,27 @@
         ]
       }
     },
+    "/api/v1/meta": {
+      "get": {
+        "operationId": "meta_api_v1_meta_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Meta",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/api/v1/ops/builds-paused": {
       "post": {
         "operationId": "set_builds_paused_api_v1_ops_builds_paused_post",
@@ -7382,6 +7676,26 @@
         ]
       }
     },
+    "/api/v1/webhooks/stripe": {
+      "post": {
+        "description": "Verify, record and acknowledge; processing (provider fetch) runs in the worker (sync.process_pending).",
+        "operationId": "stripe_webhook_api_v1_webhooks_stripe_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Stripe Webhook",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/api/v1/workspaces": {
       "get": {
         "operationId": "list_workspaces_api_v1_workspaces_get",
@@ -7646,6 +7960,204 @@
         "summary": "Audit Log",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/billing": {
+      "get": {
+        "operationId": "billing_state_api_v1_workspaces__workspace_id__billing_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Billing State",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/billing/checkout": {
+      "post": {
+        "operationId": "checkout_api_v1_workspaces__workspace_id__billing_checkout_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedirectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Checkout",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/billing/portal": {
+      "post": {
+        "operationId": "portal_api_v1_workspaces__workspace_id__billing_portal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedirectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Portal",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/billing/trial": {
+      "post": {
+        "operationId": "start_trial_api_v1_workspaces__workspace_id__billing_trial_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Trial",
+        "tags": [
+          "billing"
         ]
       }
     },

@@ -21,6 +21,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.billing.plans import HOLDS_PLAN, PLANS
+
 
 @dataclass(frozen=True)
 class Account:
@@ -64,17 +66,30 @@ async def current_account(
     )
     query = _ACCOUNT_FOR_UPDATE if lock else _ACCOUNT
     row = (await db.execute(query, {"w": workspace_id, "s": start})).one()
-    # Manual entitlements (11, 0018) add to every period they overlap; revoked grants stop counting.
+    # Manual entitlements (11, 0018) add to every period they overlap; a one-time grant (the trial, 0022)
+    # counts only in the period it starts; revoked grants stop counting.
     granted = (
         await db.execute(
             text(
                 "SELECT COALESCE(sum(allowance_micro_usd), 0) FROM entitlement_grants WHERE workspace_id = :w"
-                " AND revoked_at IS NULL AND starts_at < :e AND expires_at > :s"
+                " AND revoked_at IS NULL AND starts_at < :e AND expires_at > :s AND (NOT once OR starts_at >= :s)"
             ),
             {"w": workspace_id, "s": start, "e": end},
         )
     ).scalar_one()
-    allowance = default_allowance + int(granted)
+    # A plan held through the provider replaces the operator default with the plan's monthly allowance
+    # (11). Past due keeps the plan; generation is blocked separately (billing.service).
+    plan_key = (
+        await db.execute(
+            text(
+                "SELECT plan_key FROM subscriptions WHERE workspace_id = :w AND status = ANY(:held)"
+                " ORDER BY updated_at DESC LIMIT 1"
+            ),
+            {"w": workspace_id, "held": list(HOLDS_PLAN)},
+        )
+    ).scalar_one_or_none()
+    base = PLANS[plan_key].allowance_micro_usd if plan_key in PLANS else default_allowance
+    allowance = base + int(granted)
     if lock and allowance != row.allowance_micro_usd:  # persisted under the account lock
         await db.execute(
             text("UPDATE usage_accounts SET allowance_micro_usd = :a, version = version + 1 WHERE id = :id"),

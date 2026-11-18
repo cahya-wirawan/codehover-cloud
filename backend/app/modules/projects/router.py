@@ -26,6 +26,7 @@ from app.core.pagination import (
 from app.core.settings import Settings
 from app.engine.catalog import Catalog
 from app.engine.estimate import GenerationConfig
+from app.modules.billing import service as billing
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
 from app.modules.projects import estimates, events, publication, quality, service
 from app.modules.projects import exports as export_service
@@ -433,8 +434,9 @@ async def list_projects(db: Db, member: ReadMember) -> ProjectList:
 
 
 @router.post("/workspaces/{workspace_id}/projects", response_model=ProjectOut, status_code=201)
-async def create_project(body: ProjectCreate, db: Db, member: WriteMember) -> ProjectOut:
+async def create_project(body: ProjectCreate, request: Request, db: Db, member: WriteMember) -> ProjectOut:
     require_role(member, "editor")
+    await billing.require_capacity(db, _settings(request), member.workspace_id, "projects")
     return ProjectOut(
         **await service.create_project(
             db, member, body.repository_id, body.name.strip(), body.slug, body.tracked_ref.strip()

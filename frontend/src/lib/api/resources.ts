@@ -101,6 +101,44 @@ export interface Usage {
   settled_micro_usd: number;
   available_micro_usd: number;
 }
+export interface UsageEntry {
+  id: string;
+  build_id: string | null;
+  attempt_id: string | null;
+  kind: string;
+  amount_micro_usd: number;
+  created_at: string;
+}
+export interface PlanInfo {
+  key: "trial" | "pro" | "team";
+  name: string;
+  allowance_micro_usd: number;
+  seats: number;
+  projects: number;
+  storage_gib: number;
+  active_builds: number;
+}
+export interface BillingState {
+  configured: boolean;
+  enforced: boolean;
+  plan: PlanInfo["key"] | null;
+  status: string | null;
+  period_end: string | null;
+  cancel_at_period_end: boolean;
+  trial_ends_at: string | null;
+  trial_available: boolean;
+  generation_blocked: "past_due" | "disputed" | null;
+  hosting_suspended: boolean;
+  has_customer: boolean;
+  plans: (PlanInfo & { available: boolean })[];
+}
+export interface SiteMeta {
+  operator_name: string;
+  support_email: string | null;
+  billing_available: boolean;
+  trial_days: number;
+  plans: PlanInfo[];
+}
 export type CheckStatus = "supported" | "partial" | "unsupported" | "unchecked" | "invalid";
 export interface GuidePageSummary {
   slug: string;
@@ -446,6 +484,15 @@ export const api = {
   build: (bid: string) => apiJson<Build>(`/builds/${bid}`),
   presets: () => apiJson<{ price_version: string; items: Preset[] }>("/catalog/presets"),
   usage: (wid: string) => apiJson<Usage>(`/workspaces/${wid}/usage`),
+  usageEntries: (wid: string) => apiJson<Page<UsageEntry>>(`/workspaces/${wid}/usage/entries?limit=20`),
+  billing: (wid: string) => apiJson<BillingState>(`/workspaces/${wid}/billing`),
+  checkout: async (wid: string, plan: "pro" | "team") =>
+    json<{ url: string }>(
+      await apiSend("POST", `/workspaces/${wid}/billing/checkout`, { plan }, { "Idempotency-Key": crypto.randomUUID() }),
+    ),
+  billingPortal: async (wid: string) => json<{ url: string }>(await apiSend("POST", `/workspaces/${wid}/billing/portal`)),
+  startTrial: async (wid: string) => json<BillingState>(await apiSend("POST", `/workspaces/${wid}/billing/trial`)),
+  meta: () => apiJson<SiteMeta>("/meta"),
   requestSnapshot: async (pid: string) => json<Snapshot>(await apiSend("POST", `/projects/${pid}/snapshots`, {})),
   snapshot: (pid: string, sid: string) => apiJson<Snapshot>(`/projects/${pid}/snapshots/${sid}`),
   createEstimate: async (pid: string, snapshotId: string, config: GenerationConfig) =>

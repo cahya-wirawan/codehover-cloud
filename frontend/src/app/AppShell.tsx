@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ChevronsUpDown,
+  CreditCard,
   FolderGit2,
   GitBranch,
   LayoutGrid,
@@ -129,6 +130,9 @@ function Sidebar({ operator }: { operator: boolean }) {
             <NavItem to={`/w/${wid}/connections`} icon={<GitBranch aria-hidden="true" />}>
               GitHub connections
             </NavItem>
+            <NavItem to={`/w/${wid}/usage`} icon={<CreditCard aria-hidden="true" />}>
+              Plan and usage
+            </NavItem>
             <NavItem to={`/w/${wid}/audit`} icon={<ScrollText aria-hidden="true" />}>
               Audit log
             </NavItem>
@@ -243,6 +247,21 @@ export function AppShell() {
         <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1440px] px-4 py-8 outline-none sm:px-8">
           <Outlet />
         </main>
+        {location.pathname.startsWith("/sites/") ? null : (
+          <footer className="mx-auto flex w-full max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 border-t border-border px-4 py-5 text-[13px] text-muted sm:px-8">
+            <nav aria-label="About this service" className="flex flex-wrap gap-x-5 gap-y-2">
+              <Link to="/privacy" className="hover:text-foreground">
+                Privacy
+              </Link>
+              <Link to="/terms" className="hover:text-foreground">
+                Terms
+              </Link>
+              <Link to="/support" className="hover:text-foreground">
+                Support
+              </Link>
+            </nav>
+          </footer>
+        )}
       </div>
       <Toaster />
     </div>

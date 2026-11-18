@@ -4,6 +4,27 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.24] - 2026-11-18
+
+### Added
+
+- 05, 06, 11 (M5): Stripe Checkout and the Customer Portal, owner-only, with prices mapped from operator settings and a 20-per-hour limit. Billing state comes from reconciled `subscriptions` (migration 0022). Webhooks are verified, recorded as receipts that keep identifiers only, and processed by the worker, which always fetches the customer's subscriptions from the provider. There is a daily reconciliation, plus `python -m app.ops.billing reconcile|process`.
+- 11: the plan lifecycle. Past due and open disputes block generation (402). Past due beyond 7 days, and (with `BILLING_ENFORCED`) cancelled beyond 30 days, suspend hosting with reason `billing`, lifted on recovery, never deleting data. Cancel at period end keeps everything until the period ends. A workspace with a subscription cannot be deleted.
+- 11: the one-time trial (`app_private.start_trial`). Plan allowances and active-build limits apply; with `BILLING_ENFORCED`, so do project and seat limits on new writes.
+- 02, 06: the Plan and usage page (S16) with a waiting state after checkout (A20). The start page shows the plans. Privacy, terms and support pages are marked as drafts for legal review (S22), fed by the public `GET /meta`.
+- 22: billing configuration, billing incident and recovery procedures, and the accounting review (three separate records: provider, entitlements, ledger).
+- 13: the payment failure matrix (`tests/integration/test_billing.py`) and an E2E journey with axe over the trial and the legal pages.
+
+### Changed
+
+- 06: Stripe webhooks are verified by the product's own adapter with Stripe's documented signature scheme, not the SDK, so tests replay the provider through `httpx.MockTransport`.
+- 22: new settings `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TEAM`, `BILLING_ENFORCED`, `OPERATOR_NAME`, `SUPPORT_EMAIL` and `RATE_LIMIT_BILLING_PER_HOUR`, all optional.
+
+### Fixed
+
+- 22: a blank optional setting in the env file (`KEY=`, as the template ships) now means "not configured". Before, `ANTHROPIC_API_KEY=` or `STRIPE_SECRET_KEY=` counted as an empty credential.
+- 22: `deployment/.env.example` in the package again matches the live copy: the Prometheus and trusted-proxy settings were missing.
+
 ## [0.5.23] - 2026-11-18
 
 ### Changed

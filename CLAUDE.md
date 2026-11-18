@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-M0 to M4 are implemented.
+M0 to M5 are implemented.
 
 - **M0–M1:** sign-in, workspaces, GitHub App connection with per-repository grants, snapshot acquisition with a safe scan, the outbox/RabbitMQ job system with fenced leases, a sandboxed tree-sitter parser, and a private viewer.
 - **M2:** the model catalog, estimates, single-envelope budget reservations, and the provider gateway. The Anthropic SDK and a deterministic replay gateway sit behind it. It adds explanation, overview, plan and guide stages, deterministic citation checks, the independent checker with one repair cycle, the quality gate and waivers, cancel and retry, and a labeled eval harness (`backend/evals/`).
@@ -16,17 +16,26 @@ M0 to M4 are implemented.
   - Operations: an operator role, the `/ops` view, admin-granted read-only support access, the kill switch, takedowns and manual entitlements (`app/modules/ops`, `app.ops.operators`).
   - Rate limits shared across replicas (`app/core/ratelimit.py`).
   - Threat tests (`tests/integration/test_threats.py`, `frontend/src/features/viewer/xss.test.tsx`), the load check (`app.ops.loadcheck`) and the restore drill (`tests.e2e.restore_drill`).
+- **M5:**
+  - Stripe through a small httpx adapter (`app/adapters/billing/stripe.py`, not the SDK): Checkout, the Customer Portal and signature verification. `app/modules/billing` holds plans, state, sync and the router.
+  - Billing state is the reconciled `subscriptions` table (migration 0022). It is written only from the provider's answer: the worker processes `webhook_receipts` and re-fetches the customer's subscriptions. Reconciliation runs daily and through `app.ops.billing`. A checkout redirect grants nothing (A20).
+  - The plan lifecycle: past due or disputed blocks generation (402); long past due or ended suspends hosting with reason `billing`; there is a one-time trial (`app_private.start_trial`); plan limits apply, with `BILLING_ENFORCED` for projects and seats.
+  - The Plan and usage page, plans on the start page, draft privacy/terms/support pages (`GET /meta`), the billing runbook and the accounting review (spec 22).
+  - The payment failure matrix: `tests/integration/test_billing.py`, with `FakeStripe` over `httpx.MockTransport`.
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
 
 The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the JSON Schemas for explanations, overview, guide plan and page, claim checks and repairs, and task envelopes. Prompts live in `19_PROMPT_LIBRARY.md`.
 
-Next scope: **M5** (`14_IMPLEMENTATION_ROADMAP.md`): Stripe checkout and portal, webhooks and reconciliation, quotas and the plan lifecycle (T20), and privacy, terms and support. Entitlements then come from plans, beside the manual grants. Known gaps:
+Next scope: **M6** (`14_IMPLEMENTATION_ROADMAP.md`), P1 features, each behind demand evidence: webhook rebuilds, language and level variants, sandboxed SCIP, batch/BYOK and ZIP upload. Known gaps:
 - event-stream concurrency limits are still per process;
 - RPO ≤ 15 min needs a PITR drill on the managed staging database (the local drill covers the restore procedure and RTO only);
-- the load numbers come from a single local process, not staging.
+- the load numbers come from a single local process, not staging;
+- the payment failure matrix has run only against the replayed provider, not Stripe test mode in staging;
+- the legal texts are drafts awaiting jurisdiction review;
+- owner notices are in-app only (there is no email delivery).
 
-Billing (Stripe) stays out until M5; generation spend is metered against `GENERATION_ALLOWANCE_MICRO_USD` until entitlements exist.
+Without a plan, a workspace gets `GENERATION_ALLOWANCE_MICRO_USD`; a held plan replaces it with the plan's allowance, and manual grants add to either.
 
 ## Stack
 
@@ -64,6 +73,7 @@ cd frontend && npm run test:e2e           # Playwright + axe journey; same TEST_
 .venv/bin/python -m tests.e2e.restore_drill    # local drill (deployment/.env sourced; scratch DBs and bucket)
 .venv/bin/python -m tests.e2e.demo             # browser demo at http://127.0.0.1:8770 (fake Google/GitHub; own DB and bucket)
 .venv/bin/python -m app.ops.loadcheck --base <url> --site <slug> --users 50   # NFR p95 targets (see README)
+.venv/bin/python -m app.ops.billing reconcile|process   # re-sync Stripe customers / process webhook receipts now
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
 cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \
   && docker compose --env-file .env -f compose.yaml --profile app up -d --build   # http://localhost:8080
@@ -92,6 +102,7 @@ Conventions that span files:
   - Support access is read-only: writer dependencies pass `write=True` to `resource_member`/`_member`.
 - **Rate limits** use `ratelimit.hit(request.app.state.rate_sessions, ...)`, a separate pool so a request never waits for a second connection of its own. Client addresses come from `ratelimit.client_address`: trusted proxies only, IPv6 per /64.
 - **Deletion and retention.** Content purges keep the ledger's rows (builds, tasks, attempts, snapshots) with names scrubbed. Re-check publication pointers after locking, in a separate statement (READ COMMITTED snapshots). Operator takedowns are never deleted.
+- **Billing.** Never grant from a redirect or event metadata. The workspace comes from `billing_customers` through `app_private.billing_workspace`, and state from the provider's subscription list (`sync.apply_subscriptions`). Never edit `subscriptions` by hand: fix the subscription in Stripe and reconcile. Refunds and disputes are audited and never touch `usage_entries`. Blank optional settings (`KEY=`) are unset (`Settings._blank_is_unset`).
 - **Errors** go through `app/core/errors.py` (`ApiError` → envelope). Never return exception text, input values or connection details to clients.
 - **Frontend environment.** Code may read only the `import.meta.env` keys allowlisted in `frontend/scripts/check-env-usage.mjs`.
 
