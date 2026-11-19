@@ -3,14 +3,15 @@
 Date: 2026-11-20 · Package version 0.5.30
 
 0.5.30 adds license-gated public sites of public-source repositories (FR-029), run locally against the fake of GitHub's public endpoints, which now answers the license endpoint:
-- `tests/integration/test_publication_licenses.py` (7 tests):
+- `tests/integration/test_publication_licenses.py` (9 tests):
   - **Permitted.** An MIT license at the build's commit allows a public site. GitHub is asked with `ref` set to that exact commit. The site info names the license, its `file_id` opens the license text in the published code view, and `publication.changed` audits it.
   - **Refused.** No license, `NOASSERTION`, `BUSL-1.1`, and a license file the build lacks are each 409 `LICENSE_NOT_PERMITTED` with their reason, and no publication is written. A private site of the same build publishes without asking GitHub.
   - **Turned private.** A repository that turned private is 409 `REPOSITORY_NOT_PUBLIC`, before the license is looked up.
   - **Backstop.** The database trigger refuses making such a publication public, or clearing its license, outside the service.
+  - **Lifted suspensions.** An unlicensed public site suspended for billing or by an operator (the state such a site had if it was already suspended when 0029 arrived) stays offline as `license` when that suspension is lifted, and serves again only after a publish with the check.
 - `tests/unit/test_public_github.py`: the license call re-checks visibility first, sends the commit as `ref`, maps a missing license to none and an unnamed one to `NOASSERTION`, and accepts only commit SHAs.
-- Unchanged App-project publishing passes `tests/integration/test_publication.py` under the new trigger.
-- Full suites: backend unit 192 (macOS), integration 226, frontend 43.
+- Unchanged App-project publishing, billing suspensions and operator takedowns pass `test_publication.py`, `test_billing.py` and `test_operations.py` under the new trigger.
+- Full suites: backend unit 192 (macOS), integration 228, frontend 43.
 
 0.5.29 adds Rust (T23). The T23 gate, "no network/install/hooks; timeout fallback labeled", was run in the backend image under the Compose hardening (read-only root, all capabilities dropped, no-new-privileges, `--network none`):
 - **Indexer sandbox** (`tests/unit/test_rust.py`, Linux): in the indexer profile with rust-analyzer as its program, the probe opens no socket and reads no parent environment, `/etc` or secrets. It cannot start Python or `/bin/sh` but can start rust-analyzer, and writes only to the scratch `out`. The Node probe is unchanged and runs once for both npm indexers.

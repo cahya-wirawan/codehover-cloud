@@ -2,6 +2,7 @@
 -- brings an unchecked public site back online.
 DROP TRIGGER publication_license_check ON publications;
 DROP FUNCTION app_private.publication_license_check();
+REVOKE SELECT (provider) ON repository_connections FROM app_resolver;
 UPDATE publications SET suspended_reason = 'repository_revoked' WHERE suspended_reason = 'license';
 ALTER TABLE publications DROP CONSTRAINT publications_suspended_reason_check;
 ALTER TABLE publications ADD CONSTRAINT publications_suspended_reason_check

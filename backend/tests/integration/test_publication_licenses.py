@@ -152,3 +152,40 @@ async def test_the_database_refuses_an_unchecked_public_site_of_a_public_source_
             p=project,
         )
     await owner.aclose()
+
+
+@pytest.mark.parametrize("reason", ["billing", "operator"])
+async def test_lifting_another_suspension_never_brings_back_an_unchecked_public_site(
+    client: httpx.AsyncClient, new_user: NewUser, public: FakePublicGitHub, reason: str
+) -> None:
+    """A public site that was already suspended (billing, takedown) when 0029 arrived missed its backfill;
+    when billing recovers or the operator reinstates it, it stays offline as `license`."""
+    public.extra_files = {"LICENSE": MIT}
+    owner, project, build_id, _ = await ready_public_project(
+        client, new_user, public, license=("MIT", "LICENSE")
+    )
+    private = await publish(owner, project, build_id=build_id)
+    assert private.status_code == 200, private.text
+    slug = f"legacy-{secrets.token_hex(4)}"
+    ddl(  # the state of such a site before 0029: public, unlicensed, suspended for another reason
+        "UPDATE publications SET visibility = 'public', public_slug = :s, suspended_at = now(),"
+        " suspended_reason = :r WHERE project_id = CAST(:p AS uuid)",
+        s=slug,
+        r=reason,
+        p=project,
+    )
+    ddl(  # the billing sync's or the operator's lift
+        "UPDATE publications SET suspended_at = NULL, suspended_reason = NULL"
+        " WHERE project_id = CAST(:p AS uuid) AND suspended_reason = :r",
+        r=reason,
+        p=project,
+    )
+    state = ddl("SELECT suspended_reason FROM publications WHERE project_id = CAST(:p AS uuid)", p=project)
+    assert state[0][0] == "license"
+    assert (await client.get(f"/api/v1/published/{slug}")).status_code == 404
+
+    etag = (await owner.get(f"/api/v1/projects/{project}/publication")).headers["etag"]
+    republished = await go_public(owner, project, build_id, etag)  # the admin publishes, with the check
+    assert republished.status_code == 200, republished.text
+    assert republished.json()["suspended_reason"] is None and republished.json()["license_spdx"] == "MIT"
+    await owner.aclose()

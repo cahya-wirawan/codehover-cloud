@@ -65,7 +65,7 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "4d339d8914bcacf5bdfef179b71d48f1b4aaa234caa31d9d02fb1e4783c3ae9a"
+      "sha256": "849956b8e319f58592f64af7b8795aabe2d95efa763f0e4cd4e2446a219e3839"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
@@ -77,7 +77,7 @@
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
-      "sha256": "f4b4efb09c9efbfe299be2e55d36c0b80f762837f41fd9ec6f522134405b7e79"
+      "sha256": "caf456108587bb6fbd5e07c1847b1b20ab2ff980fab488d7f63dcd45bc477fc9"
     },
     "09_AUTH_AND_PERMISSIONS.md": {
       "status": "complete specification",
@@ -141,7 +141,7 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "5ecd4b4e71d4b98aedd3fb42e30804d1502b5ae19b327b5f9ba312a3f3cf8406"
+      "sha256": "0ceb267f9dc9d89fb43f71994ec7c17e645afd9da0013bc79a7b324f8c2ece42"
     },
     "README.md": {
       "status": "complete specification",
@@ -153,7 +153,7 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "30805d169e0c4c18af73a9c384890b4fcabd555a726fb2ce94efe106bb581a8a"
+      "sha256": "860e6e79bd52ed016235833604971994bba5dc510de02b9d844176b7d31414fb"
     },
     "VERSION": {
       "status": "package tooling",
@@ -256,5 +256,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "c8465ecaa08cde57955460953a7295e2d4cc3b9b7942f50cc6b9c924b6fb4ffa"
+  "master_spec_sha256": "213610927eb64dca2613fbf2b680f32e3a7779977f72ac2622583e4edb2ececf"
 }
