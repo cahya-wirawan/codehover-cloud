@@ -111,18 +111,13 @@ test("sign in, build, read, review, publish to members then the public, withdraw
 
   const member = await personPage(browser, base);
   const email = ((await (await member.request.get("/api/v1/me")).json()) as { primary_email: string }).primary_email;
-  const acceptUrl = await page.evaluate(
-    async ({ workspace, invitee }) => {
-      const { csrf_token } = (await (await fetch("/api/v1/auth/csrf")).json()) as { csrf_token: string };
-      const response = await fetch(`/api/v1/workspaces/${workspace}/invitations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf_token, "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ email: invitee, role: "viewer" }),
-      });
-      return ((await response.json()) as { accept_url: string }).accept_url;
-    },
-    { workspace: wid, invitee: email },
-  );
+  // Invite through the Members page (S17); the link is shown once.
+  await page.goto(`/w/${wid}/members`);
+  await page.getByRole("textbox", { name: "Email" }).fill(email);
+  await page.getByRole("button", { name: "Create link" }).click();
+  const acceptUrl = await page.getByRole("textbox", { name: "Invitation link" }).inputValue();
+  await expect(page.getByText(email, { exact: true }).last()).toBeVisible();
+  await accessible(page, "members");
   const invitation = new URL(acceptUrl);
   await member.goto(invitation.pathname + invitation.hash); // the token stays in the fragment
   await expect(member).toHaveURL(new RegExp(`/w/${wid}$`));
@@ -130,6 +125,7 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   await expect(member.getByRole("heading", { name: "API" })).toBeVisible();
   await expect(member.getByText(/private to its workspace/)).toBeVisible();
   await accessible(member, "members-only site");
+  await page.goto(projectUrl);
 
   const stranger = await personPage(browser, base);
   await stranger.goto(`/sites/${slug}`);

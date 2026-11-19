@@ -7,7 +7,8 @@ accepts changes only from its one configured origin). It runs the real API and t
 frontend (`cd frontend && npm run build` first) on the E2E server, with:
 - its own database (`codehover_demo`) and bucket (`codehover-demo`) on the Compose stack, so the stack's
   workers never touch demo jobs and demo data survives restarts;
-- "Continue with Google" signing you in locally as a fresh demo user (no Google involved);
+- "Continue with Google" opening a local page where you choose who to be (no Google involved): four
+  people who keep their account across sign-ins, with fixed emails for invitations, or someone new;
 - two repositories connected to every workspace automatically: `demo-api` (a tiny fixture) and
   `codehover-engine` (this project's own engine package, for a bigger read);
 - free replay builds only (source-only cards; no model calls).
@@ -18,6 +19,7 @@ frontend (`cd frontend && npm run build` first) on the E2E server, with:
 from __future__ import annotations
 
 import argparse
+import html
 import io
 import os
 import secrets
@@ -26,11 +28,57 @@ import sys
 import tarfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 BACKEND = Path(__file__).resolve().parents[2]
 DATABASE, BUCKET = "codehover_demo", "codehover-demo"
 ENGINE = BACKEND / "app" / "engine"
+# Who you can sign in as. Each keeps one account (a fixed Google subject) and a verified email, so an
+# invitation sent to that email can be accepted by signing in as them.
+PEOPLE = {
+    "grace": "Grace Hopper",
+    "alan": "Alan Turing",
+    "ada": "Ada Lovelace",
+    "katherine": "Katherine Johnson",
+}
+
+
+def chooser_page(query: str) -> str:
+    """The fake Google consent page: one button per person, carrying the sign-in request along."""
+
+    def option(key: str, name: str, email: str | None) -> str:
+        href = html.escape(f"/__demo__/google?{urlencode({'as': key})}&{query}")
+        detail = html.escape(email) if email else "A new account every time"
+        return (
+            f'<a class="person" href="{href}"><span class="name">{html.escape(name)}</span>'
+            f'<span class="email">{detail}</span></a>'
+        )
+
+    people = "".join(option(key, name, f"{key}@demo.test") for key, name in PEOPLE.items())
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choose who to sign in as</title>
+<style>
+:root {{ color-scheme: light dark; --bg:#f7f7f9; --panel:#fff; --text:#1c1d21; --muted:#5f6370; --border:#e2e3e8; --accent:#4f46e5; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg:#141518; --panel:#1c1d21; --text:#ececf1; --muted:#a0a3ad; --border:#2c2e34; --accent:#8b85ff; }} }}
+body {{ margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, sans-serif; }}
+main {{ max-width:26rem; margin:12vh auto; padding:0 16px; }}
+.box {{ background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px; }}
+h1 {{ font-size:18px; margin:0 0 4px; }} p {{ color:var(--muted); margin:0 0 16px; }}
+.person {{ display:flex; flex-direction:column; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
+  margin-top:8px; color:inherit; text-decoration:none; }}
+.person:hover, .person:focus-visible {{ border-color:var(--accent); outline:none; }}
+.name {{ font-weight:600; }} .email {{ color:var(--muted); font-size:13px; }}
+.note {{ margin-top:16px; font-size:13px; }}
+</style></head>
+<body><main><div class="box">
+<h1>Choose who to sign in as</h1>
+<p>Local demo: no Google account is involved. Each person keeps the same account every time.</p>
+{people}
+{option("new", "Someone new", None)}
+<p class="note">To add someone to a workspace, invite their email under Members, then sign in as them
+(a private window keeps both signed in).</p>
+</div></main></body></html>"""
 
 
 def engine_tarball() -> bytes:
@@ -98,7 +146,7 @@ def demo_app(port: int) -> Any:
     from tests.integration.test_builds import fixture_tarball
 
     app = server.build(port)
-    _idp, gh = app.state.e2e_fakes
+    idp, gh = app.state.e2e_fakes
     tarballs = {"demo-api": fixture_tarball(), "codehover-engine": engine_tarball()}
 
     def register(installation: int, repos: list[tuple[int, str]]) -> None:
@@ -166,6 +214,29 @@ def demo_app(port: int) -> Any:
 
             query = f"?{request.url.query}" if request.url.query else ""
             return RedirectResponse(f"http://{canonical}{request.url.path}{query}", status_code=307)
+        if request.url.path == "/__demo__/signin":
+            from starlette.responses import HTMLResponse
+
+            page = HTMLResponse(chooser_page(request.url.query))
+            page.headers["Cache-Control"] = "no-store"
+            return page
+        if request.url.path == "/__demo__/google":
+            # Complete the fake consent as the chosen person; the remaining query is the sign-in request.
+            from starlette.responses import RedirectResponse
+
+            params = {k: v[0] for k, v in parse_qs(request.url.query).items()}
+            person = params.pop("as", "new")
+            if person in PEOPLE:
+                idp.google_sub = f"demo-{person}"
+                idp.google_email = f"{person}@demo.test"
+                idp.google_claims = {"name": PEOPLE[person]}
+            else:
+                idp.google_sub = secrets.token_hex(8)
+                idp.google_email = f"demo-{secrets.token_hex(3)}@demo.test"
+                idp.google_claims = {}
+            code = idp.authorize(f"https://accounts.google.com/?{urlencode(params)}")
+            callback = urlencode({"code": code, "state": params.get("state", "")})
+            return RedirectResponse(f"/api/v1/auth/google/callback?{callback}", status_code=302)
         parts = request.url.path.split("/")
         # /api/v1/workspaces/{wid}/... : every workspace comes with the demo repositories.
         if len(parts) > 5 and parts[1:4] == ["api", "v1", "workspaces"] and request.method == "GET":
@@ -180,8 +251,8 @@ def demo_app(port: int) -> Any:
         if request.url.path == "/api/v1/auth/google/start" and location.startswith(
             "https://accounts.google.com"
         ):
-            # Sign in locally: the fake provider's consent page instead of Google.
-            response.headers["location"] = f"/__e2e__/google?{urlsplit(location).query}"
+            # Sign in locally: choose who to be on the fake provider's page instead of Google.
+            response.headers["location"] = f"/__demo__/signin?{urlsplit(location).query}"
         return response
 
     return app

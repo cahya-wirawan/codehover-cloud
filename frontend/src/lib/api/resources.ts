@@ -176,6 +176,12 @@ export interface WorkspaceMember {
   role: Role;
   created_at: string;
 }
+export interface Invitation {
+  id: string;
+  email: string;
+  role: Role;
+  expires_at: string;
+}
 export interface ProjectAccess {
   mode: "workspace" | "restricted";
   version: number;
@@ -565,6 +571,18 @@ export const api = {
   meta: () => apiJson<SiteMeta>("/meta"),
   variants: (bid: string) => apiJson<Page<Variant>>(`/builds/${bid}/variants`),
   members: (wid: string) => apiJson<Page<WorkspaceMember>>(`/workspaces/${wid}/members?limit=100`),
+  changeRole: async (wid: string, userId: string, role: Role) => {
+    await apiSend("PATCH", `/workspaces/${wid}/members/${userId}`, { role });
+  },
+  removeMember: async (wid: string, userId: string) => {
+    await apiSend("DELETE", `/workspaces/${wid}/members/${userId}`);
+  },
+  invitations: (wid: string) => apiJson<{ items: Invitation[] }>(`/workspaces/${wid}/invitations`),
+  invite: async (wid: string, email: string, role: Role) =>
+    json<Invitation & { accept_url: string }>(await apiSend("POST", `/workspaces/${wid}/invitations`, { email, role }, { "Idempotency-Key": crypto.randomUUID() })),
+  revokeInvitation: async (wid: string, invitationId: string) => {
+    await apiSend("DELETE", `/workspaces/${wid}/invitations/${invitationId}`);
+  },
   projectAccess: (pid: string) => apiGetWithEtag<ProjectAccess>(`/projects/${pid}/access`),
   setProjectAccess: async (pid: string, mode: ProjectAccess["mode"], ifMatch: string) =>
     json<ProjectAccess>(await apiSend("PUT", `/projects/${pid}/access`, { mode }, { "If-Match": ifMatch })),
