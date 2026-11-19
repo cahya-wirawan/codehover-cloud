@@ -39,10 +39,10 @@ FIXTURE = {
 }
 
 
-def fixture_tarball() -> bytes:
+def fixture_tarball(extra: dict[str, str] | None = None) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-        for path, content in FIXTURE.items():
+        for path, content in {**FIXTURE, **(extra or {})}.items():
             data = content.encode()
             info = tarfile.TarInfo(f"octo-api-c0ffee/{path}")
             info.size = len(data)

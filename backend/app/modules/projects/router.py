@@ -1079,6 +1079,7 @@ class PublicationOut(BaseModel):
     suspended_reason: str | None
     updated_at: datetime
     commit_sha: str
+    license_spdx: str | None = None  # FR-029: the checked license of a public-source repository's public site
 
 
 @router.get("/projects/{project_id}/publication", response_model=PublicationOut)
@@ -1118,6 +1119,7 @@ async def publish(
             acknowledge_partial=body.acknowledge_partial,
             if_match=if_match,
             billing_enforced=_settings(request).billing_enforced,
+            public_github=_public(request),
         )
         return 200, PublicationOut(**result).model_dump(mode="json")
 

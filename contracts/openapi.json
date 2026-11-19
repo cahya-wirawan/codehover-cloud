@@ -3291,6 +3291,17 @@
             "title": "Commit Sha",
             "type": "string"
           },
+          "license_spdx": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Spdx"
+          },
           "public_slug": {
             "anyOf": [
               {
@@ -3988,6 +3999,37 @@
         "title": "SessionOut",
         "type": "object"
       },
+      "SiteLicense": {
+        "properties": {
+          "file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Id"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "spdx_id": {
+            "title": "Spdx Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spdx_id",
+          "path",
+          "file_id"
+        ],
+        "title": "SiteLicense",
+        "type": "object"
+      },
       "SiteOut": {
         "properties": {
           "commit_sha": {
@@ -3997,6 +4039,16 @@
           "generated": {
             "title": "Generated",
             "type": "boolean"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SiteLicense"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "project": {
             "title": "Project",

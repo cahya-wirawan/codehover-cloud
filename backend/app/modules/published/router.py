@@ -84,6 +84,12 @@ async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: Opti
 SiteDep = Annotated[Site, Depends(resolve_site)]
 
 
+class SiteLicense(BaseModel):
+    spdx_id: str
+    path: str
+    file_id: UUID | None  # the license file in the site's code, when the build still has it
+
+
 class SiteOut(BaseModel):
     project: str
     repository: str
@@ -91,6 +97,7 @@ class SiteOut(BaseModel):
     visibility: str
     generated: bool
     published_at: Any
+    license: SiteLicense | None = None  # FR-029: named on public sites of public-source repositories
 
 
 def _objects(request: Request) -> ObjectStore:
@@ -104,11 +111,13 @@ async def site(slug: SlugPath, db: Db, found: SiteDep) -> SiteOut:
         await db.execute(
             text(
                 "SELECT p.name AS project, r.owner || '/' || r.name AS repository, s.commit_sha, b.estimate_id,"
-                " pub.updated_at FROM publications pub"
+                " pub.updated_at, pub.license_spdx, pub.license_path, f.id AS license_file FROM publications pub"
                 " JOIN projects p ON p.workspace_id = pub.workspace_id AND p.id = pub.project_id"
                 " JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
                 " JOIN builds b ON b.workspace_id = pub.workspace_id AND b.id = pub.build_id"
                 " JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
+                " LEFT JOIN source_files f ON f.workspace_id = s.workspace_id AND f.snapshot_id = s.id"
+                " AND f.path = pub.license_path"
                 " WHERE pub.workspace_id = :w AND pub.project_id = :p"
             ),
             {"w": found.reader.workspace_id, "p": found.project_id},
@@ -121,6 +130,9 @@ async def site(slug: SlugPath, db: Db, found: SiteDep) -> SiteOut:
         visibility=found.visibility,
         generated=row.estimate_id is not None,
         published_at=row.updated_at,
+        license=SiteLicense(spdx_id=row.license_spdx, path=row.license_path, file_id=row.license_file)
+        if row.license_spdx
+        else None,
     )
 
 

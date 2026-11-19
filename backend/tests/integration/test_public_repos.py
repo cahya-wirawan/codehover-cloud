@@ -32,8 +32,18 @@ class FakePublicGitHub:
     repos: dict[int, dict[str, Any]] = field(default_factory=dict)
     commit_sha: str = "feed" + "0" * 36
     requests: list[tuple[str, str]] = field(default_factory=list)  # (url, authorization header)
+    extra_files: dict[str, str] = field(default_factory=dict)  # added to the fixture tarball
+    license_refs: list[str | None] = field(default_factory=list)  # the `ref` of each license lookup
 
-    def add(self, owner: str, name: str, *, private: bool = False, repo_id: int | None = None) -> int:
+    def add(
+        self,
+        owner: str,
+        name: str,
+        *,
+        private: bool = False,
+        repo_id: int | None = None,
+        license: tuple[str, str] | None = None,
+    ) -> int:
         repo_id = repo_id or secrets.randbelow(10**9) + 1
         self.repos[repo_id] = {
             "id": repo_id,
@@ -42,6 +52,7 @@ class FakePublicGitHub:
             "private": private,
             "visibility": "private" if private else "public",
             "default_branch": "trunk",
+            "license": license,
         }
         return repo_id
 
@@ -55,7 +66,7 @@ class FakePublicGitHub:
             )
             if repo is None or repo["private"] or sha != self.commit_sha:
                 return httpx.Response(404)  # codeload serves nothing private to anonymous readers
-            return httpx.Response(200, content=fixture_tarball())
+            return httpx.Response(200, content=fixture_tarball(self.extra_files))
         for repo in self.repos.values():
             base = f"{gha.API}/repositories/{repo['id']}"
             visible = not repo["private"] or request.headers.get("authorization") == f"Bearer {TOKEN}"
@@ -74,6 +85,12 @@ class FakePublicGitHub:
                 return httpx.Response(200, json=[{"name": "trunk", "commit": {"sha": self.commit_sha}}])
             if url == f"{base}/tags" and visible:
                 return httpx.Response(200, json=[])
+            if url == f"{base}/license" and visible:
+                self.license_refs.append(request.url.params.get("ref"))
+                found = repo.get("license")  # (SPDX ID, path) or absent: no license file
+                if found is None:
+                    return httpx.Response(404)
+                return httpx.Response(200, json={"path": found[1], "license": {"spdx_id": found[0]}})
         return httpx.Response(404)
 
 

@@ -9,6 +9,9 @@ const SUSPENDED: Record<string, string> = {
   connection_inactive: "The GitHub connection was revoked or suspended. Reconnect, then publish again.",
   repository_revoked: "Access to this repository was revoked. Reconnect, then publish again.",
   operator: "An operator suspended this site.",
+  billing: "Sites are offline until the plan is in good standing.",
+  license:
+    "This public site was published before licenses were checked. Publish again: a public site of a public repository needs a license that allows sharing its code.",
 };
 
 function message(error: unknown, fallback: string): string {
