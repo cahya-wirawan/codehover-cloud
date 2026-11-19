@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     rate_limit_acquisitions_per_hour: int = Field(default=10, ge=1)
     rate_limit_builds_per_day: int = Field(default=20, ge=1)
     rate_limit_billing_per_hour: int = Field(default=20, ge=1)
+    # Push rebuilds (M6): pushes within the debounce window coalesce; a request runs at most max-wait
+    # after its first push.
+    push_debounce_seconds: int = Field(default=60, ge=0, le=3600)
+    push_max_wait_seconds: int = Field(default=600, ge=0, le=86_400)
     # Comma-separated networks whose X-Forwarded-For is believed (the ingress proxy only, 22).
     trusted_proxies: str = ""
     # Internal Prometheus port per process (12); 0 disables it. Never routed by the gateway.

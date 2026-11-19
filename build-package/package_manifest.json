@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.5.24",
+  "package_version": "0.5.25",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -49,11 +49,11 @@
     },
     "01_PRD.md": {
       "status": "complete specification",
-      "sha256": "98e150351075bffe230fc6bb80bdbc73bbaf7fabb821eaae07af59fcdf6db0eb"
+      "sha256": "dd3caee85f4da01f3c474ba5281482adc5256e6cd60f4c6e6877db5b07a3cb3b"
     },
     "02_UX_SCREEN_SPEC.md": {
       "status": "complete specification",
-      "sha256": "0dfeefbbafadc13c80050ca2509df7add5e633b2644e019c726e97d9aae5d139"
+      "sha256": "67aa6e66d8110b4d71151116e25198c60dbada3a1b54b82d2ebf77d82d89d391"
     },
     "03_USER_FLOWS.md": {
       "status": "complete specification",
@@ -65,23 +65,23 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "dff570859785581a8464ff495a7b75a6afddb9dfcfb65e81f75adc08b6b6b62c"
+      "sha256": "56f621de4417007dd368e2e98ade693fce3eafe6e8ba2501b59f8369d8b0a60e"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "ca5d92bf67ffaff80b82481d2a0bf50c54174aa44f48e28fec3868fdf60cde7a"
+      "sha256": "a417c2788e743da40f16a06dee3fd6eb5148212236d888e71d6fd49d70149a2d"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
-      "sha256": "120593ea3a9f280737fdeb8add408e0a545cc9f3dd9bc260f48e95b9cdf4898d"
+      "sha256": "3ab44aa4a7330cf89dd1ebe75f5e1f1be3e4c783b4f7f70459e157986c22db75"
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
-      "sha256": "dabd75f10ee5f09f674d81ff9c778493452c946ce9588517d5ad53fce90be4f0"
+      "sha256": "049d1f34d002ee6b02617a4f4b2b62ddd1225a78895d1e44631bc5df6e2ffc54"
     },
     "09_AUTH_AND_PERMISSIONS.md": {
       "status": "complete specification",
-      "sha256": "f9f7bfca3d4fcf406746d773572c88b266bb521ea0959f3d0d34c327bff435b6"
+      "sha256": "2a9602601cc88804689f6eb511352070586123723b0de4e2e347f9092cfe884b"
     },
     "10_OFFLINE_SYNC_AND_STORAGE.md": {
       "status": "complete specification",
@@ -89,7 +89,7 @@
     },
     "11_MONETIZATION_AND_BILLING.md": {
       "status": "complete specification",
-      "sha256": "ca1ce50dac35f8f6d15f85007438dcd19359ef9043de572fe50a3f5f364643dc"
+      "sha256": "ed5548d7883203f9a856ce2351999a03a96840e38dd7c26e9b5e728ed61e24f7"
     },
     "12_ANALYTICS_AND_OBSERVABILITY.md": {
       "status": "complete specification",
@@ -97,7 +97,7 @@
     },
     "13_TEST_PLAN.md": {
       "status": "complete specification",
-      "sha256": "8d5c59f8d1beda508f0ba2d09338fffbf146534074a6be4e2d50c0e9654f991b"
+      "sha256": "ac235c308352ac72564dcd11c008066e0d5676e08bf9b541170496bc3d50e1f4"
     },
     "14_IMPLEMENTATION_ROADMAP.md": {
       "status": "complete specification",
@@ -121,7 +121,7 @@
     },
     "19_PROMPT_LIBRARY.md": {
       "status": "complete specification",
-      "sha256": "a5e32d4cb6fdfb5a88f65b9c44f8934a3f65752546b4ca2e6c3734b95ea06194"
+      "sha256": "c2e5bde389dd7a0bcbdd5c896d415c73818e64dd5ca487487aa45af3cb7d505c"
     },
     "20_ACCEPTANCE_CRITERIA.md": {
       "status": "complete specification",
@@ -129,11 +129,11 @@
     },
     "21_RISKS_AND_OPEN_QUESTIONS.md": {
       "status": "complete specification",
-      "sha256": "0935c546e4cd46a660cc3df62917e0e2abb2dcb4a17aa3938c200996e7225060"
+      "sha256": "fe9f5efdb2030c2b820ea84ee4101292065df18bf88adcff018846f96ad7444a"
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
-      "sha256": "dc6451556ff7e71ef061f82e6b2f42b7e6e0f2667917dfacd7a107e139d92780"
+      "sha256": "72f0baf45c0e8e5e94646f2bf4fce00d8dbeecf86c57b5eb77d4b9458a657b2f"
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "66d57ca690f9d5e929abded7c9eac65432569f3480fe1ab051a28161944ec96f"
+      "sha256": "5c71c470512901da56e69201b6c6e5be66898c712fc72df17b31149b1a15c008"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "2285ba49143b1fa025a48586257e36c6ae29afe16f89ec3f4aec43827db611b9"
+      "sha256": "d1669cd3be93c3c24ef0b19f9459774d855c1ddf7f7dffdb758b44baac0eb145"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "0874149743dbf78898352353f7aa490e540cc1b0475d71389647886c174714d4"
+      "sha256": "91b7f3edda770cc629b1d365a44566a5cd7ba76d04e54b3b387b507ed347a395"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "be77b2b435f2681d220235ddc4246bea9853ab60be3223076985ca5cb3b8d7a2"
+      "sha256": "1bcc16b141ca0ed87498d6e6098db2910626656d5b0fbff9cc83b2aa89174f22"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -201,7 +201,7 @@
     },
     "deployment/.env.example": {
       "status": "reference template/schema",
-      "sha256": "e2fa5ba1409a2835e1fbcb63da0ae296cb16353d0c6bd1a894da3fc0cc36da73"
+      "sha256": "1b4969c966703ef6de7b903249c74c32c51342d41256969abb13e7879443009c"
     },
     "deployment/Dockerfile.backend": {
       "status": "reference template/schema",
@@ -221,7 +221,7 @@
     },
     "deployment/compose.yaml": {
       "status": "reference template/schema",
-      "sha256": "3db3ece028b76faeecef1c3413bc81b5dc7345ef688b421e5d2f6d853675db27"
+      "sha256": "6b557d4dd01db54a741b905f1ad7e7720787c667fb6b47c88f399dfbd10e0b8a"
     },
     "deployment/init-db.sh": {
       "status": "reference template/schema",
@@ -229,11 +229,11 @@
     },
     "deployment/model-catalog.example.json": {
       "status": "reference template/schema",
-      "sha256": "d55d718e376bf02e93b8a655d7236b6286c4aef38a21de8de72ee6bb2e5c37ec"
+      "sha256": "0f24047504b156c8f2820c4a6acfc2de3c55c8661852fa6af20f786b6234f5c4"
     },
     "deployment/nginx.conf": {
       "status": "reference template/schema",
-      "sha256": "6cc23b7e0294a22949247421ea61d35cc47be78f134068bc9adbedcc23ace9c7"
+      "sha256": "57b737c158fe5b6582428803534d5ed1b193e0a67d4f7d5e49b4334c65491d7b"
     },
     "deployment/prometheus/alerts.test.yml": {
       "status": "reference template/schema",
@@ -256,5 +256,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "af03c4dcfc0f20264affbeef151c5d27bedfa5bf08fae4a65d0bf24115a99e78"
+  "master_spec_sha256": "57a0bfe37d8050c8ec62607980fd92a3f430149dc1933f2c305490334ccc4486"
 }

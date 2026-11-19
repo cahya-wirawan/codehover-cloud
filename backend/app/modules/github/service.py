@@ -284,7 +284,7 @@ async def list_connections(db: AsyncSession, member: Member) -> list[dict[str, A
         text(
             "SELECT id, installation_id, github_account_login AS account, status, last_verified_at,"
             " created_at"
-            " FROM repository_connections WHERE workspace_id = :w ORDER BY created_at, id"
+            " FROM repository_connections WHERE workspace_id = :w AND provider = 'github' ORDER BY created_at, id"
         ),
         {"w": member.workspace_id},
     )
@@ -296,7 +296,8 @@ async def revoke_connection(db: AsyncSession, member: Member, connection_id: UUI
         await db.execute(
             text(
                 "UPDATE repository_connections SET status = 'revoked', updated_at = now()"
-                " WHERE workspace_id = :w AND id = :c AND status <> 'revoked' RETURNING installation_id"
+                " WHERE workspace_id = :w AND id = :c AND status <> 'revoked' AND provider = 'github'"
+                " RETURNING installation_id"
             ),
             {"w": member.workspace_id, "c": connection_id},
         )
@@ -318,7 +319,7 @@ async def _active_connection(db: AsyncSession, member: Member, connection_id: UU
         await db.execute(
             text(
                 "SELECT id, installation_id, status FROM repository_connections"
-                " WHERE workspace_id = :w AND id = :c"
+                " WHERE workspace_id = :w AND id = :c AND provider = 'github'"
             ),
             {"w": member.workspace_id, "c": connection_id},
         )

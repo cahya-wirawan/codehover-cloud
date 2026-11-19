@@ -50,6 +50,8 @@ class Model(_Frozen):
     data_region: Annotated[str, Field(min_length=1, max_length=40)]
     retention: Annotated[str, Field(min_length=1, max_length=200)]
     price: Price
+    # The provider's batch price (M6, T24); a model without one is never batched (no silent price fallback).
+    batch_price: Price | None = None
 
 
 class Role(_Frozen):

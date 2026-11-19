@@ -33,8 +33,29 @@ def digest(version: str) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
-def system(version: str) -> str:
-    return _load(version)["system"].strip()
+DEFAULT_VARIANT = "en-standard"
+LANGUAGES = {"en": "English", "de": "German", "id": "Indonesian"}  # FR-026
+LEVELS = ("standard", "beginner", "expert")
+
+
+def variant(language: str, level: str) -> str:
+    return f"{language}-{level}"
+
+
+def system(version: str, audience: str = DEFAULT_VARIANT) -> str:
+    """The set's system prompt; for any variant but English/standard, followed by the set's audience
+    instruction (from 0.4.0 on). The audience text is fixed by the set, never taken from requests."""
+    templates = _load(version)
+    base = templates["system"].strip()
+    if audience == DEFAULT_VARIANT:
+        return base
+    language, _, level = audience.partition("-")
+    if "audience" not in templates or language not in LANGUAGES or level not in LEVELS:
+        raise ValueError(f"prompt set {version} has no audience {audience!r}")
+    instruction = string.Template(templates["audience"]).substitute(
+        LANGUAGE=LANGUAGES[language], LEVEL=level, LEVEL_GUIDANCE=templates[f"level_{level}"].strip()
+    )
+    return f"{base}\n\n{instruction.strip()}"
 
 
 def render(version: str, name: str, **sections: str) -> str:

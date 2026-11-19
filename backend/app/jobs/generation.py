@@ -27,7 +27,7 @@ from app.engine.catalog import Catalog, Model, Preset, Role
 from app.engine.estimate import GenerationConfig, ScannedFile, select_files
 from app.engine.globs import match as glob_match
 from app.engine.keys import build_key
-from app.jobs import calls
+from app.jobs import batching, calls
 from app.jobs.store import Apply, Claim
 
 MAX_CONCURRENT_CALLS = 4  # per build (07)
@@ -158,14 +158,47 @@ async def bounded[T](items: list[Callable[[], Awaitable[T]]]) -> list[T]:
         raise
 
 
+async def gateway_for(rt: Any, claimed: Claim, provider: str) -> Any:
+    """The gateway that serves this build: the operator's, or for an own-key build (M6, T24) one made with
+    the workspace's live key, checked on every call so a removed key stops the build."""
+    funding = await _rows(
+        rt, claimed, "SELECT config->>'funding' AS funding FROM builds WHERE workspace_id = :w AND id = :b"
+    )
+    if not funding or funding[0].funding != "own_key" or provider == "replay":
+        gateway = rt.gateways.get(provider)
+        if gateway is None:  # the worker has no credentials for this provider
+            raise StageStop("provider_unconfigured")
+        return gateway
+    from app.modules.providers import keys
+
+    live = await _rows(
+        rt,
+        claimed,
+        "SELECT id FROM provider_keys WHERE workspace_id = :w AND provider = :p AND revoked_at IS NULL",
+        p=provider,
+    )
+    if not live or rt.sealer is None or rt.own_key_gateway is None:
+        raise StageStop("provider_key_missing")
+    cache_key = (claimed.workspace_id, live[0].id)
+    if cache_key not in rt.own_key_cache:
+        from app.core.tenancy import set_context
+
+        async with rt.sessions() as db:
+            await set_context(db, workspace_id=claimed.workspace_id)
+            key = await keys.open_key(db, rt.sealer, claimed.workspace_id, provider)
+            await db.commit()
+        if key is None:
+            raise StageStop("provider_key_missing")
+        rt.own_key_cache[cache_key] = rt.own_key_gateway(key)
+    return rt.own_key_cache[cache_key]
+
+
 async def answer(
     rt: Any, claimed: Claim, prepared: generate.Prepared, validate: Callable[[dict[str, Any]], list[str]]
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
     """(output, status, provenance). Falls back to the deterministic replay answer when the provider
     cannot produce a valid one; budget, cancellation and lease loss stop the stage instead."""
-    gateway = rt.gateways.get(prepared.request.model.provider)
-    if gateway is None:  # the worker has no credentials for this provider
-        raise StageStop("provider_unconfigured")
+    gateway = await gateway_for(rt, claimed, prepared.request.model.provider)
     try:
         outcome = await calls.run(
             rt.sessions, gateway, claimed, prepared, validate, retry_delays=rt.retry_delays
@@ -195,6 +228,11 @@ def _role_request(ctx: BuildContext, role: Role) -> dict[str, Any]:
         "role": role,
         "prompt_version": ctx.prompt_version,
     }
+
+
+def _writer_request(ctx: BuildContext) -> dict[str, Any]:
+    """The writer writes for the build's language and reader level (FR-026); the checker does not write."""
+    return {**_role_request(ctx, ctx.preset.writer), "audience": ctx.config.variant}
 
 
 # ---------------------------------------------------------------- explain
@@ -228,6 +266,7 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
                 }
             )
     work: list[Callable[[], Awaitable[Any]]] = []
+    batchable: list[tuple[generate.Prepared, Callable[[dict[str, Any]], list[str]]]] = []
     for f in files:
         for chunk in generate.chunks(f):
             prepared = generate.explain_request(
@@ -236,7 +275,7 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
                 chunk=chunk,
                 related=related.get(f.file_id, []),
                 map_entries=map_entries,
-                **_role_request(ctx, ctx.preset.writer),
+                **_writer_request(ctx),
             )
 
             async def unit(
@@ -250,6 +289,15 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
                 return f, chunk, output, status, provenance
 
             work.append(functools.partial(unit, f, chunk, prepared))
+            batchable.append((prepared, functools.partial(generate.validate_explanation, chunk=chunk)))
+    if ctx.config.batch and batchable:  # M6, T24: one provider batch fills the cache first
+        gateway = await gateway_for(rt, claimed, ctx.model(ctx.preset.writer).provider)
+        try:
+            await batching.prefill(rt.sessions, gateway, claimed, batchable)
+        except calls.BudgetExhausted as error:
+            raise StageStop("budget_exhausted") from error
+        except calls.BuildStopped as error:
+            raise StageStop("cancelled") from error
     results = await bounded(work)
 
     cards: dict[tuple[str, str], dict[str, Any]] = {}
@@ -401,7 +449,7 @@ async def overview(rt: Any, claimed: Claim) -> Apply | None:
         summaries=summaries,
         map_entries=generate.repo_map(files),
         readme=await _readme(rt, claimed, ctx),
-        **_role_request(ctx, ctx.preset.writer),
+        **_writer_request(ctx),
     )
     ids = {f.file_id for f in files}
     output, status, provenance = await answer(
@@ -413,8 +461,61 @@ async def overview(rt: Any, claimed: Claim) -> Apply | None:
     return _artifact(claimed, "overview", stored)
 
 
+async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
+    """A variant reuses its base build's guide plan: the same slugs, order, purposes and source ranges,
+    so page anchors are identical across variants (FR-026). Titles are rewritten with each page."""
+    pages = await _rows(
+        rt,
+        claimed,
+        "SELECT slug, title, ordinal, purpose, source_ranges FROM guide_pages"
+        " WHERE workspace_id = :w AND build_id = :base ORDER BY ordinal",
+        base=ctx.config.variant_of,
+    )
+    output = {
+        "pages": [
+            {"slug": p.slug, "title": p.title, "purpose": p.purpose, "source_ranges": p.source_ranges}
+            for p in pages
+        ],
+        "variant_of": ctx.config.variant_of,
+    }
+
+    async def apply(db: AsyncSession) -> None:
+        for page in pages:
+            await db.execute(
+                text(
+                    "INSERT INTO guide_pages(workspace_id, build_id, slug, title, ordinal, purpose, source_ranges)"
+                    " VALUES (:w, :b, :slug, :title, :o, :purpose, CAST(:ranges AS jsonb))"
+                    " ON CONFLICT (build_id, slug) DO NOTHING"
+                ),
+                {
+                    "w": claimed.workspace_id,
+                    "b": claimed.build,
+                    "slug": page.slug,
+                    "title": page.title,
+                    "o": page.ordinal,
+                    "purpose": page.purpose,
+                    "ranges": json.dumps(page.source_ranges),
+                },
+            )
+        await _artifact(
+            claimed,
+            "guide_plan",
+            await _store_json(
+                rt,
+                claimed,
+                ctx,
+                "guide-plan.json",
+                {**output, "status": "copied", "provenance": {"generator": "variant"}},
+            ),
+        )(db)
+
+    return apply
+
+
 async def plan(rt: Any, claimed: Claim) -> Apply | None:
     ctx = await context(rt, claimed)
+    if ctx.config.variant_of is not None:
+        return await _base_plan(rt, claimed, ctx)
     files = await load_files(rt, claimed, ctx)
     summaries = await _summaries(rt, claimed, files)
     bounds = generate.page_bounds(len(files), ctx.config.guide_pages)
@@ -425,7 +526,7 @@ async def plan(rt: Any, claimed: Claim) -> Apply | None:
         map_entries=generate.repo_map(files),
         readme=await _readme(rt, claimed, ctx),
         bounds=bounds,
-        **_role_request(ctx, ctx.preset.writer),
+        **_writer_request(ctx),
     )
     known = {f.file_id: (f.path, max(1, len(f.lines))) for f in files}
     output, status, provenance = await answer(
@@ -474,6 +575,7 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
     )
     texts = {fid: list(f.lines) for fid, f in files.items()}
     shas = {fid: f.sha256 for fid, f in files.items()}
+    titles: dict[str, str] = {}
     work: list[Callable[[], Awaitable[Any]]] = []
     for page in pages:
         ranges = [r for r in page.source_ranges if r["file_id"] in files]
@@ -483,7 +585,7 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
             workspace_id=str(claimed.workspace_id),
             page=plan_entry,
             evidence=evidence,
-            **_role_request(ctx, ctx.preset.writer),
+            **_writer_request(ctx),
         )
 
         async def unit(
@@ -500,6 +602,9 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
                 return page, None, {"generator": "none", "error": "no_valid_page"}
             key = build_key(claimed.workspace_id, ctx.project_id, claimed.build, f"guide/{page.slug}.md")
             await rt.store.put(key, output["markdown"].encode(), "text/markdown; charset=utf-8")
+            heading = generate.heading_text(output["markdown"])
+            if heading:
+                titles[page.slug] = heading[:200]  # a variant's page title, in its own language
             return page, key, provenance
 
         work.append(functools.partial(unit, page, prepared, evidence))
@@ -509,13 +614,14 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
         for page, key, provenance in results:
             await db.execute(
                 text(
-                    "UPDATE guide_pages SET status = :s, markdown_key = :k, provenance = CAST(:p AS jsonb)"
-                    " WHERE workspace_id = :w AND id = :id"
+                    "UPDATE guide_pages SET status = :s, markdown_key = :k, provenance = CAST(:p AS jsonb),"
+                    " title = COALESCE(CAST(:t AS text), title) WHERE workspace_id = :w AND id = :id"
                 ),
                 {
                     "s": "written" if key else "failed",
                     "k": key,
                     "p": json.dumps(provenance),
+                    "t": titles.get(page.slug) if ctx.config.variant_of else None,
                     "w": claimed.workspace_id,
                     "id": page.id,
                 },

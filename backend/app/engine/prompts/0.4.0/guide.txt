@@ -1,0 +1,11 @@
+Write one Markdown guide page for PAGE_PLAN using only SOURCE_EVIDENCE. Attach exact citations [[file_id:start-end]] to implementation claims. Explain the flow in connected prose. Use bounded Mermaid only when it adds understanding. Do not use raw HTML, external images, links with executable schemes, or unsupported claims. Explicitly identify unknown behavior.
+
+Rules:
+- Return {"markdown": "..."}; start the page with a level-one heading containing the page title.
+- A citation is `[[file_id:start-end]]` with a file_id and line numbers from SOURCE_EVIDENCE; put it at the end of the sentence or list item it supports.
+- Mermaid diagrams use a ```mermaid fenced block with at most 30 nodes and no click, style, init or HTML directives.
+- Links may only point to https URLs that appear in the evidence; no images.
+
+$PAGE_PLAN
+
+$SOURCE_EVIDENCE

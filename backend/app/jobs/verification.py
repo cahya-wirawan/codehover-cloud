@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.engine import claims as claim_engine
 from app.engine.keys import build_key
 from app.jobs import calls
-from app.jobs.generation import BuildContext, StageStop, _rows, bounded, context
+from app.jobs.generation import BuildContext, StageStop, _rows, bounded, context, gateway_for
 from app.jobs.store import Apply, Claim
 
 
@@ -160,7 +160,7 @@ async def _run_checker(
     """claim key -> (status, reason, evidence lines, checker model). Missing answers are unchecked."""
     role = ctx.preset.checker
     model = ctx.model(role)
-    gateway = rt.gateways.get(model.provider)
+    gateway = await gateway_for(rt, claimed, model.provider)
     results: dict[str, tuple[str, str, list[int], str | None]] = {}
     valid = [
         c for c in page_claims if all(claim_engine.validate_citation(x, files) is None for x in c.citations)
@@ -244,6 +244,7 @@ async def check(rt: Any, claimed: Claim) -> Apply | None:
             model=model,
             role=writer,
             prompt_version=ctx.prompt_version,
+            audience=ctx.config.variant,
             flagged=flagged,
             files=files,
         )
@@ -251,7 +252,7 @@ async def check(rt: Any, claimed: Claim) -> Apply | None:
         try:
             repaired = await calls.run(
                 rt.sessions,
-                rt.gateways[model.provider],
+                await gateway_for(rt, claimed, model.provider),
                 claimed,
                 prepared,
                 lambda o: claim_engine.validate_repair(o, flagged_claims),

@@ -14,9 +14,10 @@ from app.core.pagination import Position, clamp_limit, decode_cursor, encode_cur
 from app.core.settings import Settings
 from app.engine.catalog import Catalog
 from app.modules.identity.sessions import CurrentPrincipal, Db
-from app.modules.projects.estimates import preset_available
+from app.modules.projects.estimates import batch_available, own_key_usable, preset_available
+from app.modules.providers import keys as provider_keys
 from app.modules.usage import ledger
-from app.modules.workspaces.access import ReadMember, require_role
+from app.modules.workspaces.access import ReadMember, read_member, require_role
 
 router = APIRouter(tags=["usage"])
 
@@ -51,6 +52,8 @@ class PresetOut(BaseModel):
     checker_model: str
     providers: list[str]
     data_regions: list[str]
+    batch: bool = False  # the writer model has a catalog batch price (M6)
+    own_key: bool = False  # the workspace given in the request can build it on its own key (M6)
 
 
 class PresetList(BaseModel):
@@ -120,13 +123,24 @@ async def usage_entries(
 
 
 @router.get("/catalog/presets", response_model=PresetList)
-async def presets(request: Request, principal: CurrentPrincipal) -> PresetList:
-    del principal  # signed-in users only; the catalog holds no tenant data
+async def presets(
+    request: Request,
+    db: Db,
+    principal: CurrentPrincipal,
+    workspace_id: Annotated[UUID | None, Query()] = None,
+) -> PresetList:
+    """Signed-in users only; the catalog holds no tenant data. With `workspace_id` of a workspace the
+    caller belongs to, presets its own provider key can run are included too (M6, T24)."""
     catalog: Catalog = request.app.state.catalog
     items = []
     settings = _settings(request)
+    own: set[str] = set()
+    if workspace_id is not None:
+        member = await read_member(workspace_id, db, principal)  # 404 for non-members
+        own = await provider_keys.active_providers(db, member.workspace_id)
+        await db.commit()
     for preset in catalog.presets:
-        if not preset_available(catalog, preset.name, settings):
+        if not preset_available(catalog, preset.name, settings, own):
             continue
         models = [catalog.model(preset.writer.model), catalog.model(preset.checker.model)]
         items.append(
@@ -137,6 +151,8 @@ async def presets(request: Request, principal: CurrentPrincipal) -> PresetList:
                 checker_model=preset.checker.model,
                 providers=sorted({m.provider for m in models}),
                 data_regions=sorted({m.data_region for m in models}),
+                batch=batch_available(catalog, preset.name),
+                own_key=own_key_usable(catalog, preset.name, own),
             )
         )
     return PresetList(price_version=catalog.revision, items=items)

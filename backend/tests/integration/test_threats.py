@@ -129,6 +129,11 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
             "confirmation": "API",
         },
         ("POST", "/api/v1/projects/{project_id}/snapshots"): {},
+        ("PUT", "/api/v1/projects/{project_id}/push-policy"): {"policy": "build", "cap_micro_usd": 1_000_000},
+        ("POST", "/api/v1/projects/{project_id}/uploads"): {},  # membership is checked before the archive
+        ("PUT", "/api/v1/workspaces/{workspace_id}/provider-keys/{provider}"): {
+            "api_key": "sk-ant-" + "x" * 40
+        },
         ("PATCH", "/api/v1/workspaces/{workspace_id}"): {"name": "Hijacked"},
         ("POST", "/api/v1/workspaces/{workspace_id}/deletion"): {"confirmation": workspace_slug},
         ("POST", "/api/v1/workspaces/{workspace_id}/github/install"): {},
@@ -211,7 +216,7 @@ async def test_another_tenant_is_refused_on_every_route_and_changes_nothing(
     failures = []
     for method, path in routes():
         body = payloads.get((method, path)) if method != "GET" and method != "DELETE" else None
-        if method in ("POST", "PATCH") and body is None:
+        if method in ("POST", "PATCH", "PUT") and body is None:
             failures.append(f"{method} {path}: no body in the sweep (classify the new route)")
             continue
         response = await call(stranger, method, path, ids, body)

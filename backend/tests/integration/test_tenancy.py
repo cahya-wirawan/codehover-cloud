@@ -451,6 +451,73 @@ def test_billing_rows_are_tenant_scoped_and_trials_are_owner_only(world: World, 
     assert runtime.one("SELECT app_private.start_trial(:w, 1, 1)", w=world.a.workspace) is None
 
 
+def test_push_requests_are_tenant_scoped_and_targets_come_from_the_resolver(
+    world: World, runtime: Db
+) -> None:
+    """0024: push requests follow the tenant policy; the push resolvers return identifiers only."""
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    runtime.run(
+        "INSERT INTO push_requests(workspace_id, project_id, commit_sha, ref, due_at)"
+        " VALUES (:w, :p, :sha, 'main', now())",
+        w=world.b.workspace,
+        p=world.b.project,
+        sha="a" * 40,
+    )
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM push_requests WHERE workspace_id = :w", w=world.b.workspace) == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO push_requests(workspace_id, project_id, commit_sha, ref, due_at)"
+        " VALUES (:w, :p, :sha, 'main', now())",
+        w=world.b.workspace,
+        p=world.b.project,
+        sha="b" * 40,
+    )
+    expect(runtime, DENIED, "DELETE FROM push_requests WHERE workspace_id = :w", w=world.a.workspace)
+    # Only the policy columns of a project are writable for push settings; the policy needs its admin.
+    expect(
+        runtime,
+        REJECTED,
+        "UPDATE projects SET push_policy = 'build', push_policy_by = NULL WHERE id = :p",
+        p=world.a.project,
+    )
+    runtime.context()
+    due = runtime.rows("SELECT * FROM app_private.due_push_requests(500)")
+    assert all(set(r._mapping) == {"workspace_id", "request_id"} for r in due)
+    assert runtime.one("SELECT count(*) FROM push_requests") == 0  # the resolver exposes no rows
+
+
+def test_provider_keys_and_batches_are_tenant_scoped(world: World, runtime: Db) -> None:
+    """0026: sealed keys and provider batches follow the tenant policy; only the seal and revocation of a
+    key can change, so a key cannot be repointed to another hint, creator or workspace."""
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    runtime.run(
+        "INSERT INTO provider_keys(workspace_id, provider, sealed_key, hint, created_by)"
+        " VALUES (:w, 'anthropic', '\\x00'::bytea, 'sk-ant-…zzzz', :u)",
+        w=world.b.workspace,
+        u=world.b.user,
+    )
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM provider_keys WHERE workspace_id = :w", w=world.b.workspace) == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO provider_keys(workspace_id, provider, sealed_key, hint, created_by)"
+        " VALUES (:w, 'anthropic', '\\x00'::bytea, 'x', :u)",
+        w=world.b.workspace,
+        u=world.a.user,
+    )
+    expect(
+        runtime, DENIED, "UPDATE provider_keys SET hint = 'x' WHERE workspace_id = :w", w=world.a.workspace
+    )
+    expect(runtime, DENIED, "DELETE FROM provider_keys WHERE workspace_id = :w", w=world.a.workspace)
+    expect(runtime, DENIED, "DELETE FROM provider_batches WHERE workspace_id = :w", w=world.a.workspace)
+    assert (
+        runtime.one("SELECT count(*) FROM provider_batches WHERE workspace_id = :w", w=world.b.workspace) == 0
+    )
+
+
 @needs_system
 def test_system_role_can_expire_a_lease(world: World, system: Db) -> None:
     # Lease, then expire it the way the reconciler will: state and lease_until change together (CHECK).

@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from "react-router";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { PageHeader, Section } from "../../components/ui/section";
+import { ProviderKeyPanel } from "./ProviderKeyPanel";
 import { ApiError } from "../../lib/api/client";
 import { api, formatUsd, type BillingState, type PlanInfo } from "../../lib/api/resources";
 
@@ -288,6 +289,8 @@ export function UsagePage() {
           ) : null}
         </Section>
       ) : null}
+
+      <ProviderKeyPanel workspaceId={wid} owner={owner} />
 
       <Section
         title="Generation this month"

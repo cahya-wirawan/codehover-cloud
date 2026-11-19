@@ -1,0 +1,14 @@
+DROP FUNCTION app_private.due_push_requests(integer);
+DROP FUNCTION app_private.push_targets(bigint, bigint, text);
+REVOKE SELECT (id, workspace_id, installation_id, status) ON repository_connections FROM app_resolver;
+GRANT SELECT (id, installation_id, status) ON repository_connections TO app_resolver;
+REVOKE SELECT (workspace_id, repository_id, tracked_ref, push_policy, deleted_at) ON projects FROM app_resolver;
+GRANT SELECT (id, workspace_id, deleted_at, repository_id) ON projects TO app_resolver;
+REVOKE SELECT (workspace_id, provider_repo_id, access_revoked_at) ON repositories FROM app_resolver;
+DROP POLICY resolver_push ON repositories;
+DROP TABLE push_requests;
+ALTER TABLE projects DROP CONSTRAINT projects_push_policy_owner;
+ALTER TABLE projects DROP COLUMN push_policy_version;
+ALTER TABLE projects DROP COLUMN push_policy_by;
+ALTER TABLE projects DROP COLUMN push_cap_micro_usd;
+ALTER TABLE projects DROP COLUMN push_policy;

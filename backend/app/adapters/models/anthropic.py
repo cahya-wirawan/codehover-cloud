@@ -16,8 +16,10 @@ from typing import Any
 
 import anthropic
 from anthropic.types import OutputConfigParam, UserMessageParam
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from anthropic.types.messages.batch_create_params import Request
 
-from app.engine.gateway import GenerationRequest, GenerationResult, ProviderError, Usage
+from app.engine.gateway import BatchItem, GenerationRequest, GenerationResult, ProviderError, Usage
 
 CALL_TIMEOUT_SECONDS = 90.0
 
@@ -98,19 +100,75 @@ class AnthropicGateway:
                 "permanent", "provider_rejected", provider_request_id=error.request_id
             ) from error
 
-        request_id = getattr(message, "_request_id", None)
-        usage = _usage(message.usage)
-        if message.stop_reason == "refusal":
-            raise ProviderError("permanent", "provider_refusal", provider_request_id=request_id, usage=usage)
-        if message.stop_reason == "max_tokens":
-            raise ProviderError("invalid", "output_truncated", provider_request_id=request_id, usage=usage)
-        text = next((block.text for block in message.content if block.type == "text"), None)
+        return _result(message, request, getattr(message, "_request_id", None))
+
+    # ---------------------------------------------------------------- Message Batches (M6, T24)
+    def _params(self, request: GenerationRequest) -> MessageCreateParamsNonStreaming:
+        output_config: OutputConfigParam = {
+            "format": {"type": "json_schema", "schema": request.provider_schema()}
+        }
+        if request.role.effort is not None:
+            output_config["effort"] = request.role.effort
+        return {
+            "model": request.model.provider_model,
+            "max_tokens": request.max_output_tokens,
+            "system": request.system,
+            "messages": [{"role": "user", "content": request.user}],
+            "output_config": output_config,
+        }
+
+    async def submit_batch(self, items: list[tuple[str, GenerationRequest]]) -> str:
         try:
-            output = json.loads(text) if text is not None else None
-        except ValueError:
-            output = None
-        if not isinstance(output, dict):
-            raise ProviderError("invalid", "output_not_json", provider_request_id=request_id, usage=usage)
-        return GenerationResult(
-            output=output, usage=usage, provider_request_id=request_id, model_id=request.model.id
-        )
+            batch = await self.client.messages.batches.create(
+                requests=[Request(custom_id=cid, params=self._params(r)) for cid, r in items]
+            )
+        except anthropic.APIError as error:
+            raise ProviderError("transient", "batch_submit_failed") from error
+        return str(batch.id)
+
+    async def batch_ended(self, batch_id: str) -> bool:
+        try:
+            batch = await self.client.messages.batches.retrieve(batch_id)
+        except anthropic.APIError as error:
+            raise ProviderError("transient", "batch_status_failed") from error
+        return batch.processing_status == "ended"
+
+    async def batch_results(self, batch_id: str, requests: dict[str, GenerationRequest]) -> list[BatchItem]:
+        items: list[BatchItem] = []
+        try:
+            async for entry in await self.client.messages.batches.results(batch_id):
+                request = requests.get(entry.custom_id)
+                if request is None:
+                    continue  # not one of ours: never attach it to a request
+                if entry.result.type == "succeeded":
+                    try:
+                        items.append(BatchItem(entry.custom_id, _result(entry.result.message, request, None)))
+                    except ProviderError as error:
+                        items.append(BatchItem(entry.custom_id, None, error))
+                else:  # errored, canceled or expired: not billed by the provider
+                    items.append(
+                        BatchItem(
+                            entry.custom_id, None, ProviderError("permanent", f"batch_{entry.result.type}")
+                        )
+                    )
+        except anthropic.APIError as error:
+            raise ProviderError("transient", "batch_results_failed") from error
+        return items
+
+
+def _result(message: Any, request: GenerationRequest, request_id: str | None) -> GenerationResult:
+    usage = _usage(message.usage)
+    if message.stop_reason == "refusal":
+        raise ProviderError("permanent", "provider_refusal", provider_request_id=request_id, usage=usage)
+    if message.stop_reason == "max_tokens":
+        raise ProviderError("invalid", "output_truncated", provider_request_id=request_id, usage=usage)
+    text = next((block.text for block in message.content if block.type == "text"), None)
+    try:
+        output = json.loads(text) if text is not None else None
+    except ValueError:
+        output = None
+    if not isinstance(output, dict):
+        raise ProviderError("invalid", "output_not_json", provider_request_id=request_id, usage=usage)
+    return GenerationResult(
+        output=output, usage=usage, provider_request_id=request_id, model_id=request.model.id
+    )

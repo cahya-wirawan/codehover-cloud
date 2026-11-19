@@ -35,6 +35,8 @@ x-app-env: &app-env
   BILLING_ENFORCED: ${BILLING_ENFORCED:-false}
   OPERATOR_NAME: ${OPERATOR_NAME:-codehover-cloud}
   SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+  PUSH_DEBOUNCE_SECONDS: ${PUSH_DEBOUNCE_SECONDS:-60}
+  PUSH_MAX_WAIT_SECONDS: ${PUSH_MAX_WAIT_SECONDS:-600}
   # Internal metrics port per process (12); scraped on the services network, never published.
   METRICS_PORT: ${METRICS_PORT:-9100}
   # Only the gateway reaches the API (its port is not published); in production name the ingress only (22).

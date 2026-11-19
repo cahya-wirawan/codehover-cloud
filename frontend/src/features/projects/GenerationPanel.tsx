@@ -1,9 +1,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 
 import { ApiError } from "../../lib/api/client";
-import { api, type Estimate, formatUsd, type Snapshot } from "../../lib/api/resources";
+import { api, type Estimate, formatUsd, LANGUAGES, LEVELS, type Snapshot } from "../../lib/api/resources";
 
 const lines = (text: string) =>
   text
@@ -16,7 +16,15 @@ function errorText(error: unknown, fallback: string): string {
 }
 
 /** Snapshot -> scope -> estimate -> capped build (01 FR-006 to FR-008; 03 estimate flow). */
-export function GenerationPanel({ projectId, workspaceId }: { projectId: string; workspaceId: string }) {
+export function GenerationPanel({
+  projectId,
+  workspaceId,
+  uploaded = false,
+}: {
+  projectId: string;
+  workspaceId: string;
+  uploaded?: boolean;
+}) {
   const navigate = useNavigate();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [preset, setPreset] = useState("");
@@ -27,18 +35,28 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [capDollars, setCapDollars] = useState("");
 
-  const presets = useQuery({ queryKey: ["presets"], queryFn: api.presets });
+  // "Make a variant" on a ready build opens this panel with its build and snapshot (FR-026).
+  const [search] = useSearchParams();
+  const variantOf = search.get("variant_of");
+  const variantSnapshot = search.get("snapshot");
+  const [language, setLanguage] = useState(variantOf ? "de" : "en");
+  const [level, setLevel] = useState("standard");
+  const presets = useQuery({ queryKey: ["presets", workspaceId], queryFn: () => api.presets(workspaceId) });
+  const [batch, setBatch] = useState(false);
+  const [ownKey, setOwnKey] = useState(false);
   const usage = useQuery({ queryKey: ["usage", workspaceId], queryFn: () => api.usage(workspaceId) });
   const scanned = useQuery({
-    queryKey: ["snapshot", projectId, snapshot?.id],
-    queryFn: () => api.snapshot(projectId, snapshot?.id ?? ""),
-    enabled: snapshot !== null,
+    queryKey: ["snapshot", projectId, snapshot?.id ?? variantSnapshot],
+    queryFn: () => api.snapshot(projectId, snapshot?.id ?? variantSnapshot ?? ""),
+    enabled: snapshot !== null || variantSnapshot !== null,
     refetchInterval: (query) => (query.state.data && query.state.data.status !== "pending" && query.state.data.status !== "acquiring" ? false : 2000),
   });
   const current = scanned.data ?? snapshot;
   const chosenPreset = preset || presets.data?.items[0]?.name || "";
+  const chosen = presets.data?.items.find((p) => p.name === chosenPreset);
 
   const acquire = useMutation({ mutationFn: () => api.requestSnapshot(projectId), onSuccess: setSnapshot });
+  const send = useMutation({ mutationFn: (file: File) => api.uploadArchive(projectId, file), onSuccess: setSnapshot });
   const quote = useMutation({
     mutationFn: () =>
       api.createEstimate(projectId, current?.id ?? "", {
@@ -47,6 +65,10 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
         exclude: lines(exclude),
         max_files: maxFiles,
         guide_pages: pages,
+        languages: [language],
+        levels: [level],
+        ...(variantOf ? { variant_of: variantOf } : {}),
+        ...(batch && chosen?.batch ? { batch: true } : {}),
       }),
     onSuccess: (value) => {
       setEstimate(value);
@@ -57,7 +79,7 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
     mutationFn: () => {
       const dollars = Number.parseFloat(capDollars);
       const cap = capDollars.trim() === "" || Number.isNaN(dollars) ? null : Math.round(dollars * 100) * 10_000;
-      return api.startFromEstimate(projectId, estimate?.id ?? "", cap);
+      return api.startFromEstimate(projectId, estimate?.id ?? "", cap, ownKey && Boolean(chosen?.own_key));
     },
     onSuccess: (build) => navigate(`/p/${projectId}/builds/${build.id}`),
   });
@@ -84,16 +106,61 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
               {current.rejection_code ? ` · ${current.rejection_code}` : null}
             </p>
           ) : null}
-          <button type="button" onClick={() => acquire.mutate()} disabled={acquire.isPending}
-            className="mt-2 btn">
-            {current ? "Use latest commit" : "Take snapshot"}
-          </button>
+          {uploaded ? (
+            <label className="mt-2 flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium">{current ? "Upload a new version (ZIP)" : "Upload the repository (ZIP)"}</span>
+              <input
+                type="file"
+                accept=".zip,application/zip"
+                disabled={send.isPending}
+                className="field py-1.5"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) send.mutate(file);
+                  e.target.value = "";
+                }}
+              />
+              <span className="text-xs text-muted">At most 100 MiB. Secrets, binaries and vendored files are excluded by the scan.</span>
+            </label>
+          ) : (
+            <button type="button" onClick={() => acquire.mutate()} disabled={acquire.isPending}
+              className="mt-2 btn">
+              {current ? "Use latest commit" : "Take snapshot"}
+            </button>
+          )}
           {acquire.error ? <p role="alert" className="mt-2 text-destructive">{errorText(acquire.error, "Could not take a snapshot.")}</p> : null}
+          {send.error ? <p role="alert" className="mt-2 text-destructive">{errorText(send.error, "Could not upload the archive.")}</p> : null}
         </li>
 
         <li>
           <h3 className="font-medium">2. Scope and model</h3>
+          {variantOf ? (
+            <p role="status" className="mt-1 text-muted">
+              A variant of{" "}
+              <Link to={`/p/${projectId}/builds/${variantOf}`} className="text-primary underline underline-offset-2">
+                this build
+              </Link>
+              : the same files and guide pages, written for another language or reader level. Its scope is the base
+              build&apos;s.
+            </p>
+          ) : null}
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              Language
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="field">
+                {Object.entries(LANGUAGES).map(([code, name]) => (
+                  <option key={code} value={code}>{name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              Reader level
+              <select value={level} onChange={(e) => setLevel(e.target.value)} className="field">
+                {Object.entries(LEVELS).map(([code, name]) => (
+                  <option key={code} value={code}>{name}</option>
+                ))}
+              </select>
+            </label>
             <label className="flex flex-col gap-1">
               Model preset
               <select value={chosenPreset} onChange={(e) => setPreset(e.target.value)} className="field">
@@ -103,6 +170,8 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
               </select>
               <span className="text-sm text-muted">{presets.data?.items.find((p) => p.name === chosenPreset)?.description}</span>
             </label>
+            {variantOf ? null : (
+              <>
             <label className="flex flex-col gap-1">
               Maximum files
               <input type="number" min={1} max={500} value={maxFiles} onChange={(e) => setMaxFiles(Number(e.target.value))}
@@ -123,7 +192,21 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
               <input type="number" min={1} max={8} value={pages} onChange={(e) => setPages(Number(e.target.value))}
                 className="field" />
             </label>
+              </>
+            )}
           </div>
+          {chosen?.batch ? (
+            <label className="mt-3 flex items-start gap-2">
+              <input type="checkbox" className="mt-1" checked={batch} onChange={(e) => setBatch(e.target.checked)} />
+              <span>
+                Explain files in a batch
+                <span className="block text-sm text-muted">
+                  Cheaper per file but slower: the provider may take up to 24 hours. Files the batch cannot answer are
+                  explained at the standard price, within the cap.
+                </span>
+              </span>
+            </label>
+          ) : null}
           <button type="button" onClick={() => quote.mutate()}
             disabled={quote.isPending || current?.status !== "scanned" || !chosenPreset}
             className="mt-3 btn">
@@ -157,7 +240,18 @@ export function GenerationPanel({ projectId, workspaceId }: { projectId: string;
                 placeholder={formatUsd(estimate.cost_micro_usd.high).slice(1)}
                 className="field" />
             </label>
-            <button type="button" onClick={() => start.mutate()} disabled={start.isPending}
+            {chosen?.own_key ? (
+              <label className="mt-3 flex items-start gap-2">
+                <input type="checkbox" className="mt-1" checked={ownKey} onChange={(e) => setOwnKey(e.target.checked)} />
+                <span>
+                  Use this workspace&apos;s own Anthropic key
+                  <span className="block text-sm text-muted">
+                    The provider bills your account directly and the plan allowance is not used. Set a spending cap.
+                  </span>
+                </span>
+              </label>
+            ) : null}
+            <button type="button" onClick={() => start.mutate()} disabled={start.isPending || (ownKey && capDollars.trim() === "")}
               className="mt-3 btn btn-primary btn-lg">
               Start build
             </button>

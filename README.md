@@ -136,6 +136,13 @@ The worker processes webhook receipts every 30 s and reconciles daily. From `bac
 
 `BILLING_ENFORCED=true` makes plans required for new projects and members. `OPERATOR_NAME` and `SUPPORT_EMAIL` fill the privacy, terms and support pages, which are drafts for legal review.
 
+## M6 features
+
+- **Push rebuilds.** Subscribe the GitHub App to `push` events, then choose "Rebuild on push" on a project page (admins). `PUSH_DEBOUNCE_SECONDS` and `PUSH_MAX_WAIT_SECONDS` tune the debounce.
+- **ZIP import.** On a workspace page, choose "An uploaded ZIP archive" as the project source. Each new upload is a new version.
+- **Variants.** On a ready generated build, "Make a variant" picks a language (English, German, Indonesian) and a reader level; "Read in" switches between variants.
+- **Own key and batches.** Owners add an Anthropic key under Plan and usage. A build can then choose "Use this workspace's own Anthropic key", and a preset whose model has a catalog `batch_price` offers "Explain files in a batch".
+
 ## Full stack (Docker Compose)
 
 ```bash

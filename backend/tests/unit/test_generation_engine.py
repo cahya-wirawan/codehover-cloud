@@ -385,3 +385,123 @@ async def test_anthropic_timeout_is_an_unknown_outcome() -> None:
     with pytest.raises(ProviderError) as raised:
         await gw.generate(priced_request())
     assert raised.value.kind == "unknown"  # the spend may have happened: keep the hold (07)
+
+
+# ---------------------------------------------------------------- variants (M6, FR-026)
+def test_the_audience_is_added_only_for_variants_and_only_from_the_prompt_set() -> None:
+    from app.engine import prompts
+
+    base = prompts.system("0.4.0")
+    assert base == prompts.system("0.3.0")  # English/standard reads exactly as before
+    german = prompts.system("0.4.0", "de-beginner")
+    assert german.startswith(base) and "in German for beginner readers" in german
+    assert "define each technical term" in german and "[[file_id:start-end]]" in german
+    assert "focus on design decisions" in prompts.system("0.4.0", "id-expert")
+    for bad in ("fr-standard", "de-casual", "de"):
+        with pytest.raises(ValueError):
+            prompts.system("0.4.0", bad)
+    with pytest.raises(ValueError):
+        prompts.system("0.3.0", "de-standard")  # older sets have no audience text
+
+
+def test_variant_outputs_never_share_a_cache_entry() -> None:
+    from app.engine import generate
+
+    keys = {
+        generate._cache_key("w", "explain", "p", "0.4.0", {"x": 1}, audience)
+        for audience in ("en-standard", "de-standard", "de-beginner", "id-expert")
+    }
+    assert len(keys) == 4
+
+
+def test_a_guide_title_is_its_leading_heading() -> None:
+    from app.engine import generate
+
+    assert generate.heading_text("# Wie der `Build` startet\n\nText [[f:1-2]].") == "Wie der Build startet"
+    assert generate.heading_text("Text without a heading.") is None
+
+
+async def test_anthropic_batches_submit_poll_and_map_results_by_custom_id() -> None:
+    """M6, T24: the adapter sends structured-output params per request and maps results by custom_id,
+    ignoring foreign IDs and turning errored entries into permanent errors."""
+    request = priced_request()
+    ok = json.dumps(explanation())
+    batch = {
+        "id": "msgbatch_1",
+        "type": "message_batch",
+        "processing_status": "in_progress",
+        "request_counts": {"processing": 2, "succeeded": 0, "errored": 0, "canceled": 0, "expired": 0},
+        "ended_at": None,
+        "created_at": "2026-11-19T00:00:00Z",
+        "expires_at": "2026-11-20T00:00:00Z",
+        "archived_at": None,
+        "cancel_initiated_at": None,
+        "results_url": None,
+    }
+    lines = "\n".join(
+        json.dumps(x)
+        for x in (
+            {"custom_id": "a1", "result": {"type": "succeeded", "message": message(ok)}},
+            {
+                "custom_id": "a2",
+                "result": {
+                    "type": "errored",
+                    "error": {"type": "error", "error": {"type": "api_error", "message": "x"}},
+                },
+            },
+            {"custom_id": "foreign", "result": {"type": "succeeded", "message": message(ok)}},
+        )
+    )
+    state = {"status": "in_progress"}
+
+    def handler(r: httpx2.Request) -> httpx2.Response:
+        if r.method == "POST" and r.url.path == "/v1/messages/batches":
+            return httpx2.Response(200, json=batch)
+        if r.url.path == "/v1/messages/batches/msgbatch_1":
+            ended = state["status"] == "ended"
+            return httpx2.Response(
+                200,
+                json={
+                    **batch,
+                    "processing_status": state["status"],
+                    "results_url": "https://api.anthropic.com/v1/messages/batches/msgbatch_1/results"
+                    if ended
+                    else None,
+                },
+            )
+        if r.url.path.endswith("/results"):
+            return httpx2.Response(200, content=lines.encode())
+        return httpx2.Response(
+            404, json={"type": "error", "error": {"type": "not_found_error", "message": "x"}}
+        )
+
+    def record_any(request_: httpx2.Request) -> httpx2.Response:
+        if request_.content:
+            seen.append(json.loads(request_.content))
+        return handler(request_)
+
+    seen: list[dict[str, Any]] = []
+    client = anthropic.AsyncAnthropic(
+        api_key="test",
+        max_retries=0,
+        http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(record_any)),
+    )
+    gw = AnthropicGateway("test", client=client)
+    assert await gw.submit_batch([("a1", request), ("a2", request)]) == "msgbatch_1"
+    sent = seen[0]["requests"]
+    assert [r["custom_id"] for r in sent] == ["a1", "a2"]
+    assert (
+        sent[0]["params"]["output_config"]["format"]["type"] == "json_schema"
+        and sent[0]["params"]["system"] == request.system
+    )
+    assert await gw.batch_ended("msgbatch_1") is False
+    state["status"] = "ended"
+    assert await gw.batch_ended("msgbatch_1") is True
+    items = {i.custom_id: i for i in await gw.batch_results("msgbatch_1", {"a1": request, "a2": request})}
+    assert set(items) == {"a1", "a2"}  # a result for an ID we did not send is never attached
+    assert items["a1"].result is not None and items["a1"].result.usage.input_tokens == 120
+    assert (
+        items["a2"].result is None
+        and items["a2"].error is not None
+        and items["a2"].error.code == "batch_errored"
+    )

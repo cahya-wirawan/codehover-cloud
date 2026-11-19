@@ -67,3 +67,33 @@ M2 implements the corpus and harness in `backend/evals/`:
 The labels are drafts until two maintainers label them, and the report says so. The replay checker only matches identifiers (baseline precision about 0.54), so a catalog may not pair it with a model writer.
 
 Prompts and schemas are in document 19 and `contracts/explanation.schema.json`. Logs record versions, digests, counts and timings; prompt/source/body logging is disabled by default.
+
+Push rebuilds (M6, T21; `app/modules/projects/pushes.py`). The worker's maintenance loop processes due push requests every 30 seconds. Each request runs on behalf of the admin who set the policy, with their role re-checked each time.
+- `snapshot` acquires and scans the pushed commit.
+- `build` builds it:
+  - A project whose latest ready build was generated reuses that build's approved configuration. It is re-estimated on the scanned new commit, and the build starts only if the estimate's high bound is within the push cap (default 0, so only zero-cost presets run without a person). Otherwise the estimate waits and `build.push_needs_approval` is audited.
+  - A project without a generated build gets a free replay build.
+- A commit already built (queued, running or ready), or under `snapshot` already snapshotted, is skipped.
+- Temporary refusals are retried every minute for up to a day: an active build, the workspace's build or acquisition limit, the kill switch. Other refusals end the request with their code as the outcome, for example billing, a rejected snapshot or an unavailable preset.
+- A push never publishes.
+
+Variants (M6, T22; FR-026):
+- The generation config's `languages` (en, de, id) and `levels` (standard, beginner, expert) hold one value each.
+- `variant_of` names a ready, original generated build of the same project and snapshot. The estimate then copies the base's scope (include, exclude, max_files, guide_pages), so the variant explains the same files.
+- The plan stage copies the base's guide pages instead of calling P01.
+- The writer's requests carry the audience in the system instruction and in the cache key (`variant`), so variants never share cached outputs.
+- `verify` and `check` run unchanged against the same snapshot, so citations keep the same file IDs and line ranges, and are validated the same way.
+- Refused requests: a variant of a variant (422 `VARIANT_OF_VARIANT`), the base's own variant (422 `VARIANT_UNCHANGED`), another snapshot (422 `VARIANT_SNAPSHOT_MISMATCH`) and a base that is not ready (409).
+- Push rebuilds reuse the latest original build's configuration, never a variant's.
+- A published site shows the one build it points at; publish the variant you want readers to see.
+
+Own keys and batches (M6, T24):
+- **Own keys.** An own-key build (`funding: own_key`) gets its gateway from the workspace's live key, opened with the sealer when its first call needs it. The key is looked up again on every call, so a removed key stops the build with `provider_key_missing`. Spend is charged to the build's envelope only: no allowance account and no `usage_entries`, because the provider bills the key's own account. The attempts keep their actual costs. The checker uses the same key.
+- **Batches.** A config with `batch: true` sends the explain stage's uncached requests as one provider batch, at the writer model's catalog batch price. A model without one cannot be batched (422 `BATCH_UNAVAILABLE` at estimate), so the price is never guessed. Flow (`app/jobs/batching.py`):
+  1. The attempts are earmarked at the batch price as `batched`.
+  2. The batch is submitted and its ID persisted, and the task waits in `retry_wait` without spending an attempt.
+  3. When the batch has ended, each answer is validated and settled at the batch price into the cache.
+  4. The stage then runs as usual, calling synchronously at the standard price for what the batch could not answer. The estimate's high bound therefore stays at standard prices, and only the low bound is lowered.
+  5. A crash between recording and submitting, or a batch older than 25 hours, abandons the batch, and its attempts become `unknown` with their holds kept.
+  Only explain is batched: it carries most calls, and the later stages depend on its results.
+

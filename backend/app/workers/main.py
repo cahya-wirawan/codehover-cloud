@@ -29,6 +29,7 @@ from app.jobs.runner import process
 from app.jobs.runtime import build_runtime
 from app.jobs.stages import Runtime
 from app.modules.billing import sync as billing_sync
+from app.modules.projects import pushes
 from app.workers._shell import run
 
 logger = logging.getLogger("app.workers.main")
@@ -57,6 +58,12 @@ async def maintenance(
     while not stop.is_set():
         try:
             await purge_due(runtime.sessions, runtime.store)
+            if settings is not None:
+                counts = await pushes.process_due(
+                    pushes.PushRuntime(runtime.sessions, settings, runtime.catalog)
+                )
+                if counts:
+                    logger.info("push requests processed", extra=counts)
             if settings is not None and provider is not None:
                 counts = await billing_sync.process_pending(runtime.sessions, provider, settings)
                 if counts:

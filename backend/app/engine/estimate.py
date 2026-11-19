@@ -21,6 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.engine.catalog import Catalog, Preset, cost_micro_usd
 from app.engine.globs import Budget
 from app.engine.globs import match as globs_match
+from app.engine.prompts import LANGUAGES, LEVELS
+from app.engine.prompts import variant as variant_label
 
 CHUNK_LINES = 450  # target 400-500 lines per explanation chunk (07)
 PROMPT_OVERHEAD_TOKENS = 1500  # system text, schema, repo map excerpt per call
@@ -64,22 +66,37 @@ class GenerationConfig(BaseModel):
                 )
         return sorted(set(globs))
 
+    # A variant (M6, FR-026): the same snapshot, scope and guide plan as a ready base build, written for
+    # another language or reader level, so page and source anchors are identical across variants.
+    variant_of: Annotated[str | None, Field(pattern=r"^[0-9a-f-]{36}$")] = None
+    # Explain files through the provider's batch interface at the catalog batch price (M6, T24).
+    batch: bool = False
+
     @field_validator("languages")
     @classmethod
     def _languages(cls, values: list[str]) -> list[str]:
-        if values != ["en"]:
-            raise ValueError("only English output is available (other languages are planned, FR-026)")
+        if any(v not in LANGUAGES for v in values):
+            raise ValueError(f"languages are {', '.join(LANGUAGES)}")
         return values
 
     @field_validator("levels")
     @classmethod
     def _levels(cls, values: list[str]) -> list[str]:
-        if values != ["standard"]:
-            raise ValueError("only the standard reader level is available")
+        if any(v not in LEVELS for v in values):
+            raise ValueError(f"reader levels are {', '.join(LEVELS)}")
         return values
 
+    @property
+    def variant(self) -> str:
+        return variant_label(self.languages[0], self.levels[0])
+
     def canonical(self) -> dict[str, Any]:
-        return self.model_dump(mode="json")
+        data = self.model_dump(mode="json")
+        if data["variant_of"] is None:
+            del data["variant_of"]  # configs approved before variants keep their digests
+        if not data["batch"]:
+            del data["batch"]
+        return data
 
 
 @dataclass(frozen=True)
@@ -171,6 +188,20 @@ def estimate(
             checker, input_tokens=tokens["checker"]["input"], output_tokens=tokens["checker"]["output"]
         )
 
+    def batch_saving(bytes_per_token: int, explain_out: int) -> int:
+        """What batching the explain requests saves at most. Only the low bound uses it: answers a batch
+        cannot give are made synchronously at the standard price, so the high bound stays standard."""
+        writer = catalog.model(preset.writer.model)
+        if not config.batch or writer.batch_price is None:
+            return 0
+        explain_in = -(-source_bytes // bytes_per_token) + chunks * PROMPT_OVERHEAD_TOKENS
+        explain_out_tokens = chunks * explain_out
+        standard = cost_micro_usd(writer.price, input_tokens=explain_in, output_tokens=explain_out_tokens)
+        batched = cost_micro_usd(
+            writer.batch_price, input_tokens=explain_in, output_tokens=explain_out_tokens
+        )
+        return max(0, standard - batched)
+
     low = bound(BYTES_PER_TOKEN_LOW, EXPLAIN_OUTPUT_LOW, with_repair=False)
     high = bound(
         BYTES_PER_TOKEN_HIGH, min(EXPLAIN_OUTPUT_HIGH, preset.writer.max_output_tokens), with_repair=True
@@ -190,6 +221,6 @@ def estimate(
             "chunks": {"count": chunks},
             "pages": {"count": pages},
         },
-        low_micro_usd=priced(low),
+        low_micro_usd=max(0, priced(low) - batch_saving(BYTES_PER_TOKEN_LOW, EXPLAIN_OUTPUT_LOW)),
         high_micro_usd=priced(high),
     )

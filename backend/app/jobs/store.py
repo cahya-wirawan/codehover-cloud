@@ -397,6 +397,20 @@ async def finish_build(
     return True
 
 
+async def wait(db: AsyncSession, claimed: Claim, seconds: float) -> str:
+    """The stage waits for an external result (a provider batch): back to `retry_wait` after `seconds`,
+    without using up one of the task's attempts."""
+    await _fence(db, claimed, "retry_wait", None, seconds)
+    await db.execute(
+        text(
+            "UPDATE build_tasks SET attempt_count = greatest(attempt_count - 1, 0) WHERE workspace_id = :w AND id = :t"
+        ),
+        {"w": claimed.workspace_id, "t": claimed.task_id},
+    )
+    await db.commit()
+    return "waiting"
+
+
 async def fail(
     db: AsyncSession, claimed: Claim, error_code: str, *, transient: bool, apply: Apply | None = None
 ) -> str:

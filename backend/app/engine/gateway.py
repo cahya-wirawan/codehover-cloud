@@ -132,6 +132,34 @@ class ModelGateway(Protocol):
     async def generate(self, request: GenerationRequest) -> GenerationResult: ...
 
 
+@dataclass(frozen=True)
+class BatchItem:
+    """One answer of a finished batch: a result, or the error the provider reported for that request."""
+
+    custom_id: str
+    result: GenerationResult | None
+    error: ProviderError | None = None
+
+
+class BatchGateway(Protocol):
+    """Optional batch processing (07 `submit_batch/get_batch`, M6 T24): cheaper and asynchronous. The batch
+    ID is persisted before anything waits on it, so a restarted worker resumes the same batch."""
+
+    async def submit_batch(self, items: list[tuple[str, GenerationRequest]]) -> str: ...
+
+    async def batch_ended(self, batch_id: str) -> bool: ...
+
+    async def batch_results(
+        self, batch_id: str, requests: dict[str, GenerationRequest]
+    ) -> list[BatchItem]: ...
+
+
+def supports_batch(gateway: object) -> bool:
+    return all(
+        callable(getattr(gateway, name, None)) for name in ("submit_batch", "batch_ended", "batch_results")
+    )
+
+
 def provider_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Projection for strict structured output: drop keywords providers reject, keep structure closed."""
 

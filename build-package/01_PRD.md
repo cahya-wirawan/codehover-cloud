@@ -54,8 +54,8 @@ Non-goals: source-code editing, PR creation, autonomous shell agents, compiling/
 | FR-022 | Paid launch: plan checkout, renewals, cancellation, portal, signed webhook ingestion and entitlement reconciliation | P0 paid gate |
 | FR-023 | Audit changes to members, connections, builds, publications, billing and deletion; redact secrets | P0 |
 | FR-024 | Rate-limit API/exports/builds, enforce tenant isolation and constrain malicious repository content | P0 |
-| FR-025 | Webhook-driven builds with branch filtering, deduplication and debounce; owner-defined approval policy | P1 |
-| FR-026 | Language/level variants keep page and source anchor; immutable citations survive translation | P1 |
+| FR-025 | Webhook-driven builds with branch filtering, deduplication and debounce; owner-defined approval policy (M6: per-project push policy off/snapshot/build with a push cap; never publishes) | P1 |
+| FR-026 | Language/level variants keep page and source anchor; immutable citations survive translation (M6: en/de/id × standard/beginner/expert; a variant reuses its base build's snapshot, scope and guide plan) | P1 |
 | FR-027 | GitHub token revocation blocks ingestion and publication; installation removal suspends affected private hosted sites until owner review | P0 |
 
 ## Critical product policies
