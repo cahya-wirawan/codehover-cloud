@@ -12,7 +12,7 @@ codehover-cloud turns a GitHub repository into a browsable, cited explanation we
 - replay explanations validated against the explanation contract;
 - a private code viewer.
 
-Live sign-in and builds need Google/GitHub OAuth credentials and a GitHub App (see `build-package/22_DEPLOYMENT_AND_OPERATIONS.md`); everything else, including the end-to-end build, is covered by tests with faked providers. M2 adds model-backed generation, estimates and budgets.
+Live sign-in and builds need Google/GitHub OAuth credentials and a GitHub App: [docs/setup-sign-in-and-github.md](docs/setup-sign-in-and-github.md) is the step-by-step checklist (requirements in `build-package/22_DEPLOYMENT_AND_OPERATIONS.md`); everything else, including the end-to-end build, is covered by tests with faked providers. M2 adds model-backed generation, estimates and budgets.
 
 | Path | Contents |
 |---|---|
