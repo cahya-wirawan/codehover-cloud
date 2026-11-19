@@ -18,11 +18,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.github.app import GitHubApp, GitHubError, RepositoryInfo
+from app.adapters.github.public import PublicGitHub
 from app.core.errors import ApiError
 from app.core.security import Sealer, digest, new_token, pkce_pair
 from app.core.settings import Settings
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Principal
+from app.modules.projects.estimates import public_unavailable
 from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
 
@@ -379,19 +381,38 @@ async def list_repositories(
 
 
 async def list_refs(
-    db: AsyncSession, app: GitHubApp, member: Member, repository_id: UUID
+    db: AsyncSession,
+    app: GitHubApp | None,
+    member: Member,
+    repository_id: UUID,
+    public: PublicGitHub | None = None,
 ) -> list[dict[str, Any]]:
     row = (
         await db.execute(
             text(
-                "SELECT connection_id, provider_repo_id FROM repositories"
-                " WHERE workspace_id = :w AND id = :r AND access_revoked_at IS NULL"
+                "SELECT r.connection_id, r.provider_repo_id, c.provider FROM repositories r"
+                " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
+                " WHERE r.workspace_id = :w AND r.id = :r AND r.access_revoked_at IS NULL"
+                " AND c.provider IN ('github', 'public')"
             ),
             {"w": member.workspace_id, "r": repository_id},
         )
     ).one_or_none()
     if row is None:
         raise ApiError(404, "NOT_FOUND", "Repository not found.")
+    if row.provider == "public":  # no App: refs of a repository that must still be public
+        await db.commit()
+        if public is None:
+            raise ApiError(
+                503, "UNAVAILABLE", "Public GitHub repositories are not available.", retryable=True
+            )
+        try:
+            public_refs = await public.refs(row.provider_repo_id)
+        except GitHubError as error:
+            raise public_unavailable(error) from error
+        return [{"name": r.name, "kind": r.kind, "sha": r.sha} for r in public_refs]
+    if app is None:
+        raise ApiError(503, "GITHUB_APP_UNAVAILABLE", "GitHub repository access is not configured.")
     connection = await _active_connection(db, member, row.connection_id)
     await db.commit()
     try:

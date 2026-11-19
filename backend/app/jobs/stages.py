@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.github.app import GitHubApp, GitHubError
+from app.adapters.github.public import PublicGitHub
 from app.adapters.models.replay import ReplayGateway
 from app.adapters.storage import ObjectStore
 from app.core import metrics
@@ -65,6 +66,8 @@ class Runtime:
     sealer: Any = None
     own_key_gateway: Any = None  # Callable[[str], ModelGateway]
     own_key_cache: dict[Any, Any] = field(default_factory=dict)
+    # Public repositories without the App (anonymous source downloads); None refuses them.
+    public_github: PublicGitHub | None = None
     # SCIP indexers (T23); None keeps every reference on name matching.
     indexers: IndexerConfig | None = None
 
@@ -78,7 +81,8 @@ async def _read(rt: Runtime, claimed: Claim, sql: str, **params: Any) -> list[An
 
 
 def _github_error(error: GitHubError) -> StageError:
-    return StageError(f"github_{error.reason}", transient=error.status == 0 or error.status >= 500)
+    transient = error.status == 0 or error.status >= 500 or error.reason == "rate_limited"
+    return StageError(f"github_{error.reason}", transient=transient)
 
 
 # ---------------------------------------------------------------- acquire
@@ -115,6 +119,17 @@ async def acquire(rt: Runtime, claimed: Claim) -> Apply | None:
         if row.archive_key is None:
             raise StageError("upload_missing", transient=False)
         archive = await rt.store.get(row.archive_key)
+    elif row.provider == "public":  # anonymous download of a repository that must still be public
+        if rt.public_github is None:
+            raise StageError("repository_access_revoked", transient=False)
+        try:
+            archive = await rt.public_github.download_tarball(
+                row.provider_repo_id, row.commit_sha, MAX_COMPRESSED_BYTES
+            )
+        except GitHubError as error:
+            if error.reason == "not_found":
+                raise StageError("repository_not_public", transient=False) from error
+            raise _github_error(error) from error
     else:
         if rt.github is None:
             raise StageError("repository_access_revoked", transient=False)

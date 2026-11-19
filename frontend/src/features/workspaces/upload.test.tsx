@@ -6,8 +6,9 @@ import { WorkspacePage } from "./WorkspacePage";
 
 afterEach(() => vi.unstubAllGlobals());
 
-test("without a GitHub connection a project can come from an uploaded ZIP", async () => {
-  const calls: { url: string; type: string | null; body: unknown }[] = [];
+type Call = { url: string; type: string | null; body: unknown };
+
+function stub(calls: Call[], created: Record<string, unknown>) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -15,9 +16,7 @@ test("without a GitHub connection a project can come from an uploaded ZIP", asyn
       if (url === "/api/v1/auth/csrf") return new Response(JSON.stringify({ csrf_token: "t" }));
       if (init?.method === "POST") {
         calls.push({ url, type: new Headers(init.headers).get("Content-Type"), body: init.body });
-        if (url.endsWith("/projects")) {
-          return new Response(JSON.stringify({ id: "p1", workspace_id: "w1", name: "Demo", slug: "demo", tracked_ref: "upload", owner: "upload", repository: "demo", source: "upload" }), { status: 201 });
-        }
+        if (url.endsWith("/projects")) return new Response(JSON.stringify(created), { status: 201 });
         return new Response(JSON.stringify({ id: "s1", commit_sha: "a".repeat(64), status: "pending" }), { status: 202 });
       }
       if (url === "/api/v1/workspaces") return new Response(JSON.stringify({ items: [{ id: "w1", name: "Team", slug: "team", role: "owner" }], next_cursor: null }));
@@ -25,6 +24,9 @@ test("without a GitHub connection a project can come from an uploaded ZIP", asyn
       return new Response(JSON.stringify({ items: [], next_cursor: null }));
     }),
   );
+}
+
+function renderPage() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={["/w/w1"]}>
@@ -35,7 +37,15 @@ test("without a GitHub connection a project can come from an uploaded ZIP", asyn
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  expect(await screen.findByRole("radio", { name: "An uploaded ZIP archive" })).toBeChecked();
+}
+
+test("without a GitHub connection a project can come from an uploaded ZIP", async () => {
+  const calls: Call[] = [];
+  stub(calls, { id: "p1", workspace_id: "w1", name: "Demo", slug: "demo", tracked_ref: "upload", owner: "upload", repository: "demo", source: "upload" });
+  renderPage();
+  // Without a connection the form starts on a public repository; choose the archive instead.
+  expect(await screen.findByRole("radio", { name: "A public GitHub repository" })).toBeChecked();
+  fireEvent.click(screen.getByRole("radio", { name: "An uploaded ZIP archive" }));
   expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled(); // no archive chosen yet
   const file = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], "demo.zip", { type: "application/zip" });
   fireEvent.change(screen.getByLabelText("Archive (ZIP)"), { target: { files: [file] } });
@@ -47,4 +57,24 @@ test("without a GitHub connection a project can come from an uploaded ZIP", asyn
   await waitFor(() => expect(calls.map((c) => c.url)).toEqual(["/api/v1/workspaces/w1/projects", "/api/v1/projects/p1/uploads"]));
   expect(JSON.parse(String(calls[0]?.body))).toEqual({ source: "upload", name: "Demo", slug: "demo" });
   expect(calls[1]?.type).toBe("application/zip");
+});
+
+test("a public GitHub repository needs no connection", async () => {
+  const calls: Call[] = [];
+  stub(calls, { id: "p2", workspace_id: "w1", name: "Hello", slug: "hello", tracked_ref: "master", owner: "octocat", repository: "Hello-World", source: "public" });
+  renderPage();
+  expect(await screen.findByRole("radio", { name: "A public GitHub repository" })).toBeChecked();
+  expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled(); // no repository yet
+  fireEvent.change(screen.getByLabelText("Public repository"), { target: { value: " https://github.com/octocat/Hello-World " } });
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Hello" } });
+  fireEvent.change(screen.getByLabelText("Address"), { target: { value: "hello" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+  expect(await screen.findByText("Project page")).toBeInTheDocument();
+  expect(JSON.parse(String(calls[0]?.body))).toEqual({
+    source: "public",
+    public_repository: "https://github.com/octocat/Hello-World",
+    tracked_ref: "",
+    name: "Hello",
+    slug: "hello",
+  });
 });

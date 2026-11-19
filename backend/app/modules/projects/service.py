@@ -16,6 +16,7 @@ from sqlalchemy import exc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.github.app import GitHubApp, GitHubError
+from app.adapters.github.public import PublicGitHub
 from app.adapters.storage import ObjectStore
 from app.core.errors import ApiError
 from app.core.settings import Settings
@@ -37,7 +38,14 @@ TEXT_STATUSES = ("selected", "unsupported")
 
 # ---------------------------------------------------------------- projects
 async def create_project(
-    db: AsyncSession, member: Member, repository_id: UUID, name: str, slug: str, tracked_ref: str
+    db: AsyncSession,
+    member: Member,
+    repository_id: UUID,
+    name: str,
+    slug: str,
+    tracked_ref: str,
+    *,
+    provider: str = "github",
 ) -> dict[str, Any]:
     granted = (
         await db.execute(
@@ -45,9 +53,9 @@ async def create_project(
                 "SELECT r.default_branch FROM repositories r JOIN repository_connections c"
                 " ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
                 " WHERE r.workspace_id = :w AND r.id = :r AND r.access_revoked_at IS NULL AND c.status = 'active'"
-                " AND c.provider = 'github'"
+                " AND c.provider = :provider"
             ),
-            {"w": member.workspace_id, "r": repository_id},
+            {"w": member.workspace_id, "r": repository_id, "provider": provider},
         )
     ).one_or_none()
     if granted is None:
@@ -71,7 +79,14 @@ async def create_project(
     except exc.IntegrityError as error:
         await db.rollback()
         raise ApiError(409, "SLUG_TAKEN", "A project with this address already exists.") from error
-    await audit(db, member, "project.created", "project", project_id, {"repository_id": str(repository_id)})
+    await audit(
+        db,
+        member,
+        "project.created",
+        "project",
+        project_id,
+        {"repository_id": str(repository_id), "source": provider},
+    )
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
     return await get_project(db, member, project_id)
@@ -124,6 +139,7 @@ async def start_build(
     ref: str | None,
     *,
     retry_of: UUID | None = None,
+    public: PublicGitHub | None = None,
 ) -> dict[str, Any]:
     """M1 replay build from a ref: no estimate, zero cap, cards derived from the source only. An uploaded
     project (M6) builds its latest scanned upload; it has no refs."""
@@ -141,7 +157,7 @@ async def start_build(
             commit_sha=latest.commit_sha,
             retry_of=retry_of,
         )
-    requested, sha = await estimates.resolve_commit(db, github, member, project_id, ref)
+    requested, sha = await estimates.resolve_commit(db, github, member, project_id, ref, public=public)
     snapshot = await estimates.upsert_snapshot(db, member, project_id, sha, requested)
     if snapshot.status == "rejected":
         await db.rollback()
@@ -734,6 +750,8 @@ async def retry_build(
     build_id: UUID,
     estimate_id: UUID | None,
     cap: int | None,
+    *,
+    public: PublicGitHub | None = None,
 ) -> dict[str, Any]:
     """A new build for the same snapshot (06): terminal builds never run again. Generation builds need a
     valid estimate for that snapshot; the tenant cache makes completed units free on the retry (A13)."""
@@ -772,7 +790,14 @@ async def retry_build(
                 retry_of=build_id,
             )
         return await start_build(
-            db, github, settings, member, original.project_id, snapshot.commit_sha, retry_of=build_id
+            db,
+            github,
+            settings,
+            member,
+            original.project_id,
+            snapshot.commit_sha,
+            retry_of=build_id,
+            public=public,
         )
     chosen = estimate_id or original.estimate_id
     if estimate_id is not None and original.estimate_snapshot != original.snapshot_id:
@@ -852,7 +877,12 @@ OBSERVATION_TTL_SECONDS = 300  # repository authority is cached at most five min
 
 
 async def freshness(
-    db: AsyncSession, github: GitHubApp | None, member: Member, project_id: UUID
+    db: AsyncSession,
+    github: GitHubApp | None,
+    member: Member,
+    project_id: UUID,
+    *,
+    public: PublicGitHub | None = None,
 ) -> dict[str, Any]:
     """Latest upstream SHA of the tracked ref versus the published and latest ready builds. When GitHub
     cannot answer, the state is `unknown` with the last observation, never a claim of being current."""
@@ -891,13 +921,19 @@ async def freshness(
         }
     observed_sha, observed_at, reason = row.last_observed_sha, row.last_observed_at, None
     if not row.recent:
-        if row.status != "active" or row.access_revoked_at is not None or github is None:
+        client_missing = public is None if row.provider == "public" else github is None
+        if row.status != "active" or row.access_revoked_at is not None or client_missing:
             reason = "repository_access_unavailable"
         else:
             try:  # no transaction is open during the GitHub call
-                observed_sha = await github.resolve_ref(
-                    row.installation_id, row.provider_repo_id, row.tracked_ref
-                )
+                if row.provider == "public":
+                    assert public is not None
+                    observed_sha = await public.resolve_ref(row.provider_repo_id, row.tracked_ref)
+                else:
+                    assert github is not None
+                    observed_sha = await github.resolve_ref(
+                        row.installation_id, row.provider_repo_id, row.tracked_ref
+                    )
             except GitHubError:
                 reason = "github_unavailable"
             else:

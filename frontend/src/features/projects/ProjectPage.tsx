@@ -141,7 +141,7 @@ export function ProjectPage() {
       {project.data ? (
         <GenerationPanel projectId={pid} workspaceId={project.data.workspace_id} uploaded={project.data.source === "upload"} />
       ) : null}
-      {project.data && project.data.source !== "upload" ? (
+      {project.data && (project.data.source ?? "github") === "github" ? (
         <PushPanel projectId={pid} trackedRef={project.data.tracked_ref} canChange={role === "admin" || role === "owner"} />
       ) : null}
       {project.data ? <PublicationPanel project={project.data} canPublish={role === "admin" || role === "owner"} /> : null}

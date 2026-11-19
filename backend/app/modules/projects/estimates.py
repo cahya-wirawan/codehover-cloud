@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.github.app import GitHubApp, GitHubError
+from app.adapters.github.public import PublicGitHub
 from app.core.errors import ApiError
 from app.core.settings import Settings
 from app.core.tenancy import set_context
@@ -51,7 +52,13 @@ async def _source(db: AsyncSession, member: Member, project_id: UUID) -> Any:
 
 
 async def resolve_commit(
-    db: AsyncSession, github: GitHubApp | None, member: Member, project_id: UUID, ref: str | None
+    db: AsyncSession,
+    github: GitHubApp | None,
+    member: Member,
+    project_id: UUID,
+    ref: str | None,
+    *,
+    public: PublicGitHub | None = None,
 ) -> tuple[str, str]:
     """(requested ref, exact commit SHA). Commits first: no transaction is open during the GitHub call."""
     source = await _source(db, member, project_id)
@@ -62,6 +69,19 @@ async def resolve_commit(
         )
     if source.status != "active" or source.access_revoked_at is not None:
         raise ApiError(409, "CONNECTION_INACTIVE", "Reconnect GitHub to build this project.")
+    if source.provider == "public":  # no App: the repository must still be public (08)
+        if public is None:
+            raise ApiError(
+                503, "UNAVAILABLE", "Public GitHub repositories are not available.", retryable=True
+            )
+        try:
+            sha = await public.resolve_ref(source.provider_repo_id, ref or source.tracked_ref)
+        except GitHubError as error:
+            if error.status in (404, 422) and await _still_public(public, source):
+                raise ApiError(422, "REF_NOT_FOUND", "That branch, tag or commit does not exist.") from error
+            raise public_unavailable(error) from error
+        await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
+        return ref or source.tracked_ref, sha
     if github is None:
         raise ApiError(503, "GITHUB_APP_UNAVAILABLE", "GitHub repository access is not configured.")
     requested = ref or source.tracked_ref
@@ -73,6 +93,26 @@ async def resolve_commit(
         raise ApiError(503, "UNAVAILABLE", "GitHub is not reachable right now.", retryable=True) from error
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
     return requested, sha
+
+
+async def _still_public(public: PublicGitHub, source: Any) -> bool:
+    """Tells a missing ref apart from a repository that is no longer public."""
+    try:
+        await public.repository(source.provider_repo_id)
+    except GitHubError:
+        return False
+    return True
+
+
+def public_unavailable(error: GitHubError) -> ApiError:
+    """A public-repository call failed: gone or private (never told apart), rate limited, or down."""
+    if error.reason == "not_found":
+        return ApiError(404, "REPOSITORY_NOT_PUBLIC", "GitHub has no public repository with that name.")
+    if error.reason == "rate_limited":
+        return ApiError(
+            503, "GITHUB_RATE_LIMITED", "GitHub's rate limit was reached; try again later.", retryable=True
+        )
+    return ApiError(503, "UNAVAILABLE", "GitHub is not reachable right now.", retryable=True)
 
 
 async def upsert_snapshot(db: AsyncSession, member: Member, project_id: UUID, sha: str, ref: str) -> Any:
@@ -95,8 +135,10 @@ async def request_snapshot(
     member: Member,
     project_id: UUID,
     ref: str | None,
+    *,
+    public: PublicGitHub | None = None,
 ) -> dict[str, Any]:
-    requested, sha = await resolve_commit(db, github, member, project_id, ref)
+    requested, sha = await resolve_commit(db, github, member, project_id, ref, public=public)
     snapshot = await upsert_snapshot(db, member, project_id, sha, requested)
     if snapshot.status in ("pending", "acquiring", "failed"):  # rejected and scanned are final
         await _admit_acquisition(db, settings, member, snapshot.id)

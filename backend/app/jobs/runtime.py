@@ -12,7 +12,7 @@ from app.core.settings import Environment, Settings
 from app.engine import catalog, indexers
 from app.engine.gateway import ModelGateway
 from app.jobs.stages import Runtime
-from app.main import HTTP_TIMEOUT, github_app, object_store
+from app.main import HTTP_TIMEOUT, github_app, object_store, public_github
 
 
 def build_runtime(settings: Settings, application_name: str) -> tuple[Runtime, httpx.AsyncClient]:
@@ -25,6 +25,7 @@ def build_runtime(settings: Settings, application_name: str) -> tuple[Runtime, h
         sessions=session_factory(engine),
         store=object_store(settings),
         github=github_app(settings, http),
+        public_github=public_github(settings, http),
         allow_unsandboxed=settings.app_env is not Environment.PRODUCTION,
         catalog=catalog.load(settings.model_catalog_file),
         gateways=gateways,

@@ -38,13 +38,24 @@ export function WorkspacePage() {
       await navigate("/w", { replace: true });
     },
   });
-  const [source, setSource] = useState<"github" | "upload" | null>(null);
+  const [source, setSource] = useState<"github" | "public" | "upload" | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const chosenSource = source ?? (active.length ? "github" : "upload");
+  const [publicRepository, setPublicRepository] = useState("");
+  const [branch, setBranch] = useState("");
+  const chosenSource = source ?? (active.length ? "github" : "public");
   const create = useMutation({
     mutationFn: async () => {
       if (chosenSource === "github") {
         return api.createProject(wid, { repository_id: repositoryId, name: name.trim(), slug: slug.trim() });
+      }
+      if (chosenSource === "public") {
+        return api.createProject(wid, {
+          source: "public",
+          public_repository: publicRepository.trim(),
+          tracked_ref: branch.trim(),
+          name: name.trim(),
+          slug: slug.trim(),
+        });
       }
       const project = await api.createProject(wid, { source: "upload", name: name.trim(), slug: slug.trim() });
       if (file) await api.uploadArchive(project.id, file);
@@ -52,7 +63,7 @@ export function WorkspacePage() {
     },
     onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["projects", wid] });
-      if (chosenSource === "upload") await navigate(`/p/${project.id}`);
+      if (chosenSource !== "github") await navigate(`/p/${project.id}`);
     },
   });
 
@@ -111,7 +122,9 @@ export function WorkspacePage() {
         </div>
       ) : (
         <EmptyState title="No projects yet">
-          {active.length ? "Create one below from a connected repository." : "Connect a GitHub repository first, then create a project from it."}
+          {active.length
+            ? "Create one below from a connected repository."
+            : "Create one below from a public GitHub repository or a ZIP archive, or connect GitHub for private repositories."}
         </EmptyState>
       )}
 
@@ -132,6 +145,10 @@ export function WorkspacePage() {
             <label className="flex items-center gap-2">
               <input type="radio" name="source" checked={chosenSource === "github"} onChange={() => setSource("github")} />
               A connected GitHub repository
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="source" checked={chosenSource === "public"} onChange={() => setSource("public")} />
+              A public GitHub repository
             </label>
             <label className="flex items-center gap-2">
               <input type="radio" name="source" checked={chosenSource === "upload"} onChange={() => setSource("upload")} />
@@ -170,6 +187,23 @@ export function WorkspacePage() {
               </Field>
             </>
           ) : null}
+          {chosenSource === "public" ? (
+            <>
+              <Field label="Public repository" hint="owner/name or its github.com address. No GitHub connection needed.">
+                <Input
+                  required
+                  maxLength={200}
+                  placeholder="octocat/Hello-World"
+                  value={publicRepository}
+                  onChange={(e) => setPublicRepository(e.target.value)}
+                  className="font-mono text-[13px]"
+                />
+              </Field>
+              <Field label="Branch" hint="Leave empty for the default branch. Builds start by hand; there are no push rebuilds.">
+                <Input maxLength={255} value={branch} onChange={(e) => setBranch(e.target.value)} className="font-mono text-[13px]" />
+              </Field>
+            </>
+          ) : null}
           {chosenSource === "upload" ? (
             <Field label="Archive (ZIP)" hint="At most 100 MiB. You can upload new versions later." className="sm:col-span-2">
               <Input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
@@ -190,7 +224,10 @@ export function WorkspacePage() {
               <Button
                 type="submit"
                 variant="primary"
-                disabled={create.isPending || (chosenSource === "github" ? active.length === 0 : file === null)}
+                disabled={
+                  create.isPending ||
+                  (chosenSource === "github" ? active.length === 0 : chosenSource === "upload" ? file === null : !publicRepository.trim())
+                }
               >
                 <Plus aria-hidden="true" /> Create project
               </Button>
