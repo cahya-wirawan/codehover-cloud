@@ -8,9 +8,10 @@ On non-Linux development machines the parent must explicitly allow running unsan
 
 Two profiles share the bootstrap. `parser` (the default) runs Python only: running programs is refused
 and the filesystem is read-only Python, libraries and backend code. `indexer` runs the SCIP indexers
-(app.engine.index_worker): it may start exactly one program, the pinned Node binary (Landlock grants
-execute on that file and its ELF loader only), reads the indexer packages and the build's scratch
-checkout, and writes only the checkout's `out` directory. The network stays refused in both.
+(app.engine.index_worker): it may start exactly one program, the run's pinned binary (Node for
+scip-python and scip-typescript, rust-analyzer for Rust; Landlock grants execute on that file and its
+ELF loader only), reads that indexer's tools and the build's scratch checkout, and writes only the
+checkout's `out` directory. The network stays refused in both.
 """
 
 from __future__ import annotations
@@ -201,13 +202,13 @@ def elf_interpreter(binary: str) -> str | None:
     return None
 
 
-def indexer_rules(node: str, tools: str, work: str) -> list[tuple[str, int]]:
-    """Landlock grants of the indexer profile: read the runtimes, execute only Node and its loader, read
-    the indexer packages and the checkout, write only `<work>/out`."""
-    node_path = os.path.realpath(node)
+def indexer_rules(program: str, tools: str, work: str) -> list[tuple[str, int]]:
+    """Landlock grants of the indexer profile: read the runtimes, execute only the program and its loader,
+    read the indexer's tools and the checkout, write only `<work>/out`."""
+    program_path = os.path.realpath(program)
     rules = [(root, READ) for root in readable_roots()]
-    rules.append((node_path, EXEC_FILE))
-    interpreter = elf_interpreter(node_path)
+    rules.append((program_path, EXEC_FILE))
+    interpreter = elf_interpreter(program_path)
     if interpreter is not None:
         rules.append((os.path.realpath(interpreter), EXEC_FILE))
     rules += [(tools, READ), (work, READ), (str(Path(work) / "out"), READ_WRITE)]
@@ -247,10 +248,10 @@ def lock_down(profile: str = "parser") -> bool:
     """Returns True when network isolation is enforced."""
     indexer = profile == "indexer"
     if indexer:  # paths come from the parent (app.engine.sandbox), never from repository content
-        node, tools, work = (
-            os.environ.get(k, "") for k in ("CODEHOVER_NODE", "CODEHOVER_TOOLS", "CODEHOVER_WORK")
+        program, tools, work = (
+            os.environ.get(k, "") for k in ("CODEHOVER_PROGRAM", "CODEHOVER_TOOLS", "CODEHOVER_WORK")
         )
-        if not all(Path(path).is_absolute() for path in (node, tools, work)):
+        if not all(Path(path).is_absolute() for path in (program, tools, work)):
             raise RuntimeError("indexer paths missing")
     for limit, value in (INDEXER_LIMITS if indexer else LIMITS).items():
         if limit == resource.RLIMIT_AS and sys.platform != "linux":
@@ -260,7 +261,7 @@ def lock_down(profile: str = "parser") -> bool:
         resource.setrlimit(limit, (target, target))
     if sys.platform == "linux":
         # Computed before the filesystem is locked.
-        rules = indexer_rules(node, tools, work) if indexer else readable_roots()
+        rules = indexer_rules(program, tools, work) if indexer else readable_roots()
         install_seccomp(allow_exec=indexer)  # also sets PR_SET_NO_NEW_PRIVS, which Landlock requires
         install_landlock(rules)
         return True

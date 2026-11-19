@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -133,7 +134,7 @@ def test_compact_maps_names_lines_and_scopes_locals_per_document() -> None:
 
 
 def test_node_command_line() -> None:
-    request = {"node": "/n/node", "tools": "/t", "work": "/w", "heap_mb": 1024}
+    request = {"program": "/n/node", "tools": "/t", "work": "/w", "heap_mb": 1024}
     python = index_worker.command({**request, "indexer": "scip-python"})
     assert python[:2] == ["/n/node", "--max-old-space-size=1024"]
     assert "--permission" not in python  # incompatible with scip-python (see NODE_PERMISSION)
@@ -147,6 +148,46 @@ def test_node_command_line() -> None:
         "--allow-fs-write=/w/out",
     ]
     assert typescript[-4:] == ["--cwd", "/w/src", "--output", "/w/out/index.scip"]
+
+
+def test_rust_analyzer_command_line() -> None:
+    request = {"indexer": "rust-analyzer", "program": "/r/rust-analyzer", "tools": "/lib", "work": "/w"}
+    assert index_worker.command({**request, "threads": 3}) == [
+        "/r/rust-analyzer",
+        "scip",
+        "/w/src",  # rust-analyzer finds /w/rust-project.json above the checkout, never a Cargo.toml
+        "--output",
+        "/w/out/index.scip",
+        "--config-path",
+        "/w/rust-analyzer.json",
+        "--exclude-vendored-libraries",
+        "--num-threads",
+        "3",
+    ]
+
+
+def test_rust_checkout_holds_sources_manifests_and_the_worker_settings_only() -> None:
+    work = Path(tempfile.mkdtemp())
+    files = [{"path": "src/lib.rs", "text": "pub fn f() {}\n"}]
+    manifests = [
+        {"path": "Cargo.toml", "text": '[package]\nname = "x"\n'},
+        {"path": "../evil/Cargo.toml", "text": ""},  # never written outside the scratch directory
+        {"path": "build.rs", "text": ""},  # only manifests go to manifests/
+    ]
+    indexers._checkout(work, "rust-analyzer", files, manifests)
+    written = sorted(p.relative_to(work).as_posix() for p in work.rglob("*") if p.is_file() or p.is_symlink())
+    assert written == [
+        "manifests/Cargo.toml",
+        "openssl.cnf",
+        "rust-analyzer.json",
+        "rust-project.json",
+        "src/src/lib.rs",
+    ]
+    assert (work / "rust-project.json").readlink() == Path("out/rust-project.json")
+    settings = json.loads((work / "rust-analyzer.json").read_text())
+    assert settings["procMacro"] == {"enable": False} and settings["cargo"]["buildScripts"] == {
+        "enable": False
+    }
 
 
 def test_worker_configuration_and_paths() -> None:
@@ -279,7 +320,7 @@ def test_missing_tools_are_a_labeled_fallback_not_a_failure() -> None:
 def test_profiles_only_run_their_own_modules() -> None:
     with pytest.raises(sandbox.SandboxError, match="exit_2"):
         asyncio.run(sandbox.run("app.engine.index_worker", {}, allow_unsandboxed=True))  # parser profile
-    paths = sandbox.IndexerPaths(node="/n", tools="/t", work="/w")
+    paths = sandbox.IndexerPaths(program="/n", tools="/t", work="/w")
     with pytest.raises(sandbox.SandboxError, match="exit_2"):
         asyncio.run(sandbox.run("app.engine.parse_worker", {}, allow_unsandboxed=True, indexer=paths))
 
@@ -321,13 +362,15 @@ def _fixture() -> list[dict[str, Any]]:
 @needs_tools
 def test_indexer_sandbox_runs_node_and_nothing_else() -> None:
     """T23 gate (22): no network, no other program, no credentials, writes only to the scratch `out`."""
-    report = asyncio.run(indexers.self_check(indexers.Config(NODE, TOOLS)))
+    reports = asyncio.run(indexers.self_check(indexers.Config(NODE, TOOLS)))
+    assert list(reports) == ["scip-python"]  # one probe per program: both npm indexers run on Node
+    report = reports["scip-python"]
     assert report["profile"] == "indexer" and report["isolated"] is True
     assert (report["inet"], report["inet6"], report["unix"]) == (False, False, False)
     assert report["environment"] == []
     closed = ("parent_environ", "etc", "secrets", "exec", "write_code", "write_tmp", "write_work")
     assert [report[k] for k in closed] == [False] * len(closed)  # exec: neither Python nor /bin/sh
-    assert report["exec_node"] is True and report["write_out"] is True
+    assert report["exec_program"] is True and report["write_out"] is True
 
 
 @needs_tools

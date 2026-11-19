@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     scip_tools_dir: str | None = None
     scip_timeout_seconds: int = Field(default=300, ge=10, le=1800)
     scip_heap_mb: int = Field(default=1536, ge=256, le=8192)
+    # rust-analyzer's binary and Rust's library sources (rust-src); unset keeps Rust on name matching.
+    scip_rust_analyzer_path: str | None = None
+    scip_rust_src_dir: str | None = None
 
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
@@ -134,6 +137,8 @@ class Settings(BaseSettings):
         "support_email",
         "scip_node_path",
         "scip_tools_dir",
+        "scip_rust_analyzer_path",
+        "scip_rust_src_dir",
         mode="before",
     )
     @classmethod

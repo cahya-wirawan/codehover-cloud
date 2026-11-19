@@ -27,7 +27,8 @@ M0 to M6 are implemented, including SCIP (T23), plus per-project access control.
   - ZIP import (`projects/uploads.py`, `acquire.extract_zip`, 0025): one `upload` connection per workspace; each content-addressed snapshot is stored under `…/snapshots/{sid}/upload.zip`.
   - Language and level variants (prompt set 0.4.0 with the audience text): `variant_of` a ready base reuses its snapshot, scope and guide plan, so anchors match.
   - BYOK and batch (`providers/keys.py`, `jobs/batching.py`, 0026): sealed workspace Anthropic keys and `funding: own_key` builds without the allowance; explain batches at the catalog batch price, with persisted batch IDs and `StageWait`.
-  - SCIP (T23; `engine/indexers.py`, `index_worker.py`, `scip.py`): scip-python and scip-typescript run in the sandbox's `indexer` profile; resolved references are `index` edges, and a failed or timed-out family keeps labeled `name` edges.
+  - SCIP (T23; `engine/indexers.py`, `index_worker.py`, `scip.py`): scip-python, scip-typescript and rust-analyzer run in the sandbox's `indexer` profile, one program per run; resolved references are `index` edges, and a failed or timed-out family keeps labeled `name` edges.
+  - Rust: tree-sitter-rust in the parser; rust-analyzer reads a `rust-project.json` that the sandboxed worker builds from the Cargo manifests (`engine/rust_project.py`), so cargo, build scripts and proc macros never run. It is installed by `backend/indexers/fetch_rust.py` (pinned by SHA-256) together with Rust's library sources.
 - **Public GitHub repositories** (0028, `projects/public_repos.py`, `adapters/github/public.py`): a `public` connection kind reads public repositories without the App; visibility is re-checked on every resolve and download, tarballs come anonymously from codeload, and the optional `GITHUB_PUBLIC_TOKEN` only raises the metadata rate limit. No push rebuilds.
 - **Per-project access** (0027, `projects/access.py`): a project is open to the workspace or restricted; restricted projects are visible to admins, owners and members with a viewer or editor grant, and the grant is their role there.
 
@@ -44,6 +45,7 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - owner notices are in-app only (there is no email delivery);
 - only the explain stage is batched;
 - SCIP links calls through an interface or Protocol to the interface method, and never reads a repository's tsconfig path aliases;
+- Rust resolution has no crates.io dependencies, proc-macro expansion or build-script output, and assumes a 64-bit Linux target;
 - a published site shows one variant;
 - publishing sites of third-party public repositories has no redistribution check yet (spec 21);
 - rotating `APP_ENCRYPTION_KEY` makes stored provider keys unreadable.
@@ -111,7 +113,7 @@ Conventions that span files:
   - Writer requests carry `audience` (`_writer_request`); the checker never does. Cache keys include the variant.
   - Batches go only through `batching.prefill`. Batched attempts are `batched`, and waiting raises `StageWait`, which does not use up an attempt.
   - Regenerate `backend/evals/reports/baseline-replay.json` after changing parser, prompts, chunking or claim extraction (CI diffs it).
-- **Engine** (`app/engine`). Repository content is parsed only inside the sandbox (`sandbox.run("app.engine.parse_worker", ...)`); add new sandboxed modules to `sandbox_exec.ALLOWED_MODULES` only. `app/engine/schemas/explanation.schema.json` must equal the spec contract (a test checks it). Object keys come only from `engine/keys.py`. SCIP indexers run only through `indexers.resolve` (scratch checkout of selected files, the worker's own tsconfig/pyrightconfig, `sandbox.run(..., indexer=...)`); their packages are pinned in `backend/indexers/package-lock.json`, installed with `npm ci --ignore-scripts` under the same `before` cutoff as the frontend.
+- **Engine** (`app/engine`). Repository content is parsed only inside the sandbox (`sandbox.run("app.engine.parse_worker", ...)`); add new sandboxed modules to `sandbox_exec.ALLOWED_MODULES` only. `app/engine/schemas/explanation.schema.json` must equal the spec contract (a test checks it). Object keys come only from `engine/keys.py`. SCIP indexers run only through `indexers.resolve` (scratch checkout of selected files plus, for Rust, the Cargo manifests beside it; the worker's own tsconfig/pyrightconfig/rust-analyzer settings; `sandbox.run(..., indexer=...)`); their packages are pinned in `backend/indexers/package-lock.json`, installed with `npm ci --ignore-scripts` under the same `before` cutoff as the frontend.
 - **Privileges and operations.**
   - Every runtime privilege is granted explicitly in its migration; local bootstrap defaults are not relied on. `test_migrations_alone_grant_the_runtime_exactly_its_privileges` compares a database migrated without defaults.
   - Revoke what defaults would add on tables the runtime must not write (0018, 0020).

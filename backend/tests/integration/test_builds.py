@@ -471,3 +471,64 @@ async def test_a_failing_apply_retries_instead_of_holding_the_lease(
     assert outcomes == ["retry_wait"]
     state = ddl("SELECT state, error_code, lease_until FROM build_tasks WHERE build_id = :b", b=build)[0]
     assert state == ("retry_wait", "internal_RuntimeError", None)
+
+
+async def test_a_rust_repository_builds_and_gives_the_indexer_its_cargo_manifests(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T23: `.rs` files are parsed; the index stage hands rust-analyzer the snapshot's Cargo manifests
+    (and only those) so the sandboxed worker can build the crate graph. The real indexer runs in
+    tests/unit/test_rust.py (Linux)."""
+    owner, _ws, project = await setup_project(client, idp, github)
+    repository = {
+        "Cargo.toml": '[workspace]\nmembers = ["core"]\n',
+        "core/Cargo.toml": '[package]\nname = "core-lib"\nedition = "2021"\n',
+        "core/src/lib.rs": "/// Adds one.\npub fn add(x: i32) -> i32 { x + 1 }\n\npub struct Counter { n: i32 }\n\n"
+        "impl Counter {\n    pub fn bump(&mut self) { self.n = add(self.n); }\n}\n",
+        "core/rustfmt.toml": "max_width = 100\n",
+        "tools/run.py": "def run():\n    return 1\n",
+    }
+    for repo_id in list(github.tarballs):
+        github.tarballs[repo_id] = tarball_of(repository)
+    seen: dict[str, Any] = {}
+
+    async def resolved(config: Any, files: list[dict[str, Any]], **kwargs: Any) -> Any:
+        seen["files"] = sorted((f["path"], f["language"]) for f in files)
+        seen["manifests"] = kwargs["manifests"]
+        ids = {f["path"]: f["file_id"] for f in files}
+        occurrences = {
+            "definitions": [(2, 7, "add", "r:add")],
+            "references": [(7, 38, "r:add")],
+        }
+        return {ids["core/src/lib.rs"]: occurrences}, [indexers.Outcome("rust-analyzer", 1, "ok", None, "x")]
+
+    monkeypatch.setattr(indexers, "resolve", resolved)
+    build = (await start(owner, project)).json()["id"]
+    assert RUNTIME_URL
+    rt = Runtime(
+        sessions=session_factory(create_async_engine(RUNTIME_URL)),
+        store=client.app.state.objects,  # type: ignore[attr-defined]
+        github=client.app.state.github_app,  # type: ignore[attr-defined]
+        allow_unsandboxed=True,
+        catalog=client.app.state.catalog,  # type: ignore[attr-defined]
+        indexers=indexers.Config(rust_analyzer="/opt/none/rust-analyzer", rust_src="/opt/none"),
+    )
+    assert await drive(client.app, build, runtime=rt) == ["completed"] * 4  # type: ignore[attr-defined]
+    assert seen["files"] == [("core/src/lib.rs", "rust"), ("tools/run.py", "python")]
+    assert seen["manifests"] == [
+        {"path": "Cargo.toml", "text": repository["Cargo.toml"]},
+        {"path": "core/Cargo.toml", "text": repository["core/Cargo.toml"]},
+    ]
+    rows = ddl(
+        "SELECT s.symbol_key, s.kind FROM symbols s JOIN source_files f ON f.id = s.source_file_id"
+        " WHERE s.build_id = :b AND f.path = 'core/src/lib.rs' ORDER BY s.start_line",
+        b=build,
+    )
+    assert [tuple(r) for r in rows] == [("add", "function"), ("Counter", "type"), ("Counter.bump", "method")]
+    edges = ddl(
+        "SELECT t.symbol_key, e.resolution FROM reference_edges e JOIN symbols t ON t.id = e.to_symbol_id"
+        " JOIN source_files f ON f.id = e.source_file_id WHERE e.build_id = :b AND f.path = 'core/src/lib.rs'",
+        b=build,
+    )
+    assert [tuple(e) for e in edges] == [("add", "index")]
+    await owner.aclose()

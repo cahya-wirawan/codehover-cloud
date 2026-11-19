@@ -26,7 +26,7 @@ Each task needs implementation, focused verification and updated contracts; esti
 | T20 | P0 paid/L | Stripe checkout/portal/webhooks and reconciliation/plan lifecycle | T10,18–19 | Out-of-order/forgery/dispute matrix passes |
 | T21 | P1/M | GitHub push dedupe/debounce and branch freshness | T15 | Repeated push schedules one appropriate build, never public auto-publish |
 | T22 | P1/L | German/Indonesian and beginner/expert variants | T12,16 | Citation markers/schema and variant anchor tests pass |
-| T23 | P1/L | Sandboxed Python/TS SCIP integration | T06,08 | No network/install/hooks; timeout fallback labeled |
+| T23 | P1/L | Sandboxed Python/TS/Rust SCIP integration | T06,08 | No network/install/hooks; timeout fallback labeled |
 | T24 | P1/L | Batch and BYOK adapters | T10–12 | Persisted batch IDs/keys, no silent price fallback |
 | T25 | P2/L | Authenticated hosted MCP and custom domain delivery | T15–19 | Scoped tokens/origin/cross-tenant evals pass |
 

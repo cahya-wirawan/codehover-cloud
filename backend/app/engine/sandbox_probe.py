@@ -29,15 +29,25 @@ def _can_read(path: str) -> bool:
 
 
 def _can_exec(program: str, *args: str) -> bool:
+    read, write = os.pipe()  # the program's output must not mix into this report on stdout
     try:
         pid = os.fork()
     except OSError:
+        os.close(read)
+        os.close(write)
         return False
     if pid == 0:  # child: try to run a program; exit 0 only if exec somehow succeeded
         try:
+            os.close(read)
+            os.dup2(write, 1)
+            os.dup2(write, 2)
             os.execv(program, [program, *args])  # noqa: S606 - probing which programs may run
         finally:
             os._exit(99)
+    os.close(write)
+    with os.fdopen(read, "rb") as output:
+        while output.read(65536):
+            pass
     _, status = os.waitpid(pid, 0)
     return os.waitstatus_to_exitcode(status) == 0
 
@@ -53,7 +63,7 @@ def _can_write(directory: str) -> bool:
 
 
 def main() -> int:
-    request = json.loads(sys.stdin.read() or "{}")  # indexer profile: {"node": path, "work": path}
+    request = json.loads(sys.stdin.read() or "{}")  # indexer profile: {"program", "args", "work"}
     report = {
         "profile": os.environ.get("CODEHOVER_SANDBOX_PROFILE", "parser"),
         "parent_environ": _can_read(f"/proc/{os.getppid()}/environ"),
@@ -70,9 +80,8 @@ def main() -> int:
         "cpu_limit": resource.getrlimit(resource.RLIMIT_CPU)[0],
         "nofile_limit": resource.getrlimit(resource.RLIMIT_NOFILE)[0],
     }
-    if request.get("node"):  # Node reads an OpenSSL config at startup; the worker puts an empty one in work
-        config = Path(request.get("work", "")) / "openssl.cnf"
-        report["exec_node"] = _can_exec(request["node"], f"--openssl-config={config}", "-e", "0")
+    if request.get("program"):  # the indexer's own program, with the worker's probe arguments
+        report["exec_program"] = _can_exec(request["program"], *map(str, request.get("args", [])))
     if request.get("work"):
         report["write_out"] = _can_write(str(Path(request["work"]) / "out"))
         report["write_work"] = _can_write(request["work"])

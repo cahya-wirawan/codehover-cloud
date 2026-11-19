@@ -40,6 +40,8 @@ x-app-env: &app-env
   PUSH_MAX_WAIT_SECONDS: ${PUSH_MAX_WAIT_SECONDS:-600}
   # SCIP indexers in the image (T23). `SCIP_NODE_PATH=` in .env turns them off (name matching only).
   SCIP_NODE_PATH: ${SCIP_NODE_PATH-/opt/codehover/node/bin/node}
+  # rust-analyzer for Rust; `SCIP_RUST_ANALYZER_PATH=` turns Rust's indexer off.
+  SCIP_RUST_ANALYZER_PATH: ${SCIP_RUST_ANALYZER_PATH-/opt/codehover/rust/bin/rust-analyzer}
   SCIP_TIMEOUT_SECONDS: ${SCIP_TIMEOUT_SECONDS:-300}
   SCIP_HEAP_MB: ${SCIP_HEAP_MB:-1536}
   # Internal metrics port per process (12); scraped on the services network, never published.
