@@ -69,7 +69,7 @@
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "050be4d1ee6d2ee210cf6852eef399ab4738ab664936b0aeec19225b381d2e99"
+      "sha256": "86d3af24aceff080b899f2b2a1aee1a129e102f006cd39b7ff7167253f318178"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -77,7 +77,7 @@
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
-      "sha256": "e32d5cf01ef3df7233c8cd3b135df6d15d479ae050eaf4e714715a61366e2ece"
+      "sha256": "c54d145dd502558c411db132de23f608235f6894641d2bff6b88d28cd076a8b5"
     },
     "09_AUTH_AND_PERMISSIONS.md": {
       "status": "complete specification",
@@ -129,7 +129,7 @@
     },
     "21_RISKS_AND_OPEN_QUESTIONS.md": {
       "status": "complete specification",
-      "sha256": "dedb98a38bfe00ba6daa595ad0c775b7b8fdc3eb4ffb7195caba3669640d1eaf"
+      "sha256": "7bfa08e96c77c67c4f51985fdecbdba6141277655f8fe503df2ce59bf2f51f7e"
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
@@ -141,7 +141,7 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "1d1c2ea5219eb130a3a0c5457e056aff31da3d3cb4b3968cd9aab79532f1f779"
+      "sha256": "e4a3ffcf96e4bb72b56bfa92e13b0ce21a74b0535798fe276975f5086ba3738e"
     },
     "README.md": {
       "status": "complete specification",
@@ -153,7 +153,7 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "1151283373472dd02ddeae1c4ce7dcefcdbe64747662f08e431b9bdbd2a4c423"
+      "sha256": "fe6cb351a83f82c5702ac690d513718be90a3c73e0ff8581a9be753aeab389d3"
     },
     "VERSION": {
       "status": "package tooling",
@@ -256,5 +256,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "9551f735a4e84bd1fa9871002292da12659a9c5df2d1f6b03bab5674fead6eb9"
+  "master_spec_sha256": "91ae90711a00e65cfd4f93281e08ccc636a0e2e8aafeaffbdcbc402ff56973c6"
 }

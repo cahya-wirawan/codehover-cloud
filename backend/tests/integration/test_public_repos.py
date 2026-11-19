@@ -224,4 +224,18 @@ async def test_the_app_and_the_public_source_share_one_repository_row(
         r=web["id"],
     )
     assert rows[0][0] == 1
+
+    # An admin revokes the App connection: the public source must not quietly lift that.
+    connection = (await owner.get(f"/api/v1/workspaces/{ws}/connections")).json()["items"][0]["id"]
+    revoked = await unsafe(owner, "DELETE", f"/api/v1/workspaces/{ws}/connections/{connection}")
+    assert revoked.status_code == 204
+    refused = await create(owner, ws, "octo-org/web", slug="web-again")
+    assert refused.status_code == 409 and code(refused) == "CONNECTION_INACTIVE"
+    state = ddl(
+        "SELECT c.provider, c.status FROM repositories r JOIN repository_connections c ON c.id = r.connection_id"
+        " WHERE r.workspace_id = :w AND r.provider_repo_id = :r",
+        w=ws,
+        r=web["id"],
+    )
+    assert tuple(state[0]) == ("github", "revoked")  # the row stays with the revoked App connection
     await owner.aclose()

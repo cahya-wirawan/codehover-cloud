@@ -7,7 +7,7 @@ Date: 2026-11-19 · Package version 0.5.28
   - A public repository builds to ready with no GitHub App configured. The tarball request carries no credentials while metadata calls use the operator token, and the repository is re-checked by numeric ID. Freshness and refs work, a second project shares the repository row, and push policies are refused.
   - Private (visible to the token), missing and malformed repositories are refused, and a foreign host never becomes a request.
   - A repository that turns private between the request and the download fails acquisition with `repository_not_public` and downloads nothing; a missing branch is `REF_NOT_FOUND`.
-  - The App and the public source share one repository row.
+  - The App and the public source share one repository row, and a revoked App connection cannot be bypassed through the public source.
 - `tests/unit/test_public_github.py`: strict `owner/name` parsing, answers about private or internal repositories refused even with a token, and rate limits reported as such.
 - Full suites: backend unit 182 (macOS), integration 218, frontend 41.
 

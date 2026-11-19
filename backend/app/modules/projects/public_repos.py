@@ -3,7 +3,9 @@
 Any editor may add a repository that GitHub reports as public. It is held under the workspace's one
 `public` connection (0028) and addressed by GitHub's numeric ID. If the App already grants that repository
 to the workspace, the App's repository row is reused, so a repository is never read two ways at once; a
-later App grant moves a public row to the App connection (`github.service._upsert_repository`).
+later App grant moves a public row to the App connection (`github.service._upsert_repository`). A repository
+whose App access was revoked or suspended is refused: re-reading it as public would lift an admin's
+revocation for the projects already on it.
 Visibility is checked again whenever a ref is resolved or source is downloaded
 (`adapters.github.public`), so a repository that turns private stops building. There are no webhooks
 without the App: public projects refresh by starting a build, never by push.
@@ -64,6 +66,14 @@ async def _repository_row(db: AsyncSession, member: Member, repo: RepositoryInfo
         and existing.access_revoked_at is None
     ):
         return existing.id, "github"  # the App already grants it: one way to read a repository
+    if existing is not None and existing.provider != "public":
+        # The App held this repository and its access was revoked or suspended. Re-reading it as public would
+        # lift that for every project already on it; only reconnecting GitHub (an admin) may do that.
+        raise ApiError(
+            409,
+            "CONNECTION_INACTIVE",
+            "This repository was connected through GitHub and its access ended; an admin must reconnect GitHub.",
+        )
     connection = await _public_connection(db, member)
     params = {
         "w": member.workspace_id,
@@ -73,12 +83,11 @@ async def _repository_row(db: AsyncSession, member: Member, repo: RepositoryInfo
         "n": repo.name,
         "b": repo.default_branch,
     }
-    if existing is not None:  # a public row, or an App row whose access ended: read it as public now
+    if existing is not None:  # already public in this workspace: refresh its metadata
         await db.execute(
             text(
-                "UPDATE repositories SET connection_id = :c, owner = :o, name = :n, visibility = 'public',"
-                " default_branch = :b, access_revoked_at = NULL, updated_at = now()"
-                " WHERE workspace_id = :w AND id = :id"
+                "UPDATE repositories SET owner = :o, name = :n, visibility = 'public', default_branch = :b,"
+                " updated_at = now() WHERE workspace_id = :w AND id = :id AND connection_id = :c"
             ),
             {**params, "id": existing.id},
         )

@@ -13,7 +13,8 @@ All notable changes to this build package. The format follows [Keep a Changelog 
   - Visibility is checked again on every ref resolution and download; a repository that turns private stops building with `repository_not_public`. Private, internal and missing repositories are the same 404 `REPOSITORY_NOT_PUBLIC`.
   - Metadata may use the optional `GITHUB_PUBLIC_TOKEN` (rate limit only); source tarballs always come anonymously from codeload. The App and the public source share one repository row: an App grant takes a public row over, and a public request for an App-granted repository reuses it.
   - The new-project form offers "A public GitHub repository" and starts on it when the workspace has no App connection. Both deployment copies of Compose and `.env.example` gain `GITHUB_PUBLIC_TOKEN`.
-  - 21 records the open decision on publishing sites of third-party repositories.
+  - A repository whose App access was revoked or suspended cannot be re-added as public (409 `CONNECTION_INACTIVE`).
+  - 21 records the open decisions on publishing sites of third-party repositories and on sites of repositories that turn private.
 
 ## [0.5.27] - 2026-11-19
 
