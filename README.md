@@ -102,7 +102,7 @@ Try the whole product in a browser without real Google or GitHub accounts. You n
 cd backend && set -a && . ../deployment/.env && set +a && .venv/bin/python -m tests.e2e.demo   # --reset starts over
 ```
 
-Open http://127.0.0.1:8770 (use `127.0.0.1`, not `localhost`). "Continue with Google" signs you in as a fresh local demo user. Each workspace comes with two repositories: `demo-api`, a tiny fixture, and `codehover-engine`, this project's engine package. Builds are free replay builds (source-only cards, no model calls). The demo has its own database (`codehover_demo`) and bucket, so the stack's workers never touch it.
+Open http://127.0.0.1:8770 (use `127.0.0.1`, not `localhost`). "Continue with Google" opens a local page where you choose who to be: Grace Hopper, Alan Turing, Ada Lovelace or Katherine Johnson, each keeping one account across sign-ins (emails `<first name>@demo.test`, so you can invite them under Members), or "Someone new" for a fresh account. "Connect GitHub" opens a local stand-in for GitHub's install page (choose an account and repositories), then runs the real setup and ownership check against the fake GitHub; the first time, it links a demo GitHub identity to the signed-in person. Each workspace also comes with two repositories already connected: `demo-api`, a tiny fixture, and `codehover-engine`, this project's engine package. Builds are free replay builds (source-only cards, no model calls). The demo has its own database (`codehover_demo`) and bucket, so the stack's workers never touch it.
 
 ## Load check and restore drill (M4)
 

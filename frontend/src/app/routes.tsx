@@ -17,6 +17,7 @@ import {
 import { AcceptInvitationPage } from "../features/workspaces/AcceptInvitationPage";
 import { AuditPage } from "../features/workspaces/AuditPage";
 import { ConnectionsPage } from "../features/workspaces/ConnectionsPage";
+import { MembersPage } from "../features/workspaces/MembersPage";
 import { UsagePage } from "../features/workspaces/UsagePage";
 import { WorkspacePage } from "../features/workspaces/WorkspacePage";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
@@ -42,6 +43,7 @@ export const routes: RouteObject[] = [
           { path: "ops", element: <OpsPage /> },
           { path: "w", element: <WorkspacesPage /> },
           { path: "w/:wid", element: <WorkspacePage /> },
+          { path: "w/:wid/members", element: <MembersPage /> },
           { path: "w/:wid/connections", element: <ConnectionsPage /> },
           { path: "w/:wid/audit", element: <AuditPage /> },
           { path: "w/:wid/usage", element: <UsagePage /> },

@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   Menu,
   ScrollText,
+  Users,
   X,
 } from "lucide-react";
 import { Dialog } from "radix-ui";
@@ -126,6 +127,9 @@ function Sidebar({ operator }: { operator: boolean }) {
           <>
             <NavItem to={`/w/${wid}`} icon={<FolderGit2 aria-hidden="true" />} end>
               Projects
+            </NavItem>
+            <NavItem to={`/w/${wid}/members`} icon={<Users aria-hidden="true" />}>
+              Members
             </NavItem>
             <NavItem to={`/w/${wid}/connections`} icon={<GitBranch aria-hidden="true" />}>
               GitHub connections
