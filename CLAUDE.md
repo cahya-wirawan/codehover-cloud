@@ -29,7 +29,7 @@ M0 to M6 are implemented, including SCIP (T23), plus per-project access control.
   - BYOK and batch (`providers/keys.py`, `jobs/batching.py`, 0026): sealed workspace Anthropic keys and `funding: own_key` builds without the allowance; explain batches at the catalog batch price, with persisted batch IDs and `StageWait`.
   - SCIP (T23; `engine/indexers.py`, `index_worker.py`, `scip.py`): scip-python, scip-typescript and rust-analyzer run in the sandbox's `indexer` profile, one program per run; resolved references are `index` edges, and a failed or timed-out family keeps labeled `name` edges.
   - Rust: tree-sitter-rust in the parser; rust-analyzer reads a `rust-project.json` that the sandboxed worker builds from the Cargo manifests (`engine/rust_project.py`), so cargo, build scripts and proc macros never run. It is installed by `backend/indexers/fetch_rust.py` (pinned by SHA-256) together with Rust's library sources.
-- **Public GitHub repositories** (0028, `projects/public_repos.py`, `adapters/github/public.py`): a `public` connection kind reads public repositories without the App; visibility is re-checked on every resolve and download, tarballs come anonymously from codeload, and the optional `GITHUB_PUBLIC_TOKEN` only raises the metadata rate limit. No push rebuilds.
+- **Public GitHub repositories** (0028, `projects/public_repos.py`, `adapters/github/public.py`): a `public` connection kind reads public repositories without the App; visibility is re-checked on every resolve and download, tarballs come anonymously from codeload, and the optional `GITHUB_PUBLIC_TOKEN` only raises the metadata rate limit. No push rebuilds. A public site of one needs a permitted license at the build's commit, with the license file in the build (FR-029, 0029, `projects/licenses.py`); private sites need none.
 - **Per-project access** (0027, `projects/access.py`): a project is open to the workspace or restricted; restricted projects are visible to admins, owners and members with a viewer or editor grant, and the grant is their role there.
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
@@ -47,7 +47,7 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - SCIP links calls through an interface or Protocol to the interface method, and never reads a repository's tsconfig path aliases;
 - Rust resolution has no crates.io dependencies, proc-macro expansion or build-script output, and assumes a 64-bit Linux target;
 - a published site shows one variant;
-- publishing sites of third-party public repositories has no redistribution check yet (spec 21);
+- the permitted-license list awaits legal review, and GitHub's single-license answer refuses some multi-license or `NOASSERTION` repositories (spec 21);
 - rotating `APP_ENCRYPTION_KEY` makes stored provider keys unreadable.
 
 Without a plan, a workspace gets `GENERATION_ALLOWANCE_MICRO_USD`; a held plan replaces it with the plan's allowance, and manual grants add to either.

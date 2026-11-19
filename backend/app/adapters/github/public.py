@@ -6,11 +6,13 @@ Every answer is checked to be a public repository, so a token that can see priva
 lets one through. The source itself is always downloaded anonymously from codeload.github.com, where
 only public content is readable at all. Repositories are addressed by numeric ID after the first lookup,
 so a rename never redirects access; hosts are fixed and nothing a user types becomes a URL (08 SSRF).
+The license GitHub detects at a commit decides whether a public site of it may be published (FR-029).
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
@@ -23,6 +25,12 @@ CODELOAD = "https://codeload.github.com"
 OWNER = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
 NAME = re.compile(r"[A-Za-z0-9._-]{1,100}")
 SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+
+
+@dataclass(frozen=True)
+class License:
+    spdx_id: str  # GitHub's SPDX identifier; "NOASSERTION" when it found a licence file it cannot name
+    path: str  # the licence file at that commit, relative to the repository root
 
 
 def parse_repository(value: str) -> tuple[str, str]:
@@ -74,6 +82,25 @@ class PublicGitHub:
         if not isinstance(sha, str) or not SHA.fullmatch(sha):
             raise GitHubError("ref_not_found", 404)
         return sha
+
+    async def license(self, repo_id: int, sha: str) -> License | None:
+        """The licence GitHub detects at that exact commit (its licensee answer, `?ref=`), or None when the
+        commit has no licence file. Re-checks that the repository is still public first."""
+        if not SHA.fullmatch(sha):
+            raise GitHubError("ref_not_found", 404)
+        await self.repository(repo_id)
+        try:
+            body = await self._get(f"{API}/repositories/{repo_id}/license", params={"ref": sha})
+        except GitHubError as error:
+            if error.reason == "not_found":
+                return None  # the repository was public a moment ago: no licence file at this commit
+            raise
+        detected = body.get("license") if isinstance(body, dict) else None
+        path = body.get("path") if isinstance(body, dict) else None
+        spdx = detected.get("spdx_id") if isinstance(detected, dict) else None
+        if not isinstance(path, str) or not path or len(path) > 1024:
+            return None
+        return License(spdx if isinstance(spdx, str) and spdx else "NOASSERTION", path)
 
     async def download_tarball(self, repo_id: int, sha: str, max_bytes: int) -> bytes:
         """The commit's tarball, anonymously from codeload: re-checks that the repository is public, then

@@ -591,6 +591,8 @@ class Publication(Base):
     acknowledged_partial: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     suspended_at: Mapped[datetime | None] = ts(nullable=True)
     suspended_reason: Mapped[str | None] = mapped_column(Text)
+    license_spdx: Mapped[str | None] = mapped_column(Text)  # 0029: public sites of public-source repositories
+    license_path: Mapped[str | None] = mapped_column(Text)
     published_by: Mapped[UUID] = ref("users.id")
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)

@@ -76,3 +76,33 @@ test("a withdrawn or private site is simply not found", async () => {
   expect(await screen.findByRole("heading", { name: "Site not found" })).toBeInTheDocument();
   expect(screen.getByText(/no longer published, or is private/)).toBeInTheDocument();
 });
+
+test("a public site of a public repository names its license and links to the license file", async () => {
+  fakeApi({
+    "/api/v1/published/hello-site": {
+      project: "Hello", repository: "octocat/hello", commit_sha: "feed00000000aaaa", visibility: "public", generated: false,
+      published_at: "2026-11-20T00:00:00Z", license: { spdx_id: "MIT", path: "LICENSE", file_id: "f-license" },
+    },
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/sites/hello-site/code"] })} />
+    </QueryClientProvider>,
+  );
+  const link = await screen.findByRole("link", { name: "MIT license" });
+  expect(link).toHaveAttribute("href", "/sites/hello-site/code?file=f-license");
+});
+
+test("a license suspension tells the admin to publish again", async () => {
+  fakeApi({
+    "/api/v1/projects/p1/publication": {
+      build_id: "b1", visibility: "public", public_slug: "api", version: 2, acknowledged_partial: false,
+      suspended_at: "2026-11-20T00:00:00Z", suspended_reason: "license", updated_at: "2026-11-20T00:00:00Z",
+      commit_sha: "c0ffee000000", license_spdx: null,
+    },
+    "/api/v1/projects/p1/builds": { items: [], next_cursor: null },
+  });
+  wrap(<PublicationPanel project={PROJECT} canPublish />);
+  expect(await screen.findByText(/published before licenses were checked/)).toBeInTheDocument();
+});

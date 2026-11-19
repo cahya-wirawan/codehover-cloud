@@ -255,6 +255,8 @@ export interface Publication {
   suspended_reason: string | null;
   updated_at: string;
   commit_sha: string;
+  /** FR-029: the checked license of a public site of a public-source repository. */
+  license_spdx: string | null;
 }
 export interface PublishRequest {
   build_id: string;
@@ -270,6 +272,8 @@ export interface Site {
   visibility: string;
   generated: boolean;
   published_at: string;
+  /** FR-029: named on public sites of repositories read through the public source. */
+  license: { spdx_id: string; path: string; file_id: string | null } | null;
 }
 
 export interface ExportJob {

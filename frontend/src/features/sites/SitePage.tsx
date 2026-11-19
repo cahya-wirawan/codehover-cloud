@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, Outlet, useOutletContext, useParams } from "react-router";
+import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router";
 
-import { FolderGit2, Globe, Lock } from "lucide-react";
+import { FolderGit2, Globe, Lock, Scale } from "lucide-react";
 
 import { Badge } from "../../components/ui/badge";
 import { PageHeader } from "../../components/ui/section";
@@ -56,6 +56,21 @@ export function SitePage() {
                 {info.data.repository}
               </span>
               <span className="font-mono text-[13px]">{info.data.commit_sha.slice(0, 12)}</span>
+              {info.data.license ? (
+                <span className="flex items-center gap-1.5 text-[13px]">
+                  <Scale aria-hidden="true" className="size-4" />
+                  {info.data.license.file_id ? (
+                    <Link
+                      to={`${base}/code?file=${encodeURIComponent(info.data.license.file_id)}`}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {info.data.license.spdx_id} license
+                    </Link>
+                  ) : (
+                    <span>{info.data.license.spdx_id} license</span>
+                  )}
+                </span>
+              ) : null}
               {info.data.visibility === "public" ? (
                 <Badge tone="primary" icon={<Globe aria-hidden="true" />}>public</Badge>
               ) : (
