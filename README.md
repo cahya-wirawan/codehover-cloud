@@ -104,6 +104,19 @@ cd backend && set -a && . ../deployment/.env && set +a && .venv/bin/python -m te
 
 Open http://127.0.0.1:8770 (use `127.0.0.1`, not `localhost`). "Continue with Google" opens a local page where you choose who to be: Grace Hopper, Alan Turing, Ada Lovelace or Katherine Johnson, each keeping one account across sign-ins (emails `<first name>@demo.test`, so you can invite them under Members), or "Someone new" for a fresh account. "Connect GitHub" opens a local stand-in for GitHub's install page (choose an account and repositories), then runs the real setup and ownership check against the fake GitHub; the first time, it links a demo GitHub identity to the signed-in person. Each workspace also comes with two repositories already connected: `demo-api`, a tiny fixture, and `codehover-engine`, this project's engine package. Builds are free replay builds (source-only cards, no model calls). The demo has its own database (`codehover_demo`) and bucket, so the stack's workers never touch it.
 
+**With type-aware references (SCIP).** The indexers need the Linux sandbox, so on macOS the demo above keeps name matching. To see "resolved by type analysis" on hover cards, prepare on the host, then run the server inside the backend image with the dev dependencies on the Compose network. Rebuild the stack first (`docker compose ... --profile app build`) so `codehover-cloud-backend:local` has the indexers:
+
+```bash
+cd backend && set -a && . ../deployment/.env && set +a && .venv/bin/python -m tests.e2e.demo --prepare-only
+docker build -t codehover-demo:local -f tests/e2e/demo.Dockerfile .   # adds the dev dependencies
+cd .. && docker run -d --name codehover-demo --network codehover-cloud_services -p 127.0.0.1:8770:8770 \
+  --read-only --tmpfs /tmp:size=512m --cap-drop ALL --security-opt no-new-privileges --memory 3g \
+  -e POSTGRES_PASSWORD -e APP_DB_PASSWORD -e S3_ROOT_USER -e S3_ROOT_PASSWORD \
+  -e DEMO_DB_ADDRESS=db:5432 -e DEMO_S3_ENDPOINT=http://objectstore:8333 \
+  -v "$PWD/backend/tests:/app/tests:ro" -v "$PWD/frontend/dist:/frontend/dist:ro" -w /app \
+  codehover-demo:local python -m tests.e2e.demo --serve-only --host 0.0.0.0   # docker rm -f codehover-demo to stop
+```
+
 ## Load check and restore drill (M4)
 
 Both run against the local Compose stack (db and objectstore up, workers stopped) with `deployment/.env` sourced, from `backend/`:
