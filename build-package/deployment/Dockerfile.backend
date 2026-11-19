@@ -1,6 +1,13 @@
 # Requires implemented backend/app, Alembic and exact pip requirements.lock.
 # Reference image tags: pin reviewed digests in real release.
 # Build context is the repo root; Dockerfile.backend.dockerignore keeps .env, secrets and tests out of it.
+# SCIP indexers (T23): installed from the integrity-pinned lockfile with no install scripts. Only the
+# Node binary, its license and the installed packages reach the runtime image; npm does not.
+FROM node:24.22.3-slim AS indexers
+WORKDIR /opt/codehover/indexers
+COPY backend/indexers/package.json backend/indexers/package-lock.json backend/indexers/.npmrc ./
+RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund && npm cache clean --force
+
 FROM python:3.13-slim AS runtime
 ARG APP_VERSION=0.0.0-dev
 ARG SPEC_VERSION=unknown
@@ -13,6 +20,12 @@ RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home app
 COPY backend/requirements.lock /tmp/requirements.lock
 # Hashes in the lock make pip verify every artifact (--require-hashes is implied).
 RUN pip install --no-cache-dir --no-deps -r /tmp/requirements.lock
+# Root-owned and read-only for the app user, like the code. The worker runs them only in the sandbox's
+# indexer profile (app.engine.sandbox_exec); unset SCIP_NODE_PATH to keep name matching only.
+COPY --from=indexers /usr/local/bin/node /opt/codehover/node/bin/node
+COPY --from=indexers /usr/local/LICENSE /opt/codehover/node/LICENSE
+COPY --from=indexers /opt/codehover/indexers/ /opt/codehover/indexers/
+ENV SCIP_NODE_PATH=/opt/codehover/node/bin/node SCIP_TOOLS_DIR=/opt/codehover/indexers
 # Code stays root-owned and read-only for the app user (defense in depth beside read_only rootfs).
 COPY backend/ /app/
 USER 10001:10001

@@ -243,7 +243,8 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
     related_rows = await _rows(
         rt,
         claimed,
-        "SELECT DISTINCT e.source_file_id, o.source_file_id AS target_file_id, o.name, o.kind, o.signature, f.path"
+        "SELECT DISTINCT e.source_file_id, o.source_file_id AS target_file_id, o.name, o.kind, o.signature, f.path,"
+        " e.resolution"
         " FROM reference_edges e"
         " JOIN symbols o ON o.workspace_id = e.workspace_id AND o.id = e.to_symbol_id"
         " JOIN source_files f ON f.workspace_id = o.workspace_id AND f.id = o.source_file_id"
@@ -262,7 +263,7 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
                     "kind": r.kind,
                     "path": r.path,
                     "signature": r.signature or "",
-                    "resolution": "name",
+                    "resolution": r.resolution,
                 }
             )
     work: list[Callable[[], Awaitable[Any]]] = []

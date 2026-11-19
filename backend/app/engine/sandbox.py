@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -24,10 +25,34 @@ class SandboxError(Exception):
         self.reason = reason
 
 
-async def run(module: str, payload: dict[str, Any], *, allow_unsandboxed: bool = False) -> dict[str, Any]:
+@dataclass(frozen=True)
+class IndexerPaths:
+    """What the indexer profile may touch (sandbox_exec.indexer_rules): the Node binary it may run, the
+    installed indexer packages and one scratch directory whose `out` subdirectory is writable."""
+
+    node: str
+    tools: str
+    work: str
+
+
+async def run(
+    module: str,
+    payload: dict[str, Any],
+    *,
+    allow_unsandboxed: bool = False,
+    indexer: IndexerPaths | None = None,
+    wall_seconds: float = TIMEOUT_SECONDS,
+) -> dict[str, Any]:
     env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
     if allow_unsandboxed and sys.platform != "linux":
         env["CODEHOVER_ALLOW_UNSANDBOXED"] = "1"  # development machines only; never on Linux
+    if indexer is not None:
+        env |= {
+            "CODEHOVER_SANDBOX_PROFILE": "indexer",
+            "CODEHOVER_NODE": indexer.node,
+            "CODEHOVER_TOOLS": indexer.tools,
+            "CODEHOVER_WORK": indexer.work,
+        }
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-E",
@@ -43,7 +68,7 @@ async def run(module: str, payload: dict[str, Any], *, allow_unsandboxed: bool =
     )
     try:
         stdout, _stderr = await asyncio.wait_for(
-            process.communicate(json.dumps(payload).encode()), timeout=TIMEOUT_SECONDS
+            process.communicate(json.dumps(payload).encode()), timeout=wall_seconds
         )
     except TimeoutError as exc:
         process.kill()
@@ -60,11 +85,20 @@ async def run(module: str, payload: dict[str, Any], *, allow_unsandboxed: bool =
     return result
 
 
-async def self_check(*, allow_unsandboxed: bool = False) -> dict[str, Any]:
-    """Raise unless the sandbox blocks network sockets (required on Linux)."""
-    report = await run("app.engine.sandbox_probe", {}, allow_unsandboxed=allow_unsandboxed)
+async def self_check(
+    *, allow_unsandboxed: bool = False, indexer: IndexerPaths | None = None
+) -> dict[str, Any]:
+    """Raise unless the sandbox blocks network sockets (required on Linux). With `indexer`, check that
+    profile instead: Node must start, and nothing but `<work>/out` may be written."""
+    payload = {"node": indexer.node, "work": indexer.work} if indexer is not None else {}
+    report = await run(
+        "app.engine.sandbox_probe", payload, allow_unsandboxed=allow_unsandboxed, indexer=indexer
+    )
     if report.get("inet") or report.get("inet6") or (sys.platform == "linux" and not report.get("isolated")):
         raise SandboxError("network_not_isolated")
-    if sys.platform == "linux" and any(report.get(k) for k in ("parent_environ", "etc", "secrets", "exec")):
+    closed = ("parent_environ", "etc", "secrets", "exec", "write_code", "write_tmp", "write_work")
+    if sys.platform == "linux" and any(report.get(k) for k in closed):
         raise SandboxError("filesystem_or_process_not_isolated")
+    if indexer is not None and not (report.get("exec_node") and report.get("write_out")):
+        raise SandboxError("indexer_unavailable")
     return report

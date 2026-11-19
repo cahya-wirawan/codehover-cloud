@@ -84,6 +84,13 @@ PROVIDER_TOKENS = Counter(
 )
 CACHE = Counter("codehover_generation_cache_total", "Generation cache lookups", ["result"], registry=REGISTRY)
 PURGES = Counter("codehover_purges_total", "Deletion purges", ["scope", "outcome"], registry=REGISTRY)
+# T23: SCIP indexer runs; a "failed" outcome means that language family fell back to name matching.
+INDEXER_RUNS = Counter(
+    "codehover_reference_indexer_runs_total",
+    "SCIP indexer runs by indexer and outcome",
+    ["indexer", "outcome"],
+    registry=REGISTRY,
+)
 RETENTION = Counter(
     "codehover_retention_removed_total", "Items removed by retention", ["kind"], registry=REGISTRY
 )

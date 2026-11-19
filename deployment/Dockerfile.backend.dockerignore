@@ -3,6 +3,7 @@
 **
 !backend/
 backend/.venv/
+backend/indexers/node_modules/
 backend/**/__pycache__/
 backend/tests/
 backend/.env*

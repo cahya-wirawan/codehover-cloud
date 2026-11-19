@@ -1,0 +1,13 @@
+{
+  "name": "codehover-indexers",
+  "private": true,
+  "description": "SCIP indexers run in the worker's indexer sandbox (T23). Installed with npm ci --ignore-scripts.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@sourcegraph/scip-python": "0.6.8",
+    "@sourcegraph/scip-typescript": "0.6.0"
+  }
+}

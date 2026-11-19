@@ -4,6 +4,20 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.27] - 2026-11-19
+
+### Added
+
+- 02, 07, 12, 21, 22 (T23): type-aware references from SCIP indexers.
+  - scip-python 0.6.8 and scip-typescript 0.6.0 (all permissive licenses), with Node 24.22.3 in the backend image, installed from an integrity-pinned lockfile without install scripts. Both deployment copies of the Dockerfile, `.dockerignore`, Compose and `.env.example` are updated.
+  - They run in a new `indexer` sandbox profile: no network; exec of only Node and its loader; reads of runtimes, packages and the checkout; writes only to the scratch `out`. The worker probes it at startup and fails closed.
+  - Resolved references become `index` edges and the viewer says "resolved by type analysis"; a timeout or failure keeps that language on labeled name matching. The manifest counts edges by resolution and records indexer versions.
+  - New optional settings `SCIP_NODE_PATH`, `SCIP_TOOLS_DIR`, `SCIP_TIMEOUT_SECONDS` and `SCIP_HEAP_MB`; the worker's Compose memory limit is 3 GB.
+
+### Changed
+
+- 23: engine 0.2.0 and parser bundle 0.2.0 (MINOR: resolved references change ranking and related context). Caches are invalidated; the replay eval baseline changes only in its version fields.
+
 ## [0.5.26] - 2026-11-19
 
 ### Added

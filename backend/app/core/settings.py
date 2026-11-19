@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     trusted_proxies: str = ""
     # Internal Prometheus port per process (12); 0 disables it. Never routed by the gateway.
     metrics_port: int = Field(default=0, ge=0, le=65535)
+    # SCIP indexers (T23): the pinned Node binary and the directory holding the installed indexer packages
+    # (the backend image sets both). Unset keeps every reference on name matching.
+    scip_node_path: str | None = None
+    scip_tools_dir: str | None = None
+    scip_timeout_seconds: int = Field(default=300, ge=10, le=1800)
+    scip_heap_mb: int = Field(default=1536, ge=256, le=8192)
 
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
@@ -122,6 +128,8 @@ class Settings(BaseSettings):
         "stripe_price_pro",
         "stripe_price_team",
         "support_email",
+        "scip_node_path",
+        "scip_tools_dir",
         mode="before",
     )
     @classmethod
