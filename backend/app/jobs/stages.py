@@ -238,8 +238,23 @@ async def index(rt: Runtime, claimed: Claim) -> Apply | None:
         raise StageError(f"sandbox_{error.reason}", transient=error.reason == "timeout") from error
     resolved: dict[str, dict[str, Any]] = {}
     if rt.indexers is not None:
+        manifests = []
+        if any(r.language == "rust" for r in rows):  # Cargo manifests give rust-analyzer the crate graph
+            manifest_rows = await _read(
+                rt,
+                claimed,
+                "SELECT f.path, f.blob_key FROM builds b"
+                " JOIN source_files f ON f.workspace_id = b.workspace_id AND f.snapshot_id = b.snapshot_id"
+                " WHERE b.workspace_id = :w AND b.id = :b AND f.blob_key IS NOT NULL"
+                " AND (f.path = 'Cargo.toml' OR f.path LIKE '%/Cargo.toml') ORDER BY f.path LIMIT :n",
+                n=indexers.MAX_MANIFESTS,
+            )
+            manifests = [
+                {"path": m.path, "text": (await rt.store.get(m.blob_key)).decode("utf-8")}
+                for m in manifest_rows
+            ]
         resolved, outcomes = await indexers.resolve(
-            rt.indexers, payload["files"], allow_unsandboxed=rt.allow_unsandboxed
+            rt.indexers, payload["files"], allow_unsandboxed=rt.allow_unsandboxed, manifests=manifests
         )
         for outcome in outcomes:
             metrics.INDEXER_RUNS.labels(indexer=outcome.indexer, outcome=outcome.status).inc()

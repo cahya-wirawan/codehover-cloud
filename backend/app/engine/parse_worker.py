@@ -24,6 +24,7 @@ MAX_REFERENCES_PER_FILE = 20000
 def _languages() -> dict[str, Language]:
     import tree_sitter_javascript
     import tree_sitter_python
+    import tree_sitter_rust
     import tree_sitter_typescript
 
     return {
@@ -31,6 +32,7 @@ def _languages() -> dict[str, Language]:
         "javascript": Language(tree_sitter_javascript.language()),
         "typescript": Language(tree_sitter_typescript.language_typescript()),
         "tsx": Language(tree_sitter_typescript.language_tsx()),
+        "rust": Language(tree_sitter_rust.language()),
     }
 
 
@@ -43,7 +45,27 @@ JS_DEFINITIONS = {
     "interface_declaration": "interface",
     "type_alias_declaration": "type",
 }
+# Rust maps onto the product's kinds (symbols.kind): structs, enums and unions are types, traits are
+# interfaces, inline modules are modules, constants and statics are variables, `macro_rules!` macros are
+# functions. Functions inside an `impl` or a trait are methods; an `impl` block itself is not a symbol,
+# its items are named after the implemented type (`Parser.new`).
+RUST_DEFINITIONS = {
+    "function_item": "function",
+    "function_signature_item": "function",
+    "struct_item": "type",
+    "enum_item": "type",
+    "union_item": "type",
+    "type_item": "type",
+    "trait_item": "interface",
+    "mod_item": "module",
+    "const_item": "variable",
+    "static_item": "variable",
+    "macro_definition": "function",
+}
+DEFINITIONS = {"python": PY_DEFINITIONS, "rust": RUST_DEFINITIONS}
 IDENTIFIER_TYPES = {"identifier", "type_identifier"}
+# Rust method calls and fields (`parser.next()`) name a `field_identifier`.
+REFERENCE_TYPES = {"rust": IDENTIFIER_TYPES | {"field_identifier"}}
 
 
 class _Positions:
@@ -89,12 +111,41 @@ def _python_docstring(node: Node) -> str | None:
     return None
 
 
+def _rust_docstring(node: Node) -> str | None:
+    """The `///` or `/** */` doc comments above an item, skipping its attributes (`#[derive(...)]`)."""
+    lines: list[str] = []
+    sibling = node.prev_named_sibling
+    while sibling is not None and sibling.type in ("line_comment", "block_comment", "attribute_item"):
+        if sibling.type != "attribute_item":
+            doc = next((c for c in sibling.children if c.type == "doc_comment"), None)
+            outer = any(c.type == "outer_doc_comment_marker" for c in sibling.children)
+            if doc is None or not outer:
+                break
+            text = _text(doc)
+            if sibling.type == "block_comment":
+                text = "\n".join(line.strip().removeprefix("*").strip() for line in text.splitlines())
+            lines.insert(0, text.strip())
+        sibling = sibling.prev_named_sibling
+    return "\n".join(line for line in lines if line).strip() or None
+
+
+def _rust_impl_name(node: Node) -> str | None:
+    """The implemented type's name: `S` for `impl<T> Trait for path::S<T>` (or `&S`, `[S]`)."""
+    target = node.child_by_field_name("type")
+    for current in _walk(target) if target is not None else ():
+        if current.type == "type_identifier":
+            return _text(current)
+    return None
+
+
 def _parameters(node: Node) -> list[str]:
     params = node.child_by_field_name("parameters")
     if params is None:
         return []
     names: list[str] = []
     for child in params.children:
+        if child.type == "self_parameter":
+            continue
         target: Node | None = child
         if child.type not in IDENTIFIER_TYPES:
             target = (
@@ -108,24 +159,33 @@ def _parameters(node: Node) -> list[str]:
     return names
 
 
-def _signature(node: Node, source: bytes) -> str:
+def _signature(node: Node, source: bytes, kind: str = "") -> str:
+    if node.type == "macro_definition":  # the rules are the macro's body
+        return f"macro_rules! {_text(node.child_by_field_name('name'))}"
     body = node.child_by_field_name("body")
     end = body.start_byte if body is not None else node.end_byte
     head = source[node.start_byte : end].decode("utf-8", "replace")
-    return " ".join(head.split()).rstrip(" :{")[:300]
+    return " ".join(head.split()).rstrip(" :{;" if kind == "rust" else " :{")[:300]
 
 
 def parse_file(language: Language, kind: str, text: str) -> dict[str, Any]:
     source = text.encode("utf-8")
     tree = Parser(language).parse(source)
     positions = _Positions(source)
-    definitions = PY_DEFINITIONS if kind == "python" else JS_DEFINITIONS
+    definitions = DEFINITIONS.get(kind, JS_DEFINITIONS)
+    identifiers = REFERENCE_TYPES.get(kind, IDENTIFIER_TYPES)
     symbols: list[dict[str, Any]] = []
     definition_name_nodes: set[tuple[int, int]] = set()
     seen_keys: dict[str, int] = {}
 
     def visit(node: Node, parents: list[str], in_class: bool) -> None:
         for child in node.children:
+            if child.type == "impl_item":  # Rust: not a symbol; its items belong to the implemented type
+                implemented = _rust_impl_name(child)
+                body = child.child_by_field_name("body")
+                if body is not None:
+                    visit(body, [*parents, implemented] if implemented else parents, in_class=True)
+                continue
             symbol_kind = definitions.get(child.type)
             name_node = child.child_by_field_name("name") if symbol_kind else None
             # JS/TS `const f = () => ...` and `const f = function () {...}`
@@ -149,19 +209,23 @@ def parse_file(language: Language, kind: str, text: str) -> dict[str, Any]:
                         "kind": effective,
                         "parent_key": ".".join(parents) or None,
                         **positions.span(child),
-                        "signature": _signature(target or child, source),
-                        "docstring": _python_docstring(child) if kind == "python" else None,
+                        "signature": _signature(target or child, source, kind),
+                        "docstring": _python_docstring(child)
+                        if kind == "python"
+                        else _rust_docstring(child)
+                        if kind == "rust"
+                        else None,
                         "params": _parameters(target or child),
                     }
                 )
-                visit(child, [*parents, name], in_class=effective == "class")
+                visit(child, [*parents, name], in_class=effective == "class" or child.type == "trait_item")
             else:
                 visit(child, parents, in_class)
 
     visit(tree.root_node, [], in_class=False)
     references = []
     for node in _walk(tree.root_node):
-        if node.type in IDENTIFIER_TYPES and (node.start_byte, node.end_byte) not in definition_name_nodes:
+        if node.type in identifiers and (node.start_byte, node.end_byte) not in definition_name_nodes:
             row, col = node.start_point
             references.append({"name": _text(node), "line": row + 1, "column": positions.column(row, col)})
             if len(references) >= MAX_REFERENCES_PER_FILE:

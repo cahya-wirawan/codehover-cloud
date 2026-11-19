@@ -95,7 +95,7 @@ async def body(stop: asyncio.Event) -> None:
     report = await sandbox.self_check(allow_unsandboxed=runtime.allow_unsandboxed)
     logger.info("sandbox verified", extra={"isolated": report.get("isolated")})
     if runtime.indexers is not None:  # T23: the indexer profile is checked the same way, and fails closed
-        report = await indexers.self_check(runtime.indexers, allow_unsandboxed=runtime.allow_unsandboxed)
+        await indexers.self_check(runtime.indexers, allow_unsandboxed=runtime.allow_unsandboxed)
         logger.info("indexer sandbox verified", extra={"versions": indexers.versions(runtime.indexers)})
     assert settings.amqp_url is not None, "AMQP_URL is required"
     connection = await aio_pika.connect_robust(settings.amqp_url.get_secret_value())

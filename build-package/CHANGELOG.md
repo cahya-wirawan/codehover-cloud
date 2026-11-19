@@ -4,6 +4,22 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.29] - 2026-11-19
+
+### Added
+
+- 01, 07, 15, 21, 22 (T23): Rust.
+  - **Parsing.** `.rs` files are parsed with tree-sitter-rust 0.24.2. Items map onto the existing symbol kinds (no migration), `impl` items are named after the implemented type, and doc comments become docstrings.
+  - **References.** rust-analyzer 2026-11-02 resolves them by type in the sandbox's indexer profile, with Rust 1.99.0's library sources for std types.
+  - **No cargo.** The sandboxed worker builds a `rust-project.json` from the repository's Cargo manifests, so cargo, build scripts and proc macros never run, and nothing is downloaded per build.
+  - **Sandbox.** The indexer profile now runs exactly one configured program per run (Node or rust-analyzer), and the startup probe runs once per program.
+  - **Installation.** `backend/indexers/fetch_rust.py` installs both downloads, pinned by SHA-256, in the backend image and in CI. Both deployment copies of the Dockerfile, Compose and `.env.example` gain `SCIP_RUST_ANALYZER_PATH`; the image also sets `SCIP_RUST_SRC_DIR`.
+  - **Open (21).** The open Rust limits are recorded there: crates.io dependencies, proc macros, build-script output, the assumed 64-bit Linux target, no Rust eval fixtures yet.
+
+### Changed
+
+- 23: engine 0.3.0 and parser bundle 0.3.0 (MINOR: Rust files are now selected and parsed, and a new indexer joins the bundle). Caches are invalidated; the replay eval baseline changes only in its version fields.
+
 ## [0.5.28] - 2026-11-19
 
 ### Added

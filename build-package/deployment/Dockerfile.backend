@@ -8,6 +8,12 @@ WORKDIR /opt/codehover/indexers
 COPY backend/indexers/package.json backend/indexers/package-lock.json backend/indexers/.npmrc ./
 RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund && npm cache clean --force
 
+# Rust SCIP (T23): the rust-analyzer binary and Rust's standard library sources, pinned by release and
+# SHA-256 in fetch_rust.py. No toolchain, cargo or proc-macro server is installed.
+FROM python:3.13-slim AS rust
+COPY backend/indexers/fetch_rust.py /tmp/fetch_rust.py
+RUN python3 /tmp/fetch_rust.py /opt/codehover/rust
+
 FROM python:3.13-slim AS runtime
 ARG APP_VERSION=0.0.0-dev
 ARG SPEC_VERSION=unknown
@@ -21,11 +27,14 @@ COPY backend/requirements.lock /tmp/requirements.lock
 # Hashes in the lock make pip verify every artifact (--require-hashes is implied).
 RUN pip install --no-cache-dir --no-deps -r /tmp/requirements.lock
 # Root-owned and read-only for the app user, like the code. The worker runs them only in the sandbox's
-# indexer profile (app.engine.sandbox_exec); unset SCIP_NODE_PATH to keep name matching only.
+# indexer profile (app.engine.sandbox_exec); unset SCIP_NODE_PATH or SCIP_RUST_ANALYZER_PATH to keep
+# that family on name matching only.
 COPY --from=indexers /usr/local/bin/node /opt/codehover/node/bin/node
 COPY --from=indexers /usr/local/LICENSE /opt/codehover/node/LICENSE
 COPY --from=indexers /opt/codehover/indexers/ /opt/codehover/indexers/
 ENV SCIP_NODE_PATH=/opt/codehover/node/bin/node SCIP_TOOLS_DIR=/opt/codehover/indexers
+COPY --from=rust /opt/codehover/rust/ /opt/codehover/rust/
+ENV SCIP_RUST_ANALYZER_PATH=/opt/codehover/rust/bin/rust-analyzer SCIP_RUST_SRC_DIR=/opt/codehover/rust/library
 # Code stays root-owned and read-only for the app user (defense in depth beside read_only rootfs).
 COPY backend/ /app/
 USER 10001:10001

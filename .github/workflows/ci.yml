@@ -109,6 +109,12 @@ jobs:
           npm ci --ignore-scripts --omit=dev --no-audit --no-fund
           echo "SCIP_NODE_PATH=$(command -v node)" >> "$GITHUB_ENV"
           echo "SCIP_TOOLS_DIR=$PWD" >> "$GITHUB_ENV"
+      - name: rust-analyzer and Rust's library sources, pinned by SHA-256 (T23)
+        working-directory: backend/indexers
+        run: |
+          python fetch_rust.py "$RUNNER_TEMP/rust"
+          echo "SCIP_RUST_ANALYZER_PATH=$RUNNER_TEMP/rust/bin/rust-analyzer" >> "$GITHUB_ENV"
+          echo "SCIP_RUST_SRC_DIR=$RUNNER_TEMP/rust/library" >> "$GITHUB_ENV"
       - name: Unit tests (Linux sandbox gates, including the indexer profile with the real indexers)
         env:
           CODEHOVER_REQUIRE_SCIP: "1"

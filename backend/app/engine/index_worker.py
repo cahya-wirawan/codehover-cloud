@@ -1,17 +1,21 @@
 """Run one SCIP indexer, inside the sandbox's indexer profile (app.engine.sandbox_exec, T23).
 
-stdin:  {"indexer": "scip-python" | "scip-typescript", "node": str, "tools": str, "work": str,
-         "timeout": int, "heap_mb": int}
+stdin:  {"indexer": "scip-python" | "scip-typescript" | "rust-analyzer", "program": str, "tools": str,
+         "work": str, "timeout": int, "heap_mb": int, "threads": int}
 stdout: {"status": "ok", "indexer": str, "documents": [{"path": str,
             "definitions": [[line, column, name, symbol]], "references": [[line, column, symbol]]}]}
         or {"status": "failed", "indexer": str, "reason": str}
 
 `<work>/src` holds the build's selected files (plus the tsconfig the worker wrote for TypeScript); the
-indexer writes `<work>/out/index.scip`. The OS sandbox is the boundary: no sockets, no program but Node,
-reads limited to runtimes, the indexer packages and the checkout, writes to `out`. scip-typescript also
-runs under Node's permission model (no child processes, workers, addons or WASI). Nothing is installed
-and no repository script, hook or config runs: the checkout holds source files only. Output positions match the parser's (02/06): lines 1-based, columns
-in Unicode scalars. Symbols are small integers, local symbols scoped to their document.
+indexer writes `<work>/out/index.scip`. The OS sandbox is the boundary: no sockets, no program but the
+run's own (Node, or rust-analyzer), reads limited to runtimes, that indexer's tools and the checkout,
+writes to `out`. scip-typescript also runs under Node's permission model (no child processes, workers,
+addons or WASI). Nothing is installed and no repository script, hook or config runs: the checkout holds
+source files only. For Rust, the repository's Cargo manifests sit in `<work>/manifests`; this module
+turns them into `out/rust-project.json` (app.engine.rust_project), which `<work>/rust-project.json`
+links to, so rust-analyzer loads that crate graph and never runs cargo, build scripts or proc macros.
+Output positions match the parser's (02/06): lines 1-based, columns in Unicode scalars. Symbols are
+small integers, local symbols scoped to their document.
 """
 
 from __future__ import annotations
@@ -23,12 +27,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from app.engine import scip
+from app.engine import rust_project, scip
 
 ENTRY_POINTS = {
     "scip-python": "@sourcegraph/scip-python/index.js",
     "scip-typescript": "@sourcegraph/scip-typescript/dist/src/main.js",
 }
+INDEXERS = frozenset({*ENTRY_POINTS, "rust-analyzer"})
+RUST_CONFIG = "rust-analyzer.json"  # written by the worker beside the checkout
+MANIFESTS = "manifests"  # the repository's Cargo.toml files, beside the checkout (never in `src`)
 # Node's permission model, a second layer inside the OS sandbox. scip-python cannot run under it: its
 # bundled @yarnpkg/fslib patches the `path` module, which the permission model freezes.
 NODE_PERMISSION = frozenset({"scip-typescript"})
@@ -45,6 +52,19 @@ FOREIGN_BREAKS = ("\u2028", "\u2029", "\x85")
 def command(request: dict[str, Any]) -> list[str]:
     tools, work = Path(request["tools"]), Path(request["work"])
     src, out = work / "src", work / "out"
+    if request["indexer"] == "rust-analyzer":
+        return [
+            request["program"],
+            "scip",
+            str(src),  # finds <work>/rust-project.json above the checkout; paths stay relative to src
+            "--output",
+            str(out / "index.scip"),
+            "--config-path",
+            str(work / RUST_CONFIG),
+            "--exclude-vendored-libraries",
+            "--num-threads",
+            str(int(request.get("threads", 2))),
+        ]
     arguments = {
         "scip-python": [
             "index",
@@ -75,7 +95,7 @@ def command(request: dict[str, Any]) -> list[str]:
         else []
     )
     return [
-        request["node"],
+        request["program"],
         f"--max-old-space-size={int(request['heap_mb'])}",
         *permission,
         f"--openssl-config={work / OPENSSL_CONFIG}",  # not /etc/ssl: the sandbox cannot read /etc
@@ -135,6 +155,19 @@ def _sources(src: Path) -> dict[str, str]:
     return texts
 
 
+def write_rust_project(work: Path, sysroot_src: str) -> int:
+    """`out/rust-project.json` from the checkout's `.rs` files and the manifests; returns its crate count."""
+    src, manifests = work / "src", work / MANIFESTS
+    texts = {}
+    for path in sorted(manifests.rglob("Cargo.toml")) if manifests.is_dir() else []:
+        if path.is_file():
+            texts[path.relative_to(manifests).as_posix()] = path.read_bytes().decode("utf-8", "replace")
+    files = [p.relative_to(src).as_posix() for p in src.rglob("*.rs") if p.is_file()]
+    graph = rust_project.project(texts, files, str(src), sysroot_src or None)
+    (work / "out" / "rust-project.json").write_text(json.dumps(graph))
+    return len(graph["crates"])
+
+
 def run(request: dict[str, Any]) -> dict[str, Any]:
     indexer = request["indexer"]
     work = Path(request["work"])
@@ -143,8 +176,11 @@ def run(request: dict[str, Any]) -> dict[str, Any]:
     def failed(reason: str) -> dict[str, Any]:
         return {"status": "failed", "indexer": indexer, "reason": reason}
 
+    if indexer == "rust-analyzer" and write_rust_project(work, request["tools"]) == 0:
+        return failed("no_crates")
+
     with (out / "indexer.log").open("wb") as log:
-        process = subprocess.Popen(  # noqa: S603 - fixed argv: the pinned Node binary and indexer
+        process = subprocess.Popen(  # noqa: S603 - fixed argv: the pinned binary and indexer
             command(request),
             stdin=subprocess.PIPE,
             stdout=log,
@@ -176,7 +212,7 @@ def run(request: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     request = json.loads(sys.stdin.read())
-    if request.get("indexer") not in ENTRY_POINTS:
+    if request.get("indexer") not in INDEXERS:
         sys.stdout.write(json.dumps({"status": "failed", "indexer": None, "reason": "unknown_indexer"}))
         return 0
     os.umask(0o077)

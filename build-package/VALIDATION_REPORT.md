@@ -1,6 +1,23 @@
 # Package validation
 
-Date: 2026-11-19 · Package version 0.5.28
+Date: 2026-11-19 · Package version 0.5.29
+
+0.5.29 adds Rust (T23). The T23 gate, "no network/install/hooks; timeout fallback labeled", was run in the backend image under the Compose hardening (read-only root, all capabilities dropped, no-new-privileges, `--network none`):
+- **Indexer sandbox** (`tests/unit/test_rust.py`, Linux): in the indexer profile with rust-analyzer as its program, the probe opens no socket and reads no parent environment, `/etc` or secrets. It cannot start Python or `/bin/sh` but can start rust-analyzer, and writes only to the scratch `out`. The Node probe is unchanged and runs once for both npm indexers.
+- **Real indexer:**
+  - **Cross-crate.** A two-crate Cargo workspace resolves across crates through a renamed path dependency (`geo = { package = "geo-core" }`).
+  - **Through std.** It resolves through std types: `Option::map` on a `Vec`'s slice, and slice iterators with a closure.
+  - **By receiver.** A trait method resolves to `Circle`'s impl, not `Square.area` of the same name.
+  - **Test code.** Code under `cfg(test)` is analyzed.
+  - **Nothing else runs.** rust-analyzer's own attempts to run `rustc` and `cargo` are refused by the sandbox, and it then reads the library sources directly.
+  - **Speed and fallback.** It takes about 6 s. A zero timeout falls back, and the scratch checkout is removed.
+- **Crate graph** (`tests/unit/test_rust.py`): Cargo's target discovery, workspace edition inheritance, `[lib]` names and paths, dev and build dependencies, and feature cfgs. Unreadable and virtual manifests add no crates. Roots outside the checkout (`..`, absolute) are refused.
+- **Parser:** Rust items map onto the existing kinds; impl methods are named after their type; doc comments go through attributes. Syntax errors still parse partially.
+- **Stage** (`tests/integration/test_builds.py`): a Rust repository builds to ready. The index stage gives the indexer exactly the snapshot's `Cargo.toml` files, and resolved references are stored as `index` edges.
+- **Worker startup:** the rebuilt stack's worker verifies the indexer profile for scip-python 0.6.8, scip-typescript 0.6.0 and rust-analyzer 2026-11-02.
+- **Full suites:**
+  - backend unit 190 on macOS; on Linux the Rust, SCIP and engine tests (35) in the hardened image and 195 unit tests in the image;
+  - integration 219.
 
 0.5.28 adds public GitHub repositories (FR-028), run locally against a fake of GitHub's public endpoints that records every request:
 - `tests/integration/test_public_repos.py` (4 tests):

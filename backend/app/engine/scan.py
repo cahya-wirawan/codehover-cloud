@@ -29,6 +29,7 @@ LANGUAGES = {
     ".mts": "typescript",
     ".cts": "typescript",
     ".tsx": "tsx",
+    ".rs": "rust",
 }
 EXCLUDED_DIRS = frozenset(
     {

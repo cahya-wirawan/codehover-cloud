@@ -27,12 +27,15 @@ class SandboxError(Exception):
 
 @dataclass(frozen=True)
 class IndexerPaths:
-    """What the indexer profile may touch (sandbox_exec.indexer_rules): the Node binary it may run, the
-    installed indexer packages and one scratch directory whose `out` subdirectory is writable."""
+    """What the indexer profile may touch (sandbox_exec.indexer_rules): the one program it may run (Node
+    for scip-python and scip-typescript, the rust-analyzer binary), the read-only tools that program
+    needs (the indexer packages, Rust's library sources) and one scratch directory whose `out`
+    subdirectory is writable. `probe` is the argument list the startup self-check runs the program with."""
 
-    node: str
+    program: str
     tools: str
     work: str
+    probe: tuple[str, ...] = ("--version",)
 
 
 async def run(
@@ -49,7 +52,7 @@ async def run(
     if indexer is not None:
         env |= {
             "CODEHOVER_SANDBOX_PROFILE": "indexer",
-            "CODEHOVER_NODE": indexer.node,
+            "CODEHOVER_PROGRAM": indexer.program,
             "CODEHOVER_TOOLS": indexer.tools,
             "CODEHOVER_WORK": indexer.work,
         }
@@ -89,8 +92,12 @@ async def self_check(
     *, allow_unsandboxed: bool = False, indexer: IndexerPaths | None = None
 ) -> dict[str, Any]:
     """Raise unless the sandbox blocks network sockets (required on Linux). With `indexer`, check that
-    profile instead: Node must start, and nothing but `<work>/out` may be written."""
-    payload = {"node": indexer.node, "work": indexer.work} if indexer is not None else {}
+    profile instead: its program must start, and nothing but `<work>/out` may be written."""
+    payload = (
+        {"program": indexer.program, "args": list(indexer.probe), "work": indexer.work}
+        if indexer is not None
+        else {}
+    )
     report = await run(
         "app.engine.sandbox_probe", payload, allow_unsandboxed=allow_unsandboxed, indexer=indexer
     )
@@ -99,6 +106,6 @@ async def self_check(
     closed = ("parent_environ", "etc", "secrets", "exec", "write_code", "write_tmp", "write_work")
     if sys.platform == "linux" and any(report.get(k) for k in closed):
         raise SandboxError("filesystem_or_process_not_isolated")
-    if indexer is not None and not (report.get("exec_node") and report.get("write_out")):
+    if indexer is not None and not (report.get("exec_program") and report.get("write_out")):
         raise SandboxError("indexer_unavailable")
     return report

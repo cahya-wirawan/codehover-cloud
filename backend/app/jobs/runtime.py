@@ -37,8 +37,11 @@ def build_runtime(settings: Settings, application_name: str) -> tuple[Runtime, h
                 tools=settings.scip_tools_dir,
                 timeout=settings.scip_timeout_seconds,
                 heap_mb=settings.scip_heap_mb,
+                rust_analyzer=settings.scip_rust_analyzer_path,
+                rust_src=settings.scip_rust_src_dir,
             )
-            if settings.scip_node_path and settings.scip_tools_dir
+            if (settings.scip_node_path and settings.scip_tools_dir)
+            or (settings.scip_rust_analyzer_path and settings.scip_rust_src_dir)
             else None
         ),
     )
