@@ -81,12 +81,16 @@ async def list_projects(db: AsyncSession, member: Member) -> list[dict[str, Any]
     rows = await db.execute(
         text(
             "SELECT p.id, p.workspace_id, p.name, p.slug, p.tracked_ref, r.owner, r.name AS repository,"
-            " c.provider AS source"
+            " c.provider AS source, p.access"
             " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
             " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
-            " WHERE p.workspace_id = :w AND p.deleted_at IS NULL ORDER BY p.created_at, p.id"
+            " WHERE p.workspace_id = :w AND p.deleted_at IS NULL"
+            # Restricted projects the caller may not see are left out (0027; the row policy agrees).
+            " AND (:support OR app_private.project_role(p.workspace_id, p.id, :u) IS NOT NULL)"
+            " AND (NOT :support OR p.access = 'workspace')"
+            " ORDER BY p.created_at, p.id"
         ),
-        {"w": member.workspace_id},
+        {"w": member.workspace_id, "u": member.user_id, "support": member.support},
     )
     return [dict(r._mapping) for r in rows]
 
@@ -96,12 +100,13 @@ async def get_project(db: AsyncSession, member: Member, project_id: UUID) -> dic
         await db.execute(
             text(
                 "SELECT p.id, p.workspace_id, p.name, p.slug, p.tracked_ref, r.owner, r.name AS repository,"
-                " c.provider AS source"
+                " c.provider AS source, p.access,"
+                " COALESCE(app_private.project_role(p.workspace_id, p.id, :u), 'viewer') AS my_role"
                 " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
                 " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
                 " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL"
             ),
-            {"w": member.workspace_id, "p": project_id},
+            {"w": member.workspace_id, "p": project_id, "u": member.user_id},
         )
     ).one_or_none()
     if row is None:

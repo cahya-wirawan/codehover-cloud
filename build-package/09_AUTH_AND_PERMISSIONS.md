@@ -18,7 +18,8 @@ Sign-in grants a codehover-cloud identity. GitHub App installation grants reposi
 
 | Action | Viewer | Editor | Admin | Owner |
 |---|---|---|---|---|
-| Read workspace projects, code, guide, status | Yes | Yes | Yes | Yes |
+| Read workspace projects, code, guide, status | Yes¹ | Yes¹ | Yes | Yes |
+| Restrict a project, grant or revoke project access | No | No | Yes | Yes |
 | Create projects, configure, estimate/build/cancel | No | Yes | Yes | Yes |
 | Export complete source/KB/static bundle | No | Yes | Yes | Yes |
 | Publish/unpublish, public disclosure, waiver | No | No | Yes | Yes |
@@ -29,6 +30,17 @@ Sign-in grants a codehover-cloud identity. GitHub App installation grants reposi
 | Checkout, cancel plan, billing portal | No | No | No | Yes |
 | Delete workspace | No | No | No | Yes |
 
-All members have access to all workspace projects; warn before invitation/import. Role checks are backend service policy, frontend disabled controls only aid usability. Platform operators (M4: the `operators` table, granted by the deployment with `python -m app.ops.operators`; every operator function re-checks it in the database) have a separate operations role with counts/IDs, not implicit tenant membership. Public visitors access only explicitly published resources via publication resolver, not general build endpoints. A private publication with an address is readable there only by signed-in members of its workspace; anyone else gets 404. Any unpublished build is private regardless of repository visibility.
+¹ Open projects only, plus restricted projects they were granted.
+
+Per-project access (0027):
+- A project is open to every member (the default) or restricted.
+- A restricted project is visible to workspace admins and owners, and to the members granted access to it. The grant (viewer or editor) is the member's role on that project, below or above their workspace role.
+- Everywhere else a restricted project is 404, like anything outside the caller's workspaces: the project, its builds, viewer data, freshness, exports, the event stream (re-checked every 30 s) and its members-only site.
+- Support access never reaches restricted projects.
+- `app_private.project_role(workspace, project, user)` is the one rule, used by the API, private sites, the event stream and a restrictive row policy on `projects` for requests that act for a user.
+- Leaving the workspace deletes that member's grants with the membership.
+- The repository list of a GitHub connection stays workspace-wide: it names repositories, not project content.
+
+All members had access to all workspace projects before 0027; warn before invitation/import. Role checks are backend service policy, frontend disabled controls only aid usability. Platform operators (M4: the `operators` table, granted by the deployment with `python -m app.ops.operators`; every operator function re-checks it in the database) have a separate operations role with counts/IDs, not implicit tenant membership. Public visitors access only explicitly published resources via publication resolver, not general build endpoints. A private publication with an address is readable there only by signed-in members of its workspace; anyone else gets 404. Any unpublished build is private regardless of repository visibility.
 
 Membership removal/role downgrade is effective on next HTTP request, SSE reauthorization ≤30s. No long-lived signed source URL bypasses revocation. Owner invariant uses locked workspace transaction; prevent concurrent removal of both owners. Invitations are single-use token hashes, scoped role, seven-day expiry and auditable revocation. Notifications/email provider is adapter-backed; send only system-required invites/build notices after user action, not marketing by default.

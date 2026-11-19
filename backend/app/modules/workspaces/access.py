@@ -133,4 +133,48 @@ async def resource_member(
     workspace_id = await resource_workspace(db, kind, resource_id)  # type: ignore[arg-type]
     if workspace_id is None:
         raise ApiError(404, "NOT_FOUND", "Not found.")
-    return await _member(workspace_id, db, principal, write=write)
+    member = await _member(workspace_id, db, principal, write=write)
+    if kind in PROJECT_SCOPED:
+        member = await project_member(db, member, await _project_of(db, kind, workspace_id, resource_id))
+    return member
+
+
+PROJECT_SCOPED = ("project", "build", "export")
+
+
+async def _project_of(db: Db, kind: str, workspace_id: UUID, resource_id: UUID) -> UUID | None:
+    sql = {
+        "project": "SELECT id FROM projects WHERE workspace_id = :w AND id = :r",
+        "build": "SELECT project_id FROM builds WHERE workspace_id = :w AND id = :r",
+        "export": "SELECT b.project_id FROM exports x JOIN builds b ON b.workspace_id = x.workspace_id"
+        " AND b.id = x.build_id WHERE x.workspace_id = :w AND x.id = :r",
+    }[kind]
+    value = (await db.execute(text(sql), {"w": workspace_id, "r": resource_id})).scalar_one_or_none()
+    return value if value is None or isinstance(value, UUID) else UUID(str(value))
+
+
+async def project_member(db: Db, member: Member, project_id: UUID | None) -> Member:
+    """Per-project access (0027): the caller's role on this project. A restricted project the caller may
+    not see is 404, like anything outside their workspaces; a project grant is their role there. Support
+    access never reaches restricted projects."""
+    if project_id is None:
+        raise ApiError(404, "NOT_FOUND", "Not found.")
+    if member.support:
+        access = (
+            await db.execute(
+                text("SELECT access FROM projects WHERE workspace_id = :w AND id = :p"),
+                {"w": member.workspace_id, "p": project_id},
+            )
+        ).scalar_one_or_none()
+        if access != "workspace":
+            raise ApiError(404, "NOT_FOUND", "Not found.")
+        return member
+    role = (
+        await db.execute(
+            text("SELECT app_private.project_role(:w, :p, :u)"),
+            {"w": member.workspace_id, "p": project_id, "u": member.user_id},
+        )
+    ).scalar_one_or_none()
+    if role is None:
+        raise ApiError(404, "NOT_FOUND", "Not found.")
+    return Member(member.principal, member.workspace_id, role, member.support)

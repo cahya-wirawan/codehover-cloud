@@ -30,6 +30,105 @@
         "title": "Accepted",
         "type": "object"
       },
+      "AccessGrantIn": {
+        "properties": {
+          "role": {
+            "enum": [
+              "viewer",
+              "editor"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "AccessGrantIn",
+        "type": "object"
+      },
+      "AccessMemberOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "workspace_role": {
+            "title": "Workspace Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "name",
+          "role",
+          "workspace_role",
+          "created_at"
+        ],
+        "title": "AccessMemberOut",
+        "type": "object"
+      },
+      "AccessModeIn": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "workspace",
+              "restricted"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "AccessModeIn",
+        "type": "object"
+      },
+      "AccessOut": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/AccessMemberOut"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "workspace",
+              "restricted"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "version",
+          "members"
+        ],
+        "title": "AccessOut",
+        "type": "object"
+      },
       "AccountDeletionIn": {
         "properties": {
           "confirmation": {
@@ -2990,10 +3089,36 @@
       },
       "ProjectOut": {
         "properties": {
+          "access": {
+            "default": "workspace",
+            "enum": [
+              "workspace",
+              "restricted"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "my_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "viewer",
+                  "editor",
+                  "admin",
+                  "owner"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Role"
           },
           "name": {
             "title": "Name",
@@ -6978,6 +7103,225 @@
           }
         },
         "summary": "Get Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/access": {
+      "get": {
+        "description": "Who can open a project (0027): admins manage it, and see the grants.",
+        "operationId": "get_project_access_api_v1_projects__project_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Access",
+        "tags": [
+          "projects"
+        ]
+      },
+      "put": {
+        "operationId": "put_project_access_api_v1_projects__project_id__access_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessModeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Project Access",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/access/members/{user_id}": {
+      "delete": {
+        "operationId": "delete_project_member_api_v1_projects__project_id__access_members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project Member",
+        "tags": [
+          "projects"
+        ]
+      },
+      "put": {
+        "operationId": "put_project_member_api_v1_projects__project_id__access_members__user_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessGrantIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Project Member",
         "tags": [
           "projects"
         ]

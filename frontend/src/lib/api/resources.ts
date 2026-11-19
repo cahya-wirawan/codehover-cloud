@@ -32,6 +32,8 @@ export interface Project {
   owner: string;
   repository: string;
   source?: "github" | "upload";
+  access?: "workspace" | "restricted";
+  my_role?: Role | null;
 }
 export interface BuildSummary {
   id: string;
@@ -167,6 +169,17 @@ export interface ProviderKey {
   created_at: string;
   created_by_name: string | null;
   verified_at: string | null;
+}
+export interface WorkspaceMember {
+  user_id: string;
+  display_name: string;
+  role: Role;
+  created_at: string;
+}
+export interface ProjectAccess {
+  mode: "workspace" | "restricted";
+  version: number;
+  members: { user_id: string; name: string; role: "viewer" | "editor"; workspace_role: Role; created_at: string }[];
 }
 export interface Variant {
   id: string;
@@ -551,6 +564,15 @@ export const api = {
   startTrial: async (wid: string) => json<BillingState>(await apiSend("POST", `/workspaces/${wid}/billing/trial`)),
   meta: () => apiJson<SiteMeta>("/meta"),
   variants: (bid: string) => apiJson<Page<Variant>>(`/builds/${bid}/variants`),
+  members: (wid: string) => apiJson<Page<WorkspaceMember>>(`/workspaces/${wid}/members?limit=100`),
+  projectAccess: (pid: string) => apiGetWithEtag<ProjectAccess>(`/projects/${pid}/access`),
+  setProjectAccess: async (pid: string, mode: ProjectAccess["mode"], ifMatch: string) =>
+    json<ProjectAccess>(await apiSend("PUT", `/projects/${pid}/access`, { mode }, { "If-Match": ifMatch })),
+  grantProjectAccess: async (pid: string, userId: string, role: "viewer" | "editor") =>
+    json<ProjectAccess>(await apiSend("PUT", `/projects/${pid}/access/members/${userId}`, { role })),
+  revokeProjectAccess: async (pid: string, userId: string) => {
+    await apiSend("DELETE", `/projects/${pid}/access/members/${userId}`);
+  },
   pushPolicy: (pid: string) => apiGetWithEtag<PushPolicy>(`/projects/${pid}/push-policy`),
   setPushPolicy: async (pid: string, policy: PushPolicyName, capMicroUsd: number, ifMatch: string) =>
     json<PushPolicy>(
