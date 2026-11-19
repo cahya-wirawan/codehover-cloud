@@ -28,6 +28,7 @@ M0 to M6 are implemented, including SCIP (T23), plus per-project access control.
   - Language and level variants (prompt set 0.4.0 with the audience text): `variant_of` a ready base reuses its snapshot, scope and guide plan, so anchors match.
   - BYOK and batch (`providers/keys.py`, `jobs/batching.py`, 0026): sealed workspace Anthropic keys and `funding: own_key` builds without the allowance; explain batches at the catalog batch price, with persisted batch IDs and `StageWait`.
   - SCIP (T23; `engine/indexers.py`, `index_worker.py`, `scip.py`): scip-python and scip-typescript run in the sandbox's `indexer` profile; resolved references are `index` edges, and a failed or timed-out family keeps labeled `name` edges.
+- **Public GitHub repositories** (0028, `projects/public_repos.py`, `adapters/github/public.py`): a `public` connection kind reads public repositories without the App; visibility is re-checked on every resolve and download, tarballs come anonymously from codeload, and the optional `GITHUB_PUBLIC_TOKEN` only raises the metadata rate limit. No push rebuilds.
 - **Per-project access** (0027, `projects/access.py`): a project is open to the workspace or restricted; restricted projects are visible to admins, owners and members with a viewer or editor grant, and the grant is their role there.
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
@@ -44,6 +45,7 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - only the explain stage is batched;
 - SCIP links calls through an interface or Protocol to the interface method, and never reads a repository's tsconfig path aliases;
 - a published site shows one variant;
+- publishing sites of third-party public repositories has no redistribution check yet (spec 21);
 - rotating `APP_ENCRYPTION_KEY` makes stored provider keys unreadable.
 
 Without a plan, a workspace gets `GENERATION_ALLOWANCE_MICRO_USD`; a held plan replaces it with the plan's allowance, and manual grants add to either.

@@ -31,7 +31,7 @@ export interface Project {
   tracked_ref: string;
   owner: string;
   repository: string;
-  source?: "github" | "upload";
+  source?: "github" | "upload" | "public";
   access?: "workspace" | "restricted";
   my_role?: Role | null;
 }
@@ -540,7 +540,10 @@ export const api = {
   projects: (wid: string) => apiJson<Page<Project>>(`/workspaces/${wid}/projects`),
   createProject: async (
     wid: string,
-    body: { repository_id: string; name: string; slug: string } | { source: "upload"; name: string; slug: string },
+    body:
+      | { repository_id: string; name: string; slug: string }
+      | { source: "upload"; name: string; slug: string }
+      | { source: "public"; public_repository: string; name: string; slug: string; tracked_ref?: string },
   ) => json<Project>(await apiSend("POST", `/workspaces/${wid}/projects`, body)),
   uploadArchive: async (pid: string, file: Blob) =>
     json<Snapshot>(await apiUpload(`/projects/${pid}/uploads`, file, "application/zip")),

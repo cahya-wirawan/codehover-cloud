@@ -469,8 +469,10 @@ async def set_policy(
         raise ApiError(404, "NOT_FOUND", "Project not found.")
     if if_match is None:
         raise ApiError(428, "PRECONDITION_REQUIRED", "Send If-Match with the current push policy ETag.")
-    if policy != "off" and await uploads.is_upload(db, member.workspace_id, project_id):
-        raise ApiError(409, "NOT_A_GITHUB_PROJECT", "Uploaded projects are not connected to pushes.")
+    if policy != "off" and await uploads.source(db, member.workspace_id, project_id) != "github":
+        raise ApiError(
+            409, "NOT_A_GITHUB_PROJECT", "Only projects connected through the GitHub App receive pushes."
+        )
     if if_match != policy_etag(current):
         raise ApiError(
             409, "VERSION_CONFLICT", "The push policy changed meanwhile.", details={"version": current}

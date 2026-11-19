@@ -14,6 +14,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from app import __version__
 from app.adapters.billing import billing_provider
 from app.adapters.github.app import GitHubApp
+from app.adapters.github.public import PublicGitHub
 from app.adapters.oauth import OAuthProvider
 from app.adapters.oauth.github import GitHubProvider
 from app.adapters.oauth.google import GoogleProvider
@@ -67,6 +68,11 @@ def object_store(settings: Settings) -> ObjectStore:
     from app.ops.bootstrap import s3_client
 
     return S3ObjectStore(s3_client(settings), settings.s3_bucket)
+
+
+def public_github(settings: Settings, http: httpx.AsyncClient) -> PublicGitHub:
+    token = settings.github_public_token
+    return PublicGitHub(http, token.get_secret_value() if token is not None else None)
 
 
 def github_app(settings: Settings, http: httpx.AsyncClient) -> GitHubApp | None:
@@ -153,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sealer = Sealer(settings.app_encryption_key.get_secret_value())
     app.state.oauth_providers = oauth_providers(settings, http)
     app.state.github_app = github_app(settings, http)
+    app.state.public_github = public_github(settings, http)
     app.state.objects = object_store(settings)
     app.state.catalog = catalog.load(settings.model_catalog_file)
     app.state.billing = billing_provider(settings, http)

@@ -4,6 +4,17 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.28] - 2026-11-19
+
+### Added
+
+- 01, 05, 06, 08, 09, 21, 22 (FR-028): public GitHub repositories without the GitHub App (migration 0028).
+  - An editor creates a project from `owner/name` or its github.com address; the repository must be public. It sits under the workspace's one `public` connection, addressed by GitHub's numeric ID, and builds, snapshots, freshness and refs work as for App projects. Push rebuilds are refused (no webhooks).
+  - Visibility is checked again on every ref resolution and download; a repository that turns private stops building with `repository_not_public`. Private, internal and missing repositories are the same 404 `REPOSITORY_NOT_PUBLIC`.
+  - Metadata may use the optional `GITHUB_PUBLIC_TOKEN` (rate limit only); source tarballs always come anonymously from codeload. The App and the public source share one repository row: an App grant takes a public row over, and a public request for an App-granted repository reuses it.
+  - The new-project form offers "A public GitHub repository" and starts on it when the workspace has no App connection. Both deployment copies of Compose and `.env.example` gain `GITHUB_PUBLIC_TOKEN`.
+  - 21 records the open decision on publishing sites of third-party repositories.
+
 ## [0.5.27] - 2026-11-19
 
 ### Added

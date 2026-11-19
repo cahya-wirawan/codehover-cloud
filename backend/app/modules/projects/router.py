@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
 from pydantic import BaseModel, Field, model_validator
 
 from app.adapters.github.app import GitHubApp
+from app.adapters.github.public import PublicGitHub
 from app.adapters.storage import ObjectStore
 from app.core import ratelimit
 from app.core.errors import ApiError
@@ -31,7 +32,16 @@ from app.engine.estimate import GenerationConfig
 from app.modules.billing import service as billing
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
 from app.modules.projects import access as project_access
-from app.modules.projects import estimates, events, publication, pushes, quality, service, uploads
+from app.modules.projects import (
+    estimates,
+    events,
+    public_repos,
+    publication,
+    pushes,
+    quality,
+    service,
+    uploads,
+)
 from app.modules.projects import exports as export_service
 from app.modules.workspaces.access import Member, ReadMember, Role, WriteMember, require_role, resource_member
 
@@ -66,8 +76,10 @@ BuildReader = Annotated[Member, Depends(build_reader)]
 
 
 class ProjectCreate(BaseModel):
-    source: Literal["github", "upload"] = "github"
+    source: Literal["github", "upload", "public"] = "github"
     repository_id: UUID | None = None  # required for GitHub projects
+    # Public GitHub repository without the App: `owner/name` or its github.com URL (source "public").
+    public_repository: Annotated[str | None, Field(max_length=200)] = None
     name: Annotated[str, Field(min_length=1, max_length=80)]
     slug: Annotated[str, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$")]
     tracked_ref: Annotated[str, Field(max_length=255)] = ""
@@ -76,8 +88,10 @@ class ProjectCreate(BaseModel):
     def _repository_for_github(self) -> ProjectCreate:
         if self.source == "github" and self.repository_id is None:
             raise ValueError("repository_id is required for a GitHub project")
-        if self.source == "upload" and self.repository_id is not None:
-            raise ValueError("an uploaded project has no repository_id")
+        if self.source != "github" and self.repository_id is not None:
+            raise ValueError("only a GitHub App project has a repository_id")
+        if (self.source == "public") != (self.public_repository is not None):
+            raise ValueError("public_repository is required for, and only for, a public project")
         return self
 
 
@@ -89,7 +103,7 @@ class ProjectOut(BaseModel):
     tracked_ref: str
     owner: str
     repository: str
-    source: Literal["github", "upload"] = "github"
+    source: Literal["github", "upload", "public"] = "github"
     access: Literal["workspace", "restricted"] = "workspace"
     my_role: Role | None = None  # the caller's role on this project (0027); set on single-project reads
 
@@ -434,6 +448,11 @@ def _github(request: Request) -> GitHubApp | None:
     return app
 
 
+def _public(request: Request) -> PublicGitHub | None:
+    client: PublicGitHub | None = getattr(request.app.state, "public_github", None)
+    return client
+
+
 def _settings(request: Request) -> Settings:
     settings: Settings = request.app.state.settings
     return settings
@@ -464,6 +483,24 @@ async def create_project(body: ProjectCreate, request: Request, db: Db, member: 
         await db.commit()
         await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
         return ProjectOut(**await service.get_project(db, member, project_id))
+    if body.source == "public":
+        client = _public(request)
+        if client is None:
+            raise ApiError(
+                503, "UNAVAILABLE", "Public GitHub repositories are not available.", retryable=True
+            )
+        assert body.public_repository is not None  # the model validator requires it
+        return ProjectOut(
+            **await public_repos.create_public_project(
+                db,
+                client,
+                member,
+                body.public_repository,
+                body.name.strip(),
+                body.slug,
+                body.tracked_ref.strip(),
+            )
+        )
     assert body.repository_id is not None  # the model validator requires it
     return ProjectOut(
         **await service.create_project(
@@ -635,7 +672,13 @@ async def start_build(
             )
         else:
             build = await service.start_build(
-                db, _github(request), _settings(request), member, project_id, body.ref
+                db,
+                _github(request),
+                _settings(request),
+                member,
+                project_id,
+                body.ref,
+                public=_public(request),
             )
         return 202, BuildOut(**build).model_dump(mode="json")
 
@@ -716,7 +759,7 @@ async def request_snapshot(
     require_role(member, "editor")
     await _limit(request, "acquire", member)
     snapshot = await estimates.request_snapshot(
-        db, _github(request), _settings(request), member, project_id, body.ref
+        db, _github(request), _settings(request), member, project_id, body.ref, public=_public(request)
     )
     response.headers["Location"] = f"/api/v1/projects/{project_id}/snapshots/{snapshot['id']}"
     return SnapshotOut(**snapshot)
@@ -917,6 +960,7 @@ async def retry_build(
             build_id,
             body.estimate_id,
             body.cap_micro_usd,
+            public=_public(request),
         )
         return 202, BuildOut(**build).model_dump(mode="json")
 
@@ -1193,4 +1237,6 @@ class FreshnessOut(BaseModel):
 async def project_freshness(
     project_id: UUID, request: Request, db: Db, member: ProjectReader
 ) -> FreshnessOut:
-    return FreshnessOut(**await service.freshness(db, _github(request), member, project_id))
+    return FreshnessOut(
+        **await service.freshness(db, _github(request), member, project_id, public=_public(request))
+    )

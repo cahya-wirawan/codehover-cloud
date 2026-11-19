@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     github_app_client_secret: SecretStr | None = None
     github_app_private_key_file: str | None = None
     github_webhook_secret: SecretStr | None = None
+    # Public repositories without the App: an optional token (no permissions needed) only raises GitHub's
+    # metadata rate limit for the whole server; source downloads are always anonymous.
+    github_public_token: SecretStr | None = None
 
     # Provider credentials (07): a provider's catalog models are usable only when its key is set.
     anthropic_api_key: SecretStr | None = None
@@ -121,6 +124,7 @@ class Settings(BaseSettings):
         "github_app_client_secret",
         "github_app_private_key_file",
         "github_webhook_secret",
+        "github_public_token",
         "anthropic_api_key",
         "model_catalog_file",
         "stripe_secret_key",

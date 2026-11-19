@@ -76,6 +76,7 @@ def runtime_for(app: Any, provider: ScriptedProvider | None = None) -> Runtime:
         sessions=session_factory(create_async_engine(RUNTIME_URL)),
         store=app.state.objects,
         github=app.state.github_app,
+        public_github=app.state.public_github,
         allow_unsandboxed=True,
         catalog=app.state.catalog,
         gateways=gateways,

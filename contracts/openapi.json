@@ -3027,6 +3027,18 @@
             "title": "Name",
             "type": "string"
           },
+          "public_repository": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Repository"
+          },
           "repository_id": {
             "anyOf": [
               {
@@ -3048,7 +3060,8 @@
             "default": "github",
             "enum": [
               "github",
-              "upload"
+              "upload",
+              "public"
             ],
             "title": "Source",
             "type": "string"
@@ -3140,7 +3153,8 @@
             "default": "github",
             "enum": [
               "github",
-              "upload"
+              "upload",
+              "public"
             ],
             "title": "Source",
             "type": "string"

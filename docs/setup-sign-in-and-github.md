@@ -10,6 +10,8 @@ A live deployment needs three registrations with outside providers. The demo (`t
 
 The GitHub OAuth app and the GitHub App are separate on purpose (`09_AUTH_AND_PERMISSIONS.md`): signing in never grants repository access.
 
+**Public repositories need none of this.** A project can read a public GitHub repository without the App: choose "A public GitHub repository" under New project. Optionally set `GITHUB_PUBLIC_TOKEN` to a token of a dedicated GitHub account with no repository access and no permissions. It only raises GitHub's metadata rate limit for the server, from 60 to 5,000 calls an hour; source downloads never use it. You still need the App for private repositories and for push rebuilds.
+
 ## Before you start
 
 - [ ] **Decide the environments.** Register a separate set for each environment (local, staging, production). Every registration points at one exact origin, and a GitHub App has one setup URL and one webhook URL.

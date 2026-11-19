@@ -22,7 +22,7 @@ Differentiation: source-first hover reading; explicit citation support and refer
 
 MVP includes OAuth, personal/team workspaces, read-only GitHub App installation, repository selection, exact commit snapshots, scan exclusions, preflight estimates, one approved hosted LLM and replay testing, queued builds with cancellation/retry, code/guide viewer, search, verification review, publication access controls, static/KB exports, usage ledger, and owner/member roles. A closed beta can use manual entitlement grants; a paid public SaaS release additionally requires Stripe checkout, portal, validated webhooks and reconciliation.
 
-P1 adds GitHub push rebuilds, incremental dependency invalidation optimization, German/Indonesian output, beginner/expert variants, sandboxed Python/TypeScript SCIP, batch API processing, BYOK, richer retention controls and ZIP repository import. P2 adds custom domains, enterprise identity, additional VCS providers, hosted MCP, advanced graph views and customer-managed inference. Languages not passing parser fixtures are shown as plain text rather than advertised as semantically supported.
+P1 adds GitHub push rebuilds, incremental dependency invalidation optimization, German/Indonesian output, beginner/expert variants, sandboxed Python/TypeScript SCIP, batch API processing, BYOK, richer retention controls, ZIP repository import and public GitHub repositories without the App (FR-028). P2 adds custom domains, enterprise identity, additional VCS providers, hosted MCP, advanced graph views and customer-managed inference. Languages not passing parser fixtures are shown as plain text rather than advertised as semantically supported.
 
 Non-goals: source-code editing, PR creation, autonomous shell agents, compiling/running tenant projects, installing their dependencies, general code chat, security-audit certification, live IDE replacement, training models on user repositories, or changing repository visibility. Webhooks never auto-publish publicly by default.
 
@@ -57,6 +57,7 @@ Non-goals: source-code editing, PR creation, autonomous shell agents, compiling/
 | FR-025 | Webhook-driven builds with branch filtering, deduplication and debounce; owner-defined approval policy (M6: per-project push policy off/snapshot/build with a push cap; never publishes) | P1 |
 | FR-026 | Language/level variants keep page and source anchor; immutable citations survive translation (M6: en/de/id × standard/beginner/expert; a variant reuses its base build's snapshot, scope and guide plan) | P1 |
 | FR-027 | GitHub token revocation blocks ingestion and publication; installation removal suspends affected private hosted sites until owner review | P0 |
+| FR-028 | A project can read a public GitHub repository without the GitHub App: an editor enters `owner/name` or its github.com address, the repository must be public whenever a ref is resolved or source is downloaded, builds start by hand (no push rebuilds), and source downloads are anonymous | P1 |
 
 ## Critical product policies
 

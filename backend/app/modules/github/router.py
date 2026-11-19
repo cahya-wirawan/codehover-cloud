@@ -205,5 +205,6 @@ async def list_repositories(
 @router.get("/workspaces/{workspace_id}/repositories/{repository_id}/refs", response_model=RefList)
 async def list_refs(repository_id: UUID, request: Request, db: Db, member: ReadMember) -> RefList:
     require_role(member, "editor")
-    refs = await service.list_refs(db, _require_app(request), member, repository_id)
+    public = getattr(request.app.state, "public_github", None)
+    refs = await service.list_refs(db, _app(request), member, repository_id, public)
     return RefList(items=[RefOut(**r) for r in refs])

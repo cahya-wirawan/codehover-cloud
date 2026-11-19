@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-19 · Package version 0.5.27
+Date: 2026-11-19 · Package version 0.5.28
+
+0.5.28 adds public GitHub repositories (FR-028), run locally against a fake of GitHub's public endpoints that records every request:
+- `tests/integration/test_public_repos.py` (4 tests):
+  - A public repository builds to ready with no GitHub App configured. The tarball request carries no credentials while metadata calls use the operator token, and the repository is re-checked by numeric ID. Freshness and refs work, a second project shares the repository row, and push policies are refused.
+  - Private (visible to the token), missing and malformed repositories are refused, and a foreign host never becomes a request.
+  - A repository that turns private between the request and the download fails acquisition with `repository_not_public` and downloads nothing; a missing branch is `REF_NOT_FOUND`.
+  - The App and the public source share one repository row.
+- `tests/unit/test_public_github.py`: strict `owner/name` parsing, answers about private or internal repositories refused even with a token, and rate limits reported as such.
+- Full suites: backend unit 182 (macOS), integration 218, frontend 41.
 
 0.5.27 records the T23 gate, "no network/install/hooks; timeout fallback labeled", run locally and in the backend image under the Compose hardening (read-only root, all capabilities dropped, no-new-privileges, `--network none`):
 - **Indexer sandbox** (`tests/unit/test_scip.py`, Linux): the probe in the indexer profile opens no socket of any family and reads no parent environment, `/etc` or secrets. It cannot start Python or `/bin/sh` but can start Node, and writes only to the scratch `out`. Each profile runs only its own modules.

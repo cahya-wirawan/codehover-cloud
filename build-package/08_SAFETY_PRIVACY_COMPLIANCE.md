@@ -29,6 +29,12 @@ Hard exclusions include `.git/**`, `.env` and `.env.*` except explicit safe exam
 
 Uploaded ZIP archives (M6) are extracted in the worker by `acquire.extract_zip` with the tarball's limits. Expanded bytes are counted from the bytes actually inflated, never trusted from headers, so a ZIP bomb stops at 250 MiB. The extractor rejects absolute paths, drive letters, `..`, backslashes, NUL bytes, duplicate paths, encrypted entries and compression methods other than stored and deflate. Symlinks and special files are skipped and recorded, never followed. The secret scan then applies as for GitHub snapshots.
 
+Public GitHub repositories (FR-028, 0028) are read without the App (`adapters/github/public.py`):
+- **Fixed hosts only.** The client talks only to `api.github.com` and `codeload.github.com`. A user's input is parsed strictly as `owner/name` (or that github.com URL) and never becomes a host or path of its own, so it cannot cause server-side request forgery.
+- **Public only.** Every metadata answer must say `private: false` and `visibility: public`. A private, internal or missing repository is the same 404 to the caller, so the API reveals nothing about repositories it cannot read. After the first lookup the repository is addressed by numeric ID, so a rename cannot redirect access, and visibility is checked again on every ref resolution, refs listing and download. A repository that turns private fails acquisition with `repository_not_public`, before anything is downloaded.
+- **Anonymous downloads.** The optional operator token `GITHUB_PUBLIC_TOKEN` is sent only to the metadata API, to raise its rate limit, and should have no permissions. Source tarballs always come from codeload without credentials, so even a token that can see private repositories never fetches one.
+- **Same scan.** The archive limits and the secret scan apply as for App snapshots.
+
 Own provider keys (M6) are secrets of the workspace. They are checked with the provider before saving and sealed with AES-256-GCM, with the workspace and provider as associated data, so a sealed value copied to another row does not open. They are never returned to clients, logged, audited, put in messages or sent anywhere but the provider's official SDK endpoint (hosted mode accepts no base URL). Only owners save or remove them; the hint (first 7 and last 4 characters) is what members see.
 
 ## Sessions, encryption and delivery

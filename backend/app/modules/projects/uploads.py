@@ -78,6 +78,11 @@ async def create_upload_project(db: AsyncSession, member: Member, name: str, slu
 
 
 async def is_upload(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> bool:
+    return await source(db, workspace_id, project_id) == "upload"
+
+
+async def source(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> str:
+    """The project's connection kind: `github` (the App), `upload` or `public` (0028)."""
     provider = (
         await db.execute(
             text(
@@ -91,7 +96,7 @@ async def is_upload(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> b
     ).scalar_one_or_none()
     if provider is None:
         raise ApiError(404, "NOT_FOUND", "Project not found.")
-    return bool(provider == "upload")
+    return str(provider)
 
 
 def check_archive(data: bytes) -> str:
