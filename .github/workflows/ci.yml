@@ -100,7 +100,18 @@ jobs:
       - run: mypy
       - name: OpenAPI contract is current
         run: python -m app.openapi_export --check
-      - name: Unit tests
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: SCIP indexers from the integrity-pinned lock, no install scripts (T23)
+        working-directory: backend/indexers
+        run: |
+          npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+          echo "SCIP_NODE_PATH=$(command -v node)" >> "$GITHUB_ENV"
+          echo "SCIP_TOOLS_DIR=$PWD" >> "$GITHUB_ENV"
+      - name: Unit tests (Linux sandbox gates, including the indexer profile with the real indexers)
+        env:
+          CODEHOVER_REQUIRE_SCIP: "1"
         run: pytest -m "not integration"
       - name: Bootstrap database roles
         run: POSTGRES_USER=codehover_ddl POSTGRES_DB=codehover APP_DB_PASSWORD=ci-runtime-password APP_SYSTEM_DB_PASSWORD=ci-system-password sh ../deployment/init-db.sh

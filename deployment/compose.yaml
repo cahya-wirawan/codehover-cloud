@@ -37,6 +37,10 @@ x-app-env: &app-env
   SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
   PUSH_DEBOUNCE_SECONDS: ${PUSH_DEBOUNCE_SECONDS:-60}
   PUSH_MAX_WAIT_SECONDS: ${PUSH_MAX_WAIT_SECONDS:-600}
+  # SCIP indexers in the image (T23). `SCIP_NODE_PATH=` in .env turns them off (name matching only).
+  SCIP_NODE_PATH: ${SCIP_NODE_PATH-/opt/codehover/node/bin/node}
+  SCIP_TIMEOUT_SECONDS: ${SCIP_TIMEOUT_SECONDS:-300}
+  SCIP_HEAP_MB: ${SCIP_HEAP_MB:-1536}
   # Internal metrics port per process (12); scraped on the services network, never published.
   METRICS_PORT: ${METRICS_PORT:-9100}
   # Only the gateway reaches the API (its port is not published); in production name the ingress only (22).
@@ -142,7 +146,8 @@ services:
       rabbitmq: {condition: service_healthy}
       objectstore: {condition: service_started}
     cpus: 2.0
-    mem_limit: 2g
+    # Room for one SCIP indexer (V8 heap SCIP_HEAP_MB, default 1536) beside the worker itself (T23).
+    mem_limit: 3g
     pids_limit: 128
     restart: unless-stopped
   dispatcher:

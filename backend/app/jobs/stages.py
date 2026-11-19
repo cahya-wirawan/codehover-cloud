@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import io
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -23,19 +24,22 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.adapters.github.app import GitHubApp, GitHubError
 from app.adapters.models.replay import ReplayGateway
 from app.adapters.storage import ObjectStore
+from app.core import metrics
 from app.core.tenancy import set_context
-from app.engine import ENGINE_VERSION, PARSER_VERSION, PROMPT_VERSION, sandbox, search
+from app.engine import ENGINE_VERSION, PARSER_VERSION, PROMPT_VERSION, indexers, sandbox, search
 from app.engine.acquire import MAX_COMPRESSED_BYTES, ArchiveRejected, extract, extract_zip
 from app.engine.catalog import Catalog
 from app.engine.catalog import builtin as builtin_catalog
 from app.engine.gateway import ModelGateway
 from app.engine.index import IndexedSymbol, build_index
+from app.engine.indexers import Config as IndexerConfig
 from app.engine.keys import blob_key, build_key
 from app.engine.replay import GENERATOR, explain_file
 from app.engine.scan import scan
 from app.jobs import exports, generation, verification
 from app.jobs.store import Apply, Claim
 
+logger = logging.getLogger("app.jobs.stages")
 TEXT_STATUSES = ("selected", "unsupported")
 
 
@@ -61,6 +65,8 @@ class Runtime:
     sealer: Any = None
     own_key_gateway: Any = None  # Callable[[str], ModelGateway]
     own_key_cache: dict[Any, Any] = field(default_factory=dict)
+    # SCIP indexers (T23); None keeps every reference on name matching.
+    indexers: IndexerConfig | None = None
 
 
 async def _read(rt: Runtime, claimed: Claim, sql: str, **params: Any) -> list[Any]:
@@ -215,7 +221,24 @@ async def index(rt: Runtime, claimed: Claim) -> Apply | None:
         parsed = await sandbox.run("app.engine.parse_worker", payload, allow_unsandboxed=rt.allow_unsandboxed)
     except sandbox.SandboxError as error:
         raise StageError(f"sandbox_{error.reason}", transient=error.reason == "timeout") from error
-    graph = build_index(parsed["files"], {str(r.id): r.path for r in rows})
+    resolved: dict[str, dict[str, Any]] = {}
+    if rt.indexers is not None:
+        resolved, outcomes = await indexers.resolve(
+            rt.indexers, payload["files"], allow_unsandboxed=rt.allow_unsandboxed
+        )
+        for outcome in outcomes:
+            metrics.INDEXER_RUNS.labels(indexer=outcome.indexer, outcome=outcome.status).inc()
+            logger.info(
+                "reference indexer finished",
+                extra={
+                    "build_id": str(claimed.build_id),
+                    "indexer": outcome.indexer,
+                    "files": outcome.files,
+                    "status": outcome.status,
+                    "reason": outcome.reason,
+                },
+            )
+    graph = build_index(parsed["files"], {str(r.id): r.path for r in rows}, resolved)
 
     async def apply(db: AsyncSession) -> None:
         ids: dict[str, UUID] = {}
@@ -254,7 +277,7 @@ async def index(rt: Runtime, claimed: Claim) -> Apply | None:
                 text(
                     "INSERT INTO reference_edges(workspace_id, build_id, from_symbol_id, to_symbol_id,"
                     ' source_file_id, line, "column", resolution, ambiguity_group)'
-                    " VALUES (:w, :b, :src, :dst, :f, :line, :col, 'name', :group)"
+                    " VALUES (:w, :b, :src, :dst, :f, :line, :col, :resolution, :group)"
                 ),
                 {
                     "w": claimed.workspace_id,
@@ -264,6 +287,7 @@ async def index(rt: Runtime, claimed: Claim) -> Apply | None:
                     "f": UUID(edge.file_id),
                     "line": edge.line,
                     "col": edge.column,
+                    "resolution": edge.resolution,
                     "group": edge.ambiguity_group,
                 },
             )
@@ -340,7 +364,9 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
             claimed,
             "SELECT b.project_id, b.snapshot_id, b.config, b.prompt_version, s.commit_sha, s.digest,"
             " (SELECT count(*) FROM symbols y WHERE y.workspace_id = b.workspace_id AND y.build_id = b.id) AS symbols,"
-            " (SELECT count(*) FROM reference_edges e WHERE e.workspace_id = b.workspace_id AND e.build_id = b.id) AS edges"
+            " (SELECT count(*) FROM reference_edges e WHERE e.workspace_id = b.workspace_id AND e.build_id = b.id) AS edges,"
+            " (SELECT count(*) FROM reference_edges e WHERE e.workspace_id = b.workspace_id AND e.build_id = b.id"
+            " AND e.resolution = 'index') AS index_edges"
             " FROM builds b JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
             " WHERE b.workspace_id = :w AND b.id = :b",
         )
@@ -363,7 +389,14 @@ async def render(rt: Runtime, claimed: Claim) -> Apply | None:
         "generator": build.config.get("generation", {}).get("model_preset", GENERATOR),
         "catalog": build.config.get("catalog"),
         "explanation_schema": "urn:codehover-cloud:schema:explanation:2.0.0",
-        "counts": {"files": len(files), "symbols": build.symbols, "edges": build.edges},
+        "counts": {
+            "files": len(files),
+            "symbols": build.symbols,
+            "edges": build.edges,
+            "edges_by_resolution": {"index": build.index_edges, "name": build.edges - build.index_edges},
+        },
+        # T23: indexers available to this worker; per-edge `resolution` says which references they resolved.
+        "indexers": indexers.versions(rt.indexers) if rt.indexers is not None else {},
         "guide": [
             {"slug": g.slug, "title": g.title, "status": g.status, "markdown_key": g.markdown_key}
             for g in await _read(

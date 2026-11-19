@@ -1,6 +1,14 @@
 # Package validation
 
-Date: 2026-11-19 · Package version 0.5.26
+Date: 2026-11-19 · Package version 0.5.27
+
+0.5.27 records the T23 gate, "no network/install/hooks; timeout fallback labeled", run locally and in the backend image under the Compose hardening (read-only root, all capabilities dropped, no-new-privileges, `--network none`):
+- **Indexer sandbox** (`tests/unit/test_scip.py`, Linux): the probe in the indexer profile opens no socket of any family and reads no parent environment, `/etc` or secrets. It cannot start Python or `/bin/sh` but can start Node, and writes only to the scratch `out`. Each profile runs only its own modules.
+- **Real indexers:** methods resolve through their receiver (`g.greet` is `Greeter.greet`, not a module function of the same name; `new Box().open()` is `Box.open`), with no cross-language edges. A zero timeout falls back, and the scratch checkout is removed.
+- **Mapping and decoding:** malformed indexes are refused. UTF-8, UTF-16 and UTF-32 columns map to scalars. Documents with line breaks tree-sitter does not count keep name matching, and locals are scoped per document.
+- **Stage** (`tests/integration/test_builds.py`): resolved references are stored as `index` edges and shown on the card, the failed family keeps `name` edges, and the manifest counts both.
+- **This repository** (195 files): name matching gives 16,501 edges, 8,243 ambiguous. The indexers give 5,194 edges with none ambiguous, in about 40–60 s.
+- Full suites: backend unit 182 (Linux image) and 179 (macOS), integration 214, frontend 40.
 
 0.5.26 adds per-project access control:
 - `tests/integration/test_project_access.py` (3 tests): every project path is 404 for members without a grant, covering the project, builds, viewer data, freshness, push policy, variants, events, the members-only site and estimates.
@@ -27,7 +35,7 @@ Date: 2026-11-19 · Package version 0.5.26
   - A batch persists its ID, waits without spending attempts, settles at the batch price, and falls back synchronously only for what it could not answer.
 - **Isolation:** the tenancy suite covers push requests, provider keys and provider batches. The route sweep classifies every new route. Explicit grants still match a database migrated without defaults.
 - **Frontend:** 36 Vitest tests, adding the push panel, the upload form, the variant switcher and the key panel. The E2E journey is unchanged and passes.
-- **Deferred:** SCIP (T23), by decision (21).
+- **Deferred:** SCIP (T23), by decision (21); shipped in 0.5.27.
 
 0.5.24 records the M5 exit checks (paid launch), run locally against a replayed provider (`FakeStripe` over `httpx.MockTransport`):
 - **Payment failure matrix** (`tests/integration/test_billing.py`, 14 tests):

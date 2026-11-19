@@ -16,6 +16,11 @@ function provenance(card: SymbolView["card"]): { label: string; model: boolean }
   return { label: "Derived from the source only.", model: false };
 }
 
+/** 07/A12: only references a SCIP indexer resolved may claim more than a name match. */
+function resolutionLabel(r: Related): string {
+  return r.resolution === "index" ? "resolved by type analysis" : "matched by name";
+}
+
 function Relations({ title, items, onFollow }: { title: string; items: Related[]; onFollow: (r: Related) => void }) {
   return (
     <div>
@@ -33,7 +38,7 @@ function Relations({ title, items, onFollow }: { title: string; items: Related[]
                 {r.name}
               </button>
               <span className="min-w-0 truncate text-xs text-muted">
-                {r.path} · matched by name
+                {r.path} · {resolutionLabel(r)}
                 {r.ambiguous ? " (ambiguous: one of several definitions with this name)" : ""}
               </span>
             </li>

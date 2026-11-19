@@ -114,8 +114,8 @@
   "ok": true
  },
  "versions": {
-  "engine": "0.1.0",
-  "parser": "0.1.0",
+  "engine": "0.2.0",
+  "parser": "0.2.0",
   "prompt_digest": "f0e8105d9a808d5bdce7d110ecfc544292b98d77bb1bfcf38cc0fbe205538d1f",
   "prompts": "0.4.0"
  }

@@ -8,6 +8,7 @@ inside the seccomp sandbox.
 from __future__ import annotations
 
 import io
+import json
 import secrets
 import tarfile
 from typing import Any
@@ -17,6 +18,7 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.db import session_factory
+from app.engine import indexers
 from app.jobs import control, runner, store
 from app.jobs.envelope import TaskEnvelope
 from app.jobs.stages import Runtime
@@ -167,6 +169,75 @@ async def test_replay_build_end_to_end_and_private_viewer(
     assert line.index("function badge") == badge["start_column"]  # Unicode scalar column, not UTF-8 bytes
     manifest = ddl("SELECT object_key FROM artifacts WHERE build_id = :b AND kind = 'manifest'", b=build)
     assert manifest and manifest[0][0].startswith(f"workspaces/{ws}/projects/{project}/builds/{build}/")
+    await owner.aclose()
+
+
+async def test_indexer_references_are_stored_labeled_and_counted(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T23: references a SCIP indexer resolved are `index` edges; a family whose indexer failed keeps name
+    matching. The real indexers run in tests/unit/test_scip.py (Linux); here their answer is fixed."""
+    seen: list[str] = []
+
+    async def resolved(config: Any, files: list[dict[str, Any]], **_: Any) -> Any:
+        seen.extend(sorted(f["path"] for f in files))
+        ids = {f["path"]: f["file_id"] for f in files}
+        return (
+            {
+                ids["src/util.py"]: {"definitions": [(1, 4, "helper", "p:helper")], "references": []},
+                ids["src/app.py"]: {
+                    "definitions": [],
+                    "references": [(2, 21, "p:helper"), (7, 11, "p:helper")],
+                },
+            },
+            [
+                indexers.Outcome("scip-python", 2, "ok", None, "0.6.8"),
+                indexers.Outcome("scip-typescript", 1, "failed", "timeout", "0.6.0"),
+            ],
+        )
+
+    monkeypatch.setattr(indexers, "resolve", resolved)
+    owner, _ws, project = await setup_project(client, idp, github)
+    build = (await start(owner, project)).json()["id"]
+    assert RUNTIME_URL
+    rt = Runtime(
+        sessions=session_factory(create_async_engine(RUNTIME_URL)),
+        store=client.app.state.objects,  # type: ignore[attr-defined]
+        github=client.app.state.github_app,  # type: ignore[attr-defined]
+        allow_unsandboxed=True,
+        catalog=client.app.state.catalog,  # type: ignore[attr-defined]
+        indexers=indexers.Config(node="/opt/none/node", tools="/opt/none"),
+    )
+    assert await drive(client.app, build, runtime=rt) == ["completed"] * 4  # type: ignore[attr-defined]
+    assert seen == ["src/app.py", "src/util.py", "web/index.ts"]  # selected files only (not settings.py)
+    edges = ddl(
+        "SELECT f.path, e.line, e.resolution, e.ambiguity_group FROM reference_edges e"
+        " JOIN source_files f ON f.id = e.source_file_id WHERE e.build_id = :b ORDER BY f.path, e.line",
+        b=build,
+    )
+    assert [tuple(e) for e in edges if e[0] == "src/app.py"] == [
+        ("src/app.py", 2, "index", None),
+        ("src/app.py", 7, "index", None),
+    ]
+    assert {e[2] for e in edges if e[0] == "web/index.ts"} == {"name"}  # the TypeScript indexer timed out
+
+    src = {
+        e["name"]: e
+        for e in (await owner.get(f"/api/v1/builds/{build}/tree", params={"path": "src"})).json()["items"]
+    }
+    view = (await owner.get(f"/api/v1/builds/{build}/files/{src['app.py']['file_id']}")).json()
+    main = next(s for s in view["symbols"] if s["symbol_key"] == "main")
+    card = (await owner.get(f"/api/v1/builds/{build}/symbols/{main['id']}")).json()
+    assert [(u["name"], u["resolution"], u["ambiguous"]) for u in card["uses"]] == [
+        ("helper", "index", False)
+    ]
+
+    manifest_key = ddl("SELECT manifest_key FROM builds WHERE id = :b", b=build)[0][0]
+    manifest = json.loads(client.app.state.objects.objects[manifest_key][0])  # type: ignore[attr-defined]
+    counts = manifest["counts"]
+    assert counts["edges_by_resolution"]["index"] == 2
+    assert counts["edges_by_resolution"]["name"] == counts["edges"] - 2 > 0
+    assert manifest["indexers"] == {}  # versions come from installed packages; none at /opt/none
     await owner.aclose()
 
 

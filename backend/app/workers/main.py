@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from app.adapters.billing import billing_provider
 from app.core import metrics
 from app.core.settings import Settings, get_settings
-from app.engine import sandbox
+from app.engine import indexers, sandbox
 from app.jobs import retention
 from app.jobs.envelope import TaskEnvelope
 from app.jobs.purge import purge_due
@@ -94,6 +94,9 @@ async def body(stop: asyncio.Event) -> None:
     runtime, http = build_runtime(settings, "worker")
     report = await sandbox.self_check(allow_unsandboxed=runtime.allow_unsandboxed)
     logger.info("sandbox verified", extra={"isolated": report.get("isolated")})
+    if runtime.indexers is not None:  # T23: the indexer profile is checked the same way, and fails closed
+        report = await indexers.self_check(runtime.indexers, allow_unsandboxed=runtime.allow_unsandboxed)
+        logger.info("indexer sandbox verified", extra={"versions": indexers.versions(runtime.indexers)})
     assert settings.amqp_url is not None, "AMQP_URL is required"
     connection = await aio_pika.connect_robust(settings.amqp_url.get_secret_value())
     async with connection:

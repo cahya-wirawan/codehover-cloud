@@ -46,7 +46,8 @@ test("ready build shows stages, file tree, source and a definition card", async 
     },
     "/api/v1/builds/b1/symbols/s1": {
       id: "s1", name: "main", kind: "function", signature: "def main()", path: "app.py", start_line: 1,
-      card: { summary: "Entry point.", params: [] }, uses: [{ id: "s2", name: "helper", kind: "function", path: "util.py", resolution: "name", ambiguous: false }], used_by: [],
+      card: { summary: "Entry point.", params: [] }, uses: [{ id: "s2", name: "helper", kind: "function", path: "util.py", resolution: "name", ambiguous: false }],
+      used_by: [{ id: "s3", name: "run", kind: "function", path: "cli.py", resolution: "index", ambiguous: false }],
     },
   });
   renderAt("/p/p1/builds/b1");
@@ -62,6 +63,7 @@ test("ready build shows stages, file tree, source and a definition card", async 
   await waitFor(() => expect(card).toHaveTextContent("Entry point."));
   expect(within(card).getByRole("button", { name: "helper" })).toBeInTheDocument();
   expect(card).toHaveTextContent("util.py · matched by name");
+  expect(card).toHaveTextContent("cli.py · resolved by type analysis"); // only indexer-resolved references (T23)
   await waitFor(() => expect(screen.getByRole("heading", { name: "main" })).toHaveFocus()); // pinning moves focus
   fireEvent.keyDown(card, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
