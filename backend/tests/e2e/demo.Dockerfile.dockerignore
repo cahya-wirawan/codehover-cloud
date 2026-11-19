@@ -1,0 +1,3 @@
+# Only the lock reaches the build context (not .venv, tests or anything else).
+**
+!requirements-dev.lock

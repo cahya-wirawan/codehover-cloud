@@ -16,6 +16,15 @@ frontend (`cd frontend && npm run build` first) on the E2E server, with:
 - free replay builds only (source-only cards; no model calls).
 
 `--reset` drops the demo database and bucket first.
+
+Type-aware references (SCIP, T23) need the Linux sandbox, so they run only when the server runs inside
+the backend image. Prepare on the host, then serve from a container on the Compose network:
+
+    .venv/bin/python -m tests.e2e.demo --prepare-only
+    docker run ... -e DEMO_DB_ADDRESS=db:5432 -e DEMO_S3_ENDPOINT=http://objectstore:8333 \
+        <backend image with dev dependencies> python -m tests.e2e.demo --serve-only --host 0.0.0.0
+
+(the full command is in README "Local demo").
 """
 
 from __future__ import annotations
@@ -165,7 +174,7 @@ def prepare(reset: bool) -> None:
         create_database(DATABASE)
     if BUCKET not in buckets:
         s3.create_bucket(Bucket=BUCKET)
-    ddl = f"postgresql+psycopg://codehover_ddl:{os.environ['POSTGRES_PASSWORD']}@127.0.0.1:55432/{DATABASE}"
+    ddl, runtime = database_urls()
     subprocess.run(  # noqa: S603 - fixed command
         [str(BACKEND / ".venv/bin/alembic"), "upgrade", "head"],
         cwd=BACKEND,
@@ -173,9 +182,30 @@ def prepare(reset: bool) -> None:
         env={**os.environ, "MIGRATION_DATABASE_URL": ddl},
         capture_output=True,
     )
-    runtime = f"postgresql+psycopg://app_runtime:{os.environ['APP_DB_PASSWORD']}@127.0.0.1:55432/{DATABASE}"
+    use(env, ddl, runtime)
+
+
+def database_urls() -> tuple[str, str]:
+    address = os.environ.get("DEMO_DB_ADDRESS", "127.0.0.1:55432")  # db:5432 on the Compose network
+    return (
+        f"postgresql+psycopg://codehover_ddl:{os.environ['POSTGRES_PASSWORD']}@{address}/{DATABASE}",
+        f"postgresql+psycopg://app_runtime:{os.environ['APP_DB_PASSWORD']}@{address}/{DATABASE}",
+    )
+
+
+def use(env: dict[str, str], ddl: str, runtime: str) -> None:
     # Read when the server and the test helpers are imported, so set before demo_app().
     os.environ.update({**env, "TEST_MIGRATION_DATABASE_URL": ddl, "TEST_DATABASE_URL": runtime})
+
+
+def serve_only() -> None:
+    """Point the server at a prepared demo database and bucket without touching Docker (in a container)."""
+    from tests.e2e.restore_drill import storage_env
+
+    env = {**storage_env(), "S3_BUCKET": BUCKET}
+    if os.environ.get("DEMO_S3_ENDPOINT"):
+        env["S3_ENDPOINT_URL"] = os.environ["DEMO_S3_ENDPOINT"]
+    use(env, *database_urls())
 
 
 def demo_app(port: int) -> Any:
@@ -391,15 +421,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Local demo with fake Google and GitHub.")
     parser.add_argument("--port", type=int, default=8770)
     parser.add_argument("--reset", action="store_true", help="drop the demo database and bucket first")
+    parser.add_argument("--prepare-only", action="store_true", help="create and migrate, then exit")
+    parser.add_argument("--serve-only", action="store_true", help="skip preparing (inside a container)")
+    parser.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 inside a container)")
     args = parser.parse_args()
-    if not (BACKEND.parent / "frontend" / "dist" / "index.html").exists():
+    if not args.prepare_only and not (BACKEND.parent / "frontend" / "dist" / "index.html").exists():
         print("build the frontend first: cd frontend && npm run build", file=sys.stderr)
         return 2
-    prepare(args.reset)
+    if args.serve_only:
+        serve_only()
+    else:
+        prepare(args.reset)
+    if args.prepare_only:
+        return 0
     import uvicorn
 
     print(f"codehover demo: http://127.0.0.1:{args.port}  (Ctrl+C to stop)", flush=True)
-    uvicorn.run(demo_app(args.port), host="127.0.0.1", port=args.port, log_level="warning")
+    uvicorn.run(demo_app(args.port), host=args.host, port=args.port, log_level="warning")
     return 0
 
 

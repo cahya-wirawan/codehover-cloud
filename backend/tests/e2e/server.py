@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import os
 import secrets
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.adapters.github.app import GitHubApp
 from app.adapters.oauth.google import GoogleProvider
 from app.core.db import session_factory
-from app.engine import catalog
+from app.engine import catalog, indexers
 from app.jobs import runner
 from app.jobs.envelope import TaskEnvelope
 from app.jobs.stages import Runtime
@@ -134,6 +135,9 @@ def build(port: int) -> FastAPI:
         return {"connection_id": str(connection)}
 
     async def worker() -> None:
+        # SCIP indexers only when the environment names them (the backend image does; see tests.e2e.demo
+        # --serve-only). They run in the Linux sandbox, never unsandboxed on a development machine.
+        node, tools = os.environ.get("SCIP_NODE_PATH"), os.environ.get("SCIP_TOOLS_DIR")
         rt = Runtime(
             sessions=session_factory(create_async_engine(runtime_url)),
             store=app.state.objects,
@@ -141,6 +145,7 @@ def build(port: int) -> FastAPI:
             allow_unsandboxed=True,
             catalog=app.state.catalog,
             retry_delays=(0.0,),
+            indexers=indexers.Config(node, tools) if node and tools and sys.platform == "linux" else None,
         )
         since = ddl("SELECT now()")[0][0]  # leftovers of earlier test runs are not this server's work
         while True:
