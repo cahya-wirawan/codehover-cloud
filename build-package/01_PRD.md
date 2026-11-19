@@ -60,7 +60,7 @@ Non-goals: source-code editing, PR creation, autonomous shell agents, compiling/
 
 ## Critical product policies
 
-Workspace membership grants access to every project in that workspace in MVP. Display this when adding a private repository or inviting a member. Separate workspaces are required for different client audiences; per-project ACLs are P1. GitHub repository permissions and workspace permissions are separate grants. Repositories must be connected by a user whose repository authority and installation association are verified server-side. Never trust an installation ID supplied by a browser.
+Workspace membership grants access to every project in that workspace in MVP. Display this when adding a private repository or inviting a member. Separate workspaces are required for different client audiences; per-project ACLs are P1. They are implemented after M6: admins can restrict a project to chosen members (09). GitHub repository permissions and workspace permissions are separate grants. Repositories must be connected by a user whose repository authority and installation association are verified server-side. Never trust an installation ID supplied by a browser.
 
 Private source remains private unless an owner/admin explicitly chooses Public, confirms disclosure of source and generated text, and the audit record is stored. A member inviting others cannot silently make a site public. Public sites may disclose the entire selected source; exclusions must be reviewed before generation as well as publication. Private sharing links are not in MVP; membership is the sole private-sharing mechanism.
 

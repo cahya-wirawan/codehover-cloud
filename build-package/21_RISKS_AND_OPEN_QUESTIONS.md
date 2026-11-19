@@ -8,7 +8,7 @@
 | Malicious repository triggers code execution | Critical / medium | No project execution/install, no-network parsers, strict acquisition; backend lead |
 | Duplicate work or uncertain model charges | High / high | Fenced task attempts, reservation ledger, reconciliation; backend lead |
 | Plausible but incorrect explanations/checker agreement | High / high | Independent evidence checks, source-first UI, labeled evals and visible uncertainty; AI lead |
-| Broad workspace grants surprise users | High / medium | Explicit all-project access disclosure, separate workspaces, P1 per-project ACL; product lead |
+| Broad workspace grants surprise users | High / medium | Explicit all-project access disclosure, separate workspaces, per-project access (restricted projects, 0027); product lead |
 | Language parser/column mismatch | High / medium | Unicode/UTF-16 conversion fixtures, supported-language gates; frontend/engine leads |
 | Incomplete reference-context cache invalidation | High / medium | Context dependency digest or conservative invalidation; engine lead |
 | Subscription margin too low | High / medium | Provider-cost ledger, quotas, no overage, measured price validation; product owner |
@@ -33,7 +33,7 @@ English standard output first; Python/TS/JS parser fixtures first; GitHub App re
 | Market plans/pricing/allowances | Proposed trial/Pro/Team; validate economics/customer need | Paid launch |
 | Private site retention after repo access loss | Suspend access immediately; owner reconnect/review; no silent deletion | Beta terms |
 | Model output licensing and data processing contracts | Procurement/legal review pending | Public paid launch |
-| Need for per-project ACL | Workspace-wide MVP disclosed; use separate workspaces | Multi-client/team beta feedback |
+| Need for per-project ACL | Resolved: restricted projects with viewer or editor grants (0027). Per-project roles above editor (publishing) stay workspace admin powers | Multi-client/team beta feedback |
 | Output variants and SCIP cost | Variants shipped in M6 (FR-026). SCIP (T23) is deferred by decision: it needs third-party indexers (scip-python, scip-typescript and a Node runtime) inside the parser sandbox. That is a dependency and license review plus a sandbox gate: no network, no install scripts, no hooks, and a timeout fallback labeled as name-matched. Revisit with demand evidence and that review | Product lead and security review |
 
 No user answer is needed to read/use this blueprint. The listed production credentials, contracts and model choices are deployment gates, not missing basic architecture. The reference repository was not executed; generated capabilities were established from source inspection only.

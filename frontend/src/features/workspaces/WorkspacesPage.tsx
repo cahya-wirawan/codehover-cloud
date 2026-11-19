@@ -28,7 +28,7 @@ export function WorkspacesPage() {
     <section aria-labelledby="ws-title" className="max-w-3xl">
       <PageHeader
         title={<span id="ws-title">Workspaces</span>}
-        description="A workspace holds projects and the people who can read them. Everyone in a workspace sees all of its projects."
+        description="A workspace holds projects and the people who can read them. Everyone in a workspace sees its projects, unless an admin restricts a project to chosen members."
       />
       {isPending ? (
         <div className="flex flex-col gap-2" aria-hidden="true">

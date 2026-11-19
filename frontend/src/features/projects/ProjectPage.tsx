@@ -13,6 +13,7 @@ import { api } from "../../lib/api/resources";
 import { GenerationPanel } from "./GenerationPanel";
 import { StatusBadge } from "../viewer/StatusBadge";
 import { PublicationPanel } from "./PublicationPanel";
+import { AccessPanel } from "./AccessPanel";
 import { PushPanel } from "./PushPanel";
 
 const FRESHNESS: Record<string, string> = {
@@ -29,7 +30,8 @@ export function ProjectPage() {
   const builds = useQuery({ queryKey: ["builds", pid], queryFn: () => api.builds(pid) });
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
   const freshness = useQuery({ queryKey: ["freshness", pid], queryFn: () => api.freshness(pid), retry: false });
-  const role = workspaces.data?.items.find((w) => w.id === project.data?.workspace_id)?.role;
+  // The caller's role on this project: a project grant can differ from the workspace role (0027).
+  const role = project.data?.my_role ?? workspaces.data?.items.find((w) => w.id === project.data?.workspace_id)?.role;
   const start = useMutation({
     mutationFn: () => api.startBuild(pid),
     onSuccess: (build) => navigate(`/p/${pid}/builds/${build.id}`),
@@ -143,6 +145,9 @@ export function ProjectPage() {
         <PushPanel projectId={pid} trackedRef={project.data.tracked_ref} canChange={role === "admin" || role === "owner"} />
       ) : null}
       {project.data ? <PublicationPanel project={project.data} canPublish={role === "admin" || role === "owner"} /> : null}
+      {project.data && (role === "admin" || role === "owner") ? (
+        <AccessPanel projectId={pid} workspaceId={project.data.workspace_id} />
+      ) : null}
       {project.data && (role === "admin" || role === "owner") ? (
         <ConfirmDeletion
           title="Delete project"

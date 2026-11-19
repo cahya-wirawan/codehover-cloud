@@ -1,6 +1,12 @@
 # Package validation
 
-Date: 2026-11-19 · Package version 0.5.25
+Date: 2026-11-19 · Package version 0.5.26
+
+0.5.26 adds per-project access control:
+- `tests/integration/test_project_access.py` (3 tests): every project path is 404 for members without a grant, covering the project, builds, viewer data, freshness, push policy, variants, events, the members-only site and estimates.
+- Admins and owners always see a restricted project. Grants work below a member's workspace role (an editor reading only) and above it (a viewer building). Revoking a grant and leaving the workspace take access away at once.
+- Support access is excluded, and the row-policy backstop hides restricted projects from users but not from workers.
+- The tenancy suite covers project grants, and the route sweep classifies the new routes.
 
 0.5.25 records the M6 exit gates, one per feature, all run locally (PostgreSQL 18, SeaweedFS, replayed providers):
 - **Push rebuilds (T21)** — `tests/integration/test_pushes.py`, 6 tests.

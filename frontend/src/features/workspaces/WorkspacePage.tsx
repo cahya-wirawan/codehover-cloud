@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { FolderGit2, GitBranch, Plus } from "lucide-react";
+import { FolderGit2, GitBranch, Lock, Plus } from "lucide-react";
 
 import { ConfirmDeletion } from "../../components/ConfirmDeletion";
 import { Button } from "../../components/ui/button";
@@ -85,6 +85,12 @@ export function WorkspacePage() {
                     <Link to={`/p/${p.id}`} className="font-medium hover:text-primary">
                       {p.name}
                     </Link>
+                    {p.access === "restricted" ? (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted" title="Only chosen members can open this project">
+                        <Lock aria-hidden="true" className="size-3.5" />
+                        Restricted
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
                     <span className="flex items-center gap-1.5 font-mono text-[13px] text-muted">

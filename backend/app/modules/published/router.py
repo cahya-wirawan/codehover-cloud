@@ -65,14 +65,14 @@ async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: Opti
         raise ApiError(404, "NOT_FOUND", "Site not found.")
     if found.visibility != "public":
         member = None
-        if principal is not None:
+        if principal is not None:  # a member who may see this project (0027: restricted projects too)
             member = (
                 await db.execute(
                     text(
-                        "SELECT 1 FROM memberships m JOIN workspaces w ON w.id = m.workspace_id"
-                        " WHERE m.workspace_id = :w AND m.user_id = :u AND w.status = 'active'"
+                        "SELECT 1 FROM workspaces w WHERE w.id = :w AND w.status = 'active'"
+                        " AND app_private.project_role(:w, :p, :u) IS NOT NULL"
                     ),
-                    {"w": found.workspace_id, "u": principal.user_id},
+                    {"w": found.workspace_id, "p": found.project_id, "u": principal.user_id},
                 )
             ).one_or_none()
         if member is None:

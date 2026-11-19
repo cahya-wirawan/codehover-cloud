@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-M0 to M6 are implemented. In M6, SCIP was deferred by decision.
+M0 to M6 are implemented, plus per-project access control. In M6, SCIP was deferred by decision.
 
 - **M0–M1:** sign-in, workspaces, GitHub App connection with per-repository grants, snapshot acquisition with a safe scan, the outbox/RabbitMQ job system with fenced leases, a sandboxed tree-sitter parser, and a private viewer.
 - **M2:** the model catalog, estimates, single-envelope budget reservations, and the provider gateway. The Anthropic SDK and a deterministic replay gateway sit behind it. It adds explanation, overview, plan and guide stages, deterministic citation checks, the independent checker with one repair cycle, the quality gate and waivers, cancel and retry, and a labeled eval harness (`backend/evals/`).
@@ -28,12 +28,13 @@ M0 to M6 are implemented. In M6, SCIP was deferred by decision.
   - Language and level variants (prompt set 0.4.0 with the audience text): `variant_of` a ready base reuses its snapshot, scope and guide plan, so anchors match.
   - BYOK and batch (`providers/keys.py`, `jobs/batching.py`, 0026): sealed workspace Anthropic keys and `funding: own_key` builds without the allowance; explain batches at the catalog batch price, with persisted batch IDs and `StageWait`.
   - SCIP (T23) is deferred (spec 21).
+- **Per-project access** (0027, `projects/access.py`): a project is open to the workspace or restricted; restricted projects are visible to admins, owners and members with a viewer or editor grant, and the grant is their role there.
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
 
 The numbered documents in `build-package/` are normative requirements. `CODEHOVER_WEB_MASTER_SPEC.md` is generated from them, so edit the numbered files, then regenerate it (see Commands). Record every package change under `## [Unreleased]` in `build-package/CHANGELOG.md`. `build-package/VERSION` is the only hand-edited version. Choose the bump from the package rules in `23_VERSIONING_AND_RELEASES.md`, which also defines versioning for the product itself: API path major, contract `$id` URNs, engine and prompt-set SemVer, presets and catalogs. The package is in initial development (0.y.z) until an M1 implementation conforms. Until then, an incompatible contract change (a removed or renamed field, endpoint or setting, a new required setting, or a stricter schema) bumps MINOR, and additive or editorial changes bump PATCH. Never bump to 1.0.0 without the user's say-so. Reading order: `01_PRD` → `04_SYSTEM_ARCHITECTURE` → `05_DATA_MODEL` → `06_API_SPEC` → `07_AI_OR_AUTOMATION_PIPELINE` → `15_PRODUCT_BACKLOG`. For UX, read 02, 03 and 17. For ops, read 22 and `deployment/`. The machine-readable contracts are in `build-package/contracts/`: `core_schema.sql` is a DDL subset showing tenancy, RLS and outbox patterns, not a complete migration; the folder also holds the JSON Schemas for explanations, overview, guide plan and page, claim checks and repairs, and task envelopes. Prompts live in `19_PROMPT_LIBRARY.md`.
 
-Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); candidates are SCIP (T23, after a dependency and license review), P2 hosted MCP and custom domains (T25), and per-project ACLs. Known gaps:
+Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); candidates are SCIP (T23, after a dependency and license review) and P2 hosted MCP and custom domains (T25). Known gaps:
 - event-stream concurrency limits are still per process;
 - RPO ≤ 15 min needs a PITR drill on the managed staging database (the local drill covers the restore procedure and RTO only);
 - the load numbers come from a single local process, not staging;
@@ -139,7 +140,8 @@ Frontend: `npm ci && npm run build`. Health check: `/api/v1/health/ready`.
 - **Tenancy is enforced in three layers.**
   - Every tenant row has `workspace_id NOT NULL`, with composite FKs that include it.
   - RLS uses `FORCE ROW LEVEL SECURITY` with `SET LOCAL app.workspace_id` per transaction. The value comes from the authorized session or the claimed task, never from request data or source content.
-  - Every query still filters `workspace_id = :w` explicitly. RLS is the backstop, and the user-scoped SELECT policies widen what a workspace context shows (they once leaked memberships across workspaces). Workspace routes use `ReadMember`/`WriteMember` from `app/modules/workspaces/access.py`: non-members get 404, insufficient roles 403.
+  - Every query still filters `workspace_id = :w` explicitly.
+  - Project-scoped content must go through `resource_member("project"|"build"|"export", ...)`, which applies per-project access (`project_member`). New project-scoped checks outside it use `app_private.project_role`. A restrictive row policy on `projects` is the backstop for requests that act for a user. RLS is the backstop, and the user-scoped SELECT policies widen what a workspace context shows (they once leaked memberships across workspaces). Workspace routes use `ReadMember`/`WriteMember` from `app/modules/workspaces/access.py`: non-members get 404, insufficient roles 403.
   - Set context with `set_config('app.workspace_id', $1, true)` (bound parameters), plus `app.user_id` for user-scoped lists. Use `app/core/tenancy.py` (`set_context`, `resource_workspace`) at the start of every transaction; settings are transaction-local.
   - Roles: `app_runtime` (API and workers; not owner, no BYPASSRLS), `app_system` (dispatcher/scheduler; outbox and task-scheduling columns only), `app_resolver` (NOLOGIN owner of SECURITY DEFINER lookups such as `app_private.resource_workspace` for flat routes like `/projects/{pid}`). No role bypasses RLS. Migrations use a separate DDL role. Never use ORM `create_all`. See `05_DATA_MODEL.md` "Tenant context resolution".
 - **No open DB transaction across external I/O.** That covers GitHub, model HTTP and S3 calls. Use one `AsyncSession` per request or task.

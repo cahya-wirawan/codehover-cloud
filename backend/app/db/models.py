@@ -197,6 +197,8 @@ class Project(Base):
     push_cap_micro_usd: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     push_policy_by: Mapped[UUID | None] = ref("users.id", nullable=True)
     push_policy_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    access: Mapped[str] = mapped_column(Text, server_default=text("'workspace'"))  # 0027
+    access_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
 
 
 class Snapshot(Base):
@@ -775,3 +777,15 @@ class ProviderBatch(Base):
     items: Mapped[list[Any]] = jsonb()
     created_at: Mapped[datetime] = ts(default_now=True)
     completed_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+# ---------------------------------------------------------------- per-project access (0027)
+class ProjectMember(Base):
+    __tablename__ = "project_members"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref()
+    project_id: Mapped[UUID] = ref()
+    user_id: Mapped[UUID] = ref()
+    role: Mapped[str] = mapped_column(Text)
+    granted_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)

@@ -4,6 +4,15 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.26] - 2026-11-19
+
+### Added
+
+- 01, 02, 05, 06, 09, 21: per-project access control (migration 0027).
+  - Admins restrict a project to chosen members, each granted viewer or editor; that grant is their role on the project. Admins and owners always have access, and support access never reaches restricted projects.
+  - One SQL rule (`app_private.project_role`) serves the API, the event stream, members-only sites and a restrictive row policy on `projects`. Leaving the workspace removes a member's grants.
+  - The project page has an Access panel, and the project list marks restricted projects.
+
 ## [0.5.25] - 2026-11-19
 
 ### Added

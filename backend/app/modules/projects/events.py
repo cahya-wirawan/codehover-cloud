@@ -93,7 +93,9 @@ def frame(sequence: int, event_type: str, payload: dict[str, Any]) -> str:
     return f"id: {sequence}\nevent: {event_type}\ndata: {data}\n\n"
 
 
-async def _still_allowed(db: AsyncSession, token: str, user_id: UUID, workspace_id: UUID) -> bool:
+async def _still_allowed(
+    db: AsyncSession, token: str, user_id: UUID, workspace_id: UUID, build_id: UUID
+) -> bool:
     session = (
         await db.execute(text("SELECT user_id FROM app_private.session_by_token(:t)"), {"t": digest(token)})
     ).one_or_none()
@@ -109,7 +111,20 @@ async def _still_allowed(db: AsyncSession, token: str, user_id: UUID, workspace_
             {"w": workspace_id, "u": user_id},
         )
     ).one_or_none()
-    return member is not None
+    if member is None:
+        return False
+    # Per-project access (0027): losing a restricted project's grant ends the stream like losing membership.
+    await set_context(db, workspace_id=workspace_id, user_id=user_id)
+    allowed = (
+        await db.execute(
+            text(
+                "SELECT app_private.project_role(b.workspace_id, b.project_id, :u) IS NOT NULL"
+                " FROM builds b WHERE b.workspace_id = :w AND b.id = :b"
+            ),
+            {"w": workspace_id, "b": build_id, "u": user_id},
+        )
+    ).scalar_one_or_none()
+    return bool(allowed)
 
 
 async def _poll(
@@ -162,7 +177,7 @@ async def stream(
         now = time.monotonic()
         async with sessions() as db:
             if now >= next_check:
-                if not await _still_allowed(db, token, user_id, workspace_id):
+                if not await _still_allowed(db, token, user_id, workspace_id, build_id):
                     yield frame(last, "access.revoked", {"build_id": str(build_id)})
                     return
                 await db.commit()

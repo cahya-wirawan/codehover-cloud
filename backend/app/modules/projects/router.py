@@ -30,9 +30,10 @@ from app.engine.catalog import Catalog
 from app.engine.estimate import GenerationConfig
 from app.modules.billing import service as billing
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
+from app.modules.projects import access as project_access
 from app.modules.projects import estimates, events, publication, pushes, quality, service, uploads
 from app.modules.projects import exports as export_service
-from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role, resource_member
+from app.modules.workspaces.access import Member, ReadMember, Role, WriteMember, require_role, resource_member
 
 router = APIRouter(tags=["projects"])
 
@@ -89,6 +90,8 @@ class ProjectOut(BaseModel):
     owner: str
     repository: str
     source: Literal["github", "upload"] = "github"
+    access: Literal["workspace", "restricted"] = "workspace"
+    my_role: Role | None = None  # the caller's role on this project (0027); set on single-project reads
 
 
 class ProjectList(BaseModel):
@@ -497,6 +500,69 @@ class PushRequestOut(BaseModel):
 class PushRequestList(BaseModel):
     items: list[PushRequestOut]
     next_cursor: None = None
+
+
+class AccessMemberOut(BaseModel):
+    user_id: UUID
+    name: str
+    role: str
+    workspace_role: str
+    created_at: datetime
+
+
+class AccessOut(BaseModel):
+    mode: Literal["workspace", "restricted"]
+    version: int
+    members: list[AccessMemberOut]
+
+
+class AccessModeIn(BaseModel):
+    mode: Literal["workspace", "restricted"]
+
+
+class AccessGrantIn(BaseModel):
+    role: Literal["viewer", "editor"]
+
+
+@router.get("/projects/{project_id}/access", response_model=AccessOut)
+async def get_project_access(
+    project_id: UUID, response: Response, db: Db, member: ProjectReader
+) -> AccessOut:
+    """Who can open a project (0027): admins manage it, and see the grants."""
+    require_role(member, "admin")
+    result = await project_access.get_access(db, member, project_id)
+    response.headers["ETag"] = project_access.access_etag(result["version"])
+    return AccessOut(**result)
+
+
+@router.put("/projects/{project_id}/access", response_model=AccessOut)
+async def put_project_access(
+    project_id: UUID,
+    body: AccessModeIn,
+    response: Response,
+    db: Db,
+    member: ProjectWriter,
+    if_match: Annotated[str | None, Header(max_length=100)] = None,
+) -> AccessOut:
+    require_role(member, "admin")
+    result = await project_access.set_mode(db, member, project_id, body.mode, if_match)
+    response.headers["ETag"] = project_access.access_etag(result["version"])
+    return AccessOut(**result)
+
+
+@router.put("/projects/{project_id}/access/members/{user_id}", response_model=AccessOut)
+async def put_project_member(
+    project_id: UUID, user_id: UUID, body: AccessGrantIn, db: Db, member: ProjectWriter
+) -> AccessOut:
+    require_role(member, "admin")
+    return AccessOut(**await project_access.grant(db, member, project_id, user_id, body.role))
+
+
+@router.delete("/projects/{project_id}/access/members/{user_id}", status_code=204)
+async def delete_project_member(project_id: UUID, user_id: UUID, db: Db, member: ProjectWriter) -> Response:
+    require_role(member, "admin")
+    await project_access.revoke(db, member, project_id, user_id)
+    return Response(status_code=204)
 
 
 @router.get("/projects/{project_id}/push-policy", response_model=PushPolicyOut)

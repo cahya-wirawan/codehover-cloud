@@ -518,6 +518,34 @@ def test_provider_keys_and_batches_are_tenant_scoped(world: World, runtime: Db) 
     )
 
 
+def test_project_grants_are_tenant_scoped(world: World, runtime: Db) -> None:
+    """0027: a project grant belongs to one workspace and can only name that workspace's members."""
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO project_members(workspace_id, project_id, user_id, role, granted_by)"
+        " VALUES (:w, :p, :u, 'editor', :u)",
+        w=world.b.workspace,
+        p=world.b.project,
+        u=world.a.user,
+    )
+    expect(  # a member of workspace B cannot be granted a project of workspace A
+        runtime,
+        REJECTED,
+        "INSERT INTO project_members(workspace_id, project_id, user_id, role, granted_by)"
+        " VALUES (:w, :p, :u, 'editor', :by)",
+        w=world.a.workspace,
+        p=world.a.project,
+        u=world.b.user,
+        by=world.a.user,
+    )
+    expect(runtime, DENIED, "UPDATE project_members SET user_id = :u", u=world.b.user)
+    assert (
+        runtime.one("SELECT count(*) FROM project_members WHERE workspace_id = :w", w=world.b.workspace) == 0
+    )
+
+
 @needs_system
 def test_system_role_can_expire_a_lease(world: World, system: Db) -> None:
     # Lease, then expire it the way the reconciler will: state and lease_until change together (CHECK).
