@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.34] - 2026-11-20
+
+### Fixed
+
+- 06: a generation build whose cap would be zero is refused instead of started. Such a build could make no provider call and stopped at once with "spending cap reached". With no allowance left and no cap given, `POST /projects/{pid}/builds` (and retry) returns 409 `ALLOWANCE_EXCEEDED`; an explicit cap of zero returns 422 `CAP_TOO_LOW`.
+
 ## [0.5.33] - 2026-11-20
 
 ### Added

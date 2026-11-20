@@ -278,6 +278,25 @@ async def test_cap_cannot_exceed_the_remaining_allowance(
     assert ddl("SELECT count(*) FROM builds WHERE project_id = :p", p=project)[0][0] == 0
 
 
+async def test_a_build_that_could_make_no_model_call_is_refused(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """With no allowance left, the default cap would be zero and the build would stop at once with
+    "spending cap reached"; it is refused before it starts, and so is an explicit cap of zero."""
+    owner, ws, project = await setup_project(client, idp, github)
+    app = configure(client, allowance=0)
+    snapshot = await scanned_snapshot(owner, app, project)
+    estimate = (await make_estimate(owner, project, snapshot["id"])).json()
+    empty = await start_from(owner, project, estimate["id"])
+    assert empty.status_code == 409 and empty.json()["error"]["code"] == "ALLOWANCE_EXCEEDED"
+    assert empty.json()["error"]["details"] == {"available_micro_usd": 0, "cap_micro_usd": 0}
+    configure(client, allowance=1_000_000)
+    zero = await start_from(owner, project, estimate["id"], cap=0)
+    assert zero.status_code == 422 and zero.json()["error"]["code"] == "CAP_TOO_LOW"
+    assert ddl("SELECT count(*) FROM builds WHERE project_id = :p", p=project)[0][0] == 0
+    assert ledger_balance(ws) == {}
+
+
 async def create_second_project(owner: httpx.AsyncClient, ws: str, project: str) -> str:
     repository = ddl("SELECT repository_id FROM projects WHERE id = :p", p=project)[0][0]
     created = await unsafe(

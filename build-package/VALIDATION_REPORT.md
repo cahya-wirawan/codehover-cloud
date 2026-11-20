@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-20 · Package version 0.5.33
+Date: 2026-11-20 · Package version 0.5.34
+
+0.5.34 refuses generation builds whose cap would be zero. In a local stack with `GENERATION_ALLOWANCE_MICRO_USD=0`, such builds started, reserved nothing and stopped at once as `budget_exhausted` ("spending cap reached"). `tests/integration/test_budgets.py` now checks that, with no allowance left, a start without a cap is refused with 409 `ALLOWANCE_EXCEEDED` and `available_micro_usd: 0`, and that an explicit cap of zero is refused with 422 `CAP_TOO_LOW`. Neither creates a build or a ledger entry. Results: the budget suite passed (12 tests), and unit tests passed (241, 8 skipped). Separately, live eval runs on 2026-11-20 passed all hard gates with one preset per provider (OpenAI, Anthropic, Gemini, OpenRouter), after the fixes in parser 0.4.0.
 
 0.5.33 adds OpenAI, Gemini and OpenRouter as providers. `tests/unit/test_model_adapters.py` checks each adapter against `httpx.MockTransport`:
 - **Requests.** Each adapter calls only its official endpoint, or the operator's `OPENAI_BASE_URL` for the operator's OpenAI key. Each sends the strict schema projection, the output cap and the effort, and Gemini sends the key in a header, not the URL. OpenRouter sends `max_price` equal to the catalog price, `data_collection: deny`, `require_parameters` and no `models` list.
