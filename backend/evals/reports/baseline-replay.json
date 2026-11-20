@@ -97,11 +97,11 @@
   "chunks": 9,
   "failures": [],
   "prompts_with_intact_blocks": 9,
-  "request_input_bound": 57760,
+  "request_input_bound": 57774,
   "usage": {
    "cache_read_tokens": 0,
-   "input_tokens": 10584,
-   "output_tokens": 3920
+   "input_tokens": 10587,
+   "output_tokens": 3933
   },
   "valid_answers": 9
  },
@@ -123,7 +123,7 @@
  },
  "versions": {
   "engine": "0.3.0",
-  "parser": "0.3.0",
+  "parser": "0.4.0",
   "prompt_digest": "f0e8105d9a808d5bdce7d110ecfc544292b98d77bb1bfcf38cc0fbe205538d1f",
   "prompts": "0.4.0"
  }

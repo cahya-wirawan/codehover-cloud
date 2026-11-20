@@ -66,6 +66,10 @@ DEFINITIONS = {"python": PY_DEFINITIONS, "rust": RUST_DEFINITIONS}
 IDENTIFIER_TYPES = {"identifier", "type_identifier"}
 # Rust method calls and fields (`parser.next()`) name a `field_identifier`.
 REFERENCE_TYPES = {"rust": IDENTIFIER_TYPES | {"field_identifier"}}
+# Destructured parameters: `{ label }` in JS/TS, `Point { x }` in Rust.
+SHORTHAND_PATTERNS = {"shorthand_property_identifier_pattern", "shorthand_field_identifier"}
+# Fields of a parameter or pattern that bind no name: annotations, struct and variant names, defaults.
+NON_BINDING_FIELDS = {"type", "value", "right", "key"}
 
 
 class _Positions:
@@ -138,24 +142,33 @@ def _rust_impl_name(node: Node) -> str | None:
     return None
 
 
+def _bound_names(node: Node) -> list[str]:
+    """The names a parameter binds, through destructuring: `{ label, a: b = 1 }` binds `label` and `b`,
+    `(x, y)` and `Point { x, y: py }` bind `x`, `y` and `py`. Type annotations, default values, property
+    keys and struct or variant names bind nothing."""
+    if node.type in IDENTIFIER_TYPES or node.type in SHORTHAND_PATTERNS:
+        return [_text(node)]
+    if node.type in ("decorator", "self_parameter"):
+        return []
+    if node.type == "pair_pattern":  # `key: target`; only the target is bound
+        value = node.child_by_field_name("value")
+        return _bound_names(value) if value is not None else []
+    names: list[str] = []
+    for index, child in enumerate(node.children):
+        if child.is_named and node.field_name_for_child(index) not in NON_BINDING_FIELDS:
+            names.extend(_bound_names(child))
+    return names
+
+
 def _parameters(node: Node) -> list[str]:
     params = node.child_by_field_name("parameters")
     if params is None:
         return []
     names: list[str] = []
-    for child in params.children:
-        if child.type == "self_parameter":
-            continue
-        target: Node | None = child
-        if child.type not in IDENTIFIER_TYPES:
-            target = (
-                child.child_by_field_name("name")
-                or child.child_by_field_name("pattern")
-                or next((c for c in child.children if c.type == "identifier"), None)
-            )
-        name = _text(target)
-        if name and name not in ("self", "cls") and name.isidentifier():
-            names.append(name)
+    for child in params.named_children:
+        for name in _bound_names(child):
+            if name and name not in ("self", "cls") and name.isidentifier() and name not in names:
+                names.append(name)
     return names
 
 
