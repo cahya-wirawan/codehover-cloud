@@ -70,12 +70,12 @@
   },
   "usage": {
    "cache_read_tokens": 0,
-   "input_tokens": 5070,
+   "input_tokens": 5081,
    "output_tokens": 1450
   }
  },
  "corpus": {
-  "digest": "4269129d225049354503f0520630aa80e8fc4b4789a8304b0aca058ba674496f",
+  "digest": "6ca9f2ce17a0d5efd31e2a66f17fe203b0cdd60f5adb83d5ffb8dfb3b5f57f1b",
   "files": 13
  },
  "definitions": {
@@ -98,10 +98,10 @@
   "failures": [],
   "injected_text": [],
   "prompts_with_intact_blocks": 9,
-  "request_input_bound": 57800,
+  "request_input_bound": 57842,
   "usage": {
    "cache_read_tokens": 0,
-   "input_tokens": 10593,
+   "input_tokens": 10604,
    "output_tokens": 3961
   },
   "valid_answers": 9
