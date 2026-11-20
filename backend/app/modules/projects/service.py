@@ -283,7 +283,9 @@ async def start_generation_build(
             "The build cap is larger than the generation allowance left this period.",
             details={"available_micro_usd": account.available_micro_usd, "cap_micro_usd": requested_cap},
         )
-    if requested_cap == 0:  # no provider call fits a zero envelope: the build could only stop at once
+    if requested_cap == 0 and approved.high_micro_usd > 0:
+        # A priced preset's calls cannot fit a zero envelope: the build could only stop at once. A free
+        # preset (the replay model, priced at zero) runs with a zero cap.
         await db.rollback()
         if cap is None and funding != "own_key":
             raise ApiError(

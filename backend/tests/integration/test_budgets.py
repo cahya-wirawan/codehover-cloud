@@ -281,8 +281,9 @@ async def test_cap_cannot_exceed_the_remaining_allowance(
 async def test_a_build_that_could_make_no_model_call_is_refused(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
-    """With no allowance left, the default cap would be zero and the build would stop at once with
-    "spending cap reached"; it is refused before it starts, and so is an explicit cap of zero."""
+    """With no allowance left, a priced preset's default cap would be zero and the build would stop at
+    once with "spending cap reached"; it is refused before it starts, and so is an explicit cap of zero.
+    A free preset still starts with a zero cap (test_generation)."""
     owner, ws, project = await setup_project(client, idp, github)
     app = configure(client, allowance=0)
     snapshot = await scanned_snapshot(owner, app, project)
