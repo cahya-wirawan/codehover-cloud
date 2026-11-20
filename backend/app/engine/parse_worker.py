@@ -162,6 +162,10 @@ def _bound_names(node: Node) -> list[str]:
 
 def _parameters(node: Node) -> list[str]:
     params = node.child_by_field_name("parameters")
+    if params is None and node.type == "type_alias_declaration":  # `type F = (value: T) => U`
+        value = node.child_by_field_name("value")
+        if value is not None and value.type in ("function_type", "constructor_type"):
+            params = value.child_by_field_name("parameters")
     if params is None:
         return []
     names: list[str] = []

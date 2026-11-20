@@ -57,6 +57,17 @@ def test_destructured_parameters_list_the_names_they_bind() -> None:
     assert params["constructor"] == ["svc", "tok"] and params["m"] == ["n"]
 
 
+def test_function_type_aliases_list_their_parameters() -> None:
+    """A model describes `value` of `type Clamp = (value: number) => number`, so the parser lists it."""
+    code = (
+        "type Clamp = (value: number, range: Range) => number;\n"
+        "type Make = new (name: string) => Box;\n"
+        "type Either = string | ((event: Event) => void);\n"
+    )
+    params = {s["name"]: s["params"] for s in parse_file(LANGS["typescript"], "typescript", code)["symbols"]}
+    assert params == {"Clamp": ["value", "range"], "Make": ["name"], "Either": []}
+
+
 def test_typescript_unicode_columns_are_scalar_offsets() -> None:
     parsed = parse_file(LANGS["typescript"], "typescript", TS)
     badge = next(s for s in parsed["symbols"] if s["name"] == "badge")
