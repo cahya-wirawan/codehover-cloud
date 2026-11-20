@@ -61,10 +61,10 @@ After changing API routes or models, regenerate the contract with `.venv/bin/pyt
 **Generation.** Without configuration only the free `replay-v2` preset is offered. It runs the whole pipeline deterministically.
 
 To offer a paid preset:
-1. Copy `deployment/model-catalog.example.json`.
+1. Copy `deployment/model-catalog.example.json` to `deployment/catalog/model-catalog.json` (Compose mounts that folder read-only into the API and the worker; see `deployment/catalog/README.md`).
 2. Confirm every price, region and retention entry.
 3. Give the catalog its own revision.
-4. Set `MODEL_CATALOG_FILE` and `ANTHROPIC_API_KEY` for the API and the worker.
+4. Set `MODEL_CATALOG_FILE=/etc/codehover/catalog/model-catalog.json` and `ANTHROPIC_API_KEY` in `deployment/.env`.
 5. Set `GENERATION_ALLOWANCE_MICRO_USD` (per workspace and month).
 
 **Evaluation.** `.venv/bin/python -m evals.harness --out evals/reports/baseline-replay.json` runs the labeled corpus in `evals/`. It is free and deterministic, and CI diffs the report. See `evals/README.md` for the maintainer labeling step and the billed `--provider anthropic --allow-spend` run.

@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-20 · Package version 0.5.31
+Date: 2026-11-20 · Package version 0.5.32
+
+0.5.32 mounts the model catalog in Compose. `docker compose config` resolves the read-only bind of `deployment/catalog` into the API and the worker, and both deployment copies are identical. In a one-off API container from the local image, a copy of the example catalog placed in the folder loaded through `MODEL_CATALOG_FILE=/etc/codehover/catalog/…` (presets `replay-v2` and `balanced-v1`), and writing into the folder was refused as a read-only file system. No application code changed.
 
 0.5.31 adds the operator's `ANTHROPIC_BASE_URL` and pins every Anthropic client's endpoint. `tests/unit/test_anthropic_endpoint.py` (4 tests):
 - **The setting.** It accepts only https URLs without credentials, a query or a fragment; blank means the official API.

@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.32] - 2026-11-20
+
+### Added
+
+- 22: Compose mounts the model catalog. `deployment/catalog/` (or `MODEL_CATALOG_HOST_DIR`) is bound read-only into the API and the worker at `/etc/codehover/catalog`, so a catalog copied there is used by setting `MODEL_CATALOG_FILE=/etc/codehover/catalog/model-catalog.json`, with no override file. A folder is mounted rather than a file, so a missing file never turns into an empty directory. Both deployment copies gain the mount, the `.env.example` entry and `catalog/README.md`; catalog files in that folder are not committed.
+
 ## [0.5.31] - 2026-11-20
 
 ### Added
