@@ -208,6 +208,21 @@ async def unresolved_holds(db: AsyncSession, workspace_id: UUID, build_id: UUID)
     return int(held)
 
 
+async def holds_in_flight(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> int:
+    """Earmarks of attempts still running (`started`) or waiting on a provider batch (`batched`): they
+    settle soon and free their room, unlike `unknown` holds."""
+    held = (
+        await db.execute(
+            text(
+                "SELECT COALESCE(sum(max_reserved_micro_usd), 0) FROM provider_attempts"
+                " WHERE workspace_id = :w AND build_id = :b AND state IN ('started', 'batched')"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).scalar_one()
+    return int(held)
+
+
 async def release_build(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> int:
     """Return the unspent envelope of a terminal build to its account. Returns the released amount."""
     build = (
@@ -230,6 +245,40 @@ async def release_build(db: AsyncSession, workspace_id: UUID, build_id: UUID) ->
         return 0
     await _move(db, workspace_id, build.usage_account_id, build_id, reserved=-amount, settled=0)
     return amount
+
+
+STALE_HOLD_HOURS = 24  # an unknown outcome older than this is settled at its maximum
+TERMINAL_STATUSES = ("ready", "failed", "cancelled", "budget_exhausted")
+
+
+async def settle_stale_hold(db: AsyncSession, workspace_id: UUID, build_id: UUID, attempt_id: UUID) -> int:
+    """Settle one unresolved attempt (unknown, or still `started` long after any call could run) at its
+    maximum once it is STALE_HOLD_HOURS old: the provider may have billed it, and the maximum is the most
+    it could have cost (07 "Maximum cost"). The attempt becomes `reconciled`; a terminal build then
+    releases whatever else it still holds. Returns the amount settled; 0 when already resolved."""
+    build = (
+        await db.execute(
+            text("SELECT status FROM builds WHERE workspace_id = :w AND id = :b FOR UPDATE"),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).one()  # lock order everywhere: the build row first
+    maximum = (
+        await db.execute(
+            text(
+                "UPDATE provider_attempts SET state = 'reconciled', settled_micro_usd = max_reserved_micro_usd,"
+                " error_code = COALESCE(error_code, 'unresolved'), completed_at = COALESCE(completed_at, now())"
+                " WHERE workspace_id = :w AND build_id = :b AND id = :a AND state IN ('started', 'unknown')"
+                " AND created_at < now() - make_interval(hours => :h) RETURNING max_reserved_micro_usd"
+            ),
+            {"w": workspace_id, "b": build_id, "a": attempt_id, "h": STALE_HOLD_HOURS},
+        )
+    ).scalar_one_or_none()
+    if maximum is None:
+        return 0
+    charged = await settle_attempt(db, workspace_id, build_id, attempt_id, int(maximum))
+    if build.status in TERMINAL_STATUSES:
+        await release_build(db, workspace_id, build_id)
+    return charged
 
 
 async def _move(

@@ -1,6 +1,16 @@
 # Package validation
 
-Date: 2026-11-20 · Package version 0.5.34
+Date: 2026-11-20 · Package version 0.5.35
+
+0.5.35 fixes budget holds, as seen in live builds from the local stack. An Anthropic build was refused at the TLS handshake and then ended as `budget_exhausted` after spending nothing. An OpenRouter build ended the same way with $0.05 spent of a $0.29 cap, because 4 concurrent worst-case holds did not fit.
+- `tests/integration/test_generation.py`:
+  - With a cap that fits every explain call one at a time but not two worst cases at once, the three concurrent explain calls wait for each other and all succeed.
+  - A call cut off by a worker shutdown becomes `unknown` (`call_cancelled`) with its hold kept, and the stage makes no further call.
+  - An unknown attempt is left alone by the sweep while it is recent. Once it is 25 hours old, the sweep settles it at its maximum as `reconciled`: the build's reserved amount goes to 0 and the ledger balances. A second sweep changes nothing.
+- `tests/unit/test_bounded.py`: after a stop, running units finish, queued units never start, the first stop is the one raised, and cancelling cancels every unit.
+- `tests/unit/test_generation_engine.py`: Anthropic connect errors and connect timeouts are transient, while dropped connections and write timeouts stay unknown.
+
+Results: integration 233 passed, unit 249 passed (8 skipped).
 
 0.5.34 refuses generation builds whose cap would be zero. In a local stack with `GENERATION_ALLOWANCE_MICRO_USD=0`, such builds started, reserved nothing and stopped at once as `budget_exhausted` ("spending cap reached"). `tests/integration/test_budgets.py` now checks that, with no allowance left, a start without a cap is refused with 409 `ALLOWANCE_EXCEEDED` and `available_micro_usd: 0`, and that an explicit cap of zero is refused with 422 `CAP_TOO_LOW`. Neither creates a build or a ledger entry. Results: the budget suite passed (12 tests), and unit tests passed (241, 8 skipped). Separately, live eval runs on 2026-11-20 passed all hard gates with one preset per provider (OpenAI, Anthropic, Gemini, OpenRouter), after the fixes in parser 0.4.0.
 

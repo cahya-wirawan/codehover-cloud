@@ -284,6 +284,113 @@ async def test_unknown_provider_outcome_keeps_its_hold_after_the_build_ends(
     assert ledger_balance(ws)["release"] == 5_000_000 - settled - hold
 
 
+@dataclass
+class SlowProvider(ScriptedProvider):
+    """Holds each call open for a while, so a stage's calls overlap like real provider calls."""
+
+    delay: float = 0.3
+    started: asyncio.Event = field(default_factory=asyncio.Event)
+    begun: list[str] = field(default_factory=list)
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.begun.append(request.purpose)
+        self.started.set()
+        await asyncio.sleep(self.delay)
+        return await super().generate(request)
+
+
+async def test_calls_wait_for_in_flight_holds_instead_of_ending_the_build(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each call holds its worst case, which is far above its actual cost. A cap that fits any one call
+    once the earlier ones settled, but not several worst cases at once, used to end the build as
+    budget_exhausted while the money was there (seen live with concurrent guide calls). Now a call waits
+    for the build's in-flight calls to settle. The explain stage's three calls show it."""
+    from app.jobs import calls
+
+    monkeypatch.setattr(calls, "HOLD_POLL_SECONDS", 0.05)
+    _, _, probe, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    assert await drive(app, probe, rounds=2, runtime=runtime_for(app, SlowProvider(delay=0.0))) == [
+        "completed",
+        "completed",
+    ]  # index, explain
+    explain = [a for a in attempts(probe) if a[0] == "explain"]
+    maxima = sorted((a[3] for a in explain), reverse=True)
+    cap = maxima[0] + sum(a[2] for a in explain) + 1_000  # room for every call one at a time
+    assert len(maxima) == 3 and maxima[0] + maxima[1] > cap  # but not for two worst cases at once
+
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=cap)
+    provider = SlowProvider()
+    assert await drive(app, build, rounds=2, runtime=runtime_for(app, provider)) == ["completed", "completed"]
+    explained = [a for a in attempts(build) if a[0] == "explain"]
+    assert len(explained) == 3 and all(a[1] == "succeeded" for a in explained)
+    assert provider.calls.count("explain") == 3  # each answered by the provider, none stopped
+    usage = (await owner.get(f"/api/v1/builds/{build}")).json()["usage"]
+    assert usage["settled_micro_usd"] == sum(a[2] for a in explained) <= cap
+
+
+async def test_a_call_cut_off_by_a_shutdown_is_unknown_and_keeps_its_hold(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = SlowProvider(delay=30.0)
+    rt = runtime_for(app, provider)
+    assert await drive(app, build, rounds=1, runtime=rt) == ["completed"]  # index
+    running = asyncio.create_task(drive(app, build, rounds=1, runtime=rt))  # explain, cut off mid-call
+    await asyncio.wait_for(provider.started.wait(), timeout=10)
+    await asyncio.sleep(0.1)
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    for _ in range(50):  # the cut-off calls settle in tasks of their own
+        cut = [a for a in attempts(build) if a[0] == "explain"]
+        if cut and all(a[1] != "started" for a in cut):
+            break
+        await asyncio.sleep(0.05)
+    assert cut and all(a[1] == "unknown" and a[4] == "call_cancelled" and a[2] is None for a in cut)
+    await asyncio.sleep(0.3)
+    assert len(provider.begun) == len(cut)  # the stage stopped: no further call after the shutdown
+    held = (await owner.get(f"/api/v1/builds/{build}")).json()["usage"]["reserved_micro_usd"]
+    assert held == 5_000_000  # nothing settled or released: the cut-off calls may have been billed
+
+
+async def test_unknown_holds_settle_at_their_maximum_after_a_day(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    from app.jobs import retention
+
+    owner, ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = ScriptedProvider(faults={"overview": [ProviderError("unknown", "provider_timeout")]})
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    [hold] = [a[3] for a in attempts(build) if a[1] == "unknown"]
+    settled = sum(a[2] or 0 for a in attempts(build))
+    rt = runtime_for(app)
+
+    assert (await retention.sweep_workspace(rt.sessions, rt.store, ws))["stale_holds"] == 0  # too recent
+    assert (await owner.get(f"/api/v1/builds/{build}")).json()["usage"]["reserved_micro_usd"] == hold
+    ddl(
+        "UPDATE provider_attempts SET created_at = now() - interval '25 hours'"
+        " WHERE build_id = :b AND state = 'unknown'",
+        b=build,
+    )
+    assert (await retention.sweep_workspace(rt.sessions, rt.store, ws))["stale_holds"] == 1
+    assert (await retention.sweep_workspace(rt.sessions, rt.store, ws))["stale_holds"] == 0  # idempotent
+    [reconciled] = [a for a in attempts(build) if a[0] == "overview" and a[4] == "provider_timeout"]
+    assert (reconciled[1], reconciled[2]) == ("reconciled", hold)  # settled at its maximum
+    done = (await owner.get(f"/api/v1/builds/{build}")).json()
+    assert done["usage"] == {
+        "cap_micro_usd": 5_000_000,
+        "reserved_micro_usd": 0,
+        "settled_micro_usd": settled + hold,
+    }
+    assert account_counters(ws) == (50_000_000, 0, settled + hold)
+    assert ledger_balance(ws) == {
+        "reserve": 5_000_000,
+        "settle": settled + hold,
+        "release": 5_000_000 - settled - hold,
+    }
+
+
 async def test_crash_after_paid_output_reuses_the_checkpoint_without_paying_again(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
@@ -371,10 +478,14 @@ async def test_reclaimed_task_marks_unsettled_attempts_unknown_and_keeps_their_h
 
     owner, ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
 
+    class Killed(BaseException):
+        """The worker process dies while waiting for the provider: no handler of its own runs, unlike a
+        cancellation, whose cut-off calls settle as unknown (test_a_call_cut_off_by_a_shutdown...)."""
+
     @dataclass
     class Dies(ScriptedProvider):
         async def generate(self, request: GenerationRequest) -> GenerationResult:
-            raise asyncio.CancelledError  # the worker process is killed while waiting for the provider
+            raise Killed
 
     rt = runtime_for(app, ScriptedProvider())
     assert await drive(app, build, rounds=1, runtime=rt) == ["completed"]
@@ -387,7 +498,7 @@ async def test_reclaimed_task_marks_unsettled_attempts_unknown_and_keeps_their_h
     async with dying.sessions() as db:
         claimed = await store.claim(db, envelope)
     assert claimed is not None
-    with pytest.raises(asyncio.CancelledError):
+    with pytest.raises(Killed):
         await stages.HANDLERS["explain"](dying, claimed)
     started = [a for a in attempts(build) if a[1] == "started"]
     assert started

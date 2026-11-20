@@ -4,6 +4,18 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.35] - 2026-11-20
+
+### Fixed
+
+- 07: a build no longer ends as `budget_exhausted` while its money is there. Every call holds its worst-case cost, so with up to 4 calls in flight the holds could outgrow a cap set from the estimate, which is sized for actual costs. A call whose maximum would fit once the build's in-flight calls settle now waits for them (at most 10 minutes). The build ends only when the maximum would not fit with nothing in flight. Seen live with 4 concurrent guide calls.
+- 07: after a stage stops (budget or cancellation), units already running finish, so their calls settle at actual cost instead of being cut off with an unknown outcome. A call cut off by a worker shutdown becomes `unknown` and keeps its hold. A worker shutdown now also stops the running stage, which had kept running.
+- 07: a connection that never opened (refused, a failed TLS handshake or a connect timeout) is transient for Anthropic calls too, as it already was for the other providers. Before, it was `unknown` and kept a worst-case hold for a call that could not have been billed.
+
+### Changed
+
+- 05, 07, 11: an attempt whose outcome is still unknown 24 hours after it began is settled at its maximum and becomes `reconciled`, by the hourly retention sweep. Holds no longer stay on the allowance indefinitely.
+
 ## [0.5.34] - 2026-11-20
 
 ### Fixed

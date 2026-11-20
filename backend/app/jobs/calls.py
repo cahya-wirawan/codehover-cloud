@@ -6,13 +6,19 @@ the provider request.
 - Earmark: lock the build, check the task still holds its lease (fencing) and the build is running and
   not cancelled, then require open earmarks + this call's maximum cost <= the build's reserved envelope.
   The maximum is the request's byte bound times the highest input price plus max output tokens times
-  the output price, so the actual charge can never exceed it. A `started` attempt records it.
+  the output price, so the actual charge can never exceed it. A `started` attempt records it. When the
+  maximum does not fit only because other calls of the build are in flight, the call waits for them to
+  settle (actual costs are usually far below the maxima) instead of ending the build; it ends the build
+  only when it cannot fit even with nothing in flight, or after HOLD_WAIT_SECONDS.
 - Settle: in one fenced transaction, record usage and actual cost on the attempt, move the cost from
   reserved to settled (append-only ledger entry keyed by attempt), and write the validated answer to the
   tenant cache, which is the checkpoint a retried task resumes from. A worker that lost its lease writes
   nothing; its attempt stays `started` and becomes `unknown` when the task is claimed again.
 - Outcomes: unknown provider outcomes keep their hold; transient errors retry at most three times with
   backoff; an invalid answer gets one repair call; every retry and repair is its own budgeted attempt.
+  A call cancelled while its request is out (a worker shutting down) may still be billed: its attempt
+  becomes `unknown` and keeps its hold. Unknown holds settle at their maximum after a day
+  (`settle_stale_holds`).
 """
 
 from __future__ import annotations
@@ -37,10 +43,17 @@ from app.modules.usage import ledger
 
 logger = logging.getLogger("app.jobs.calls")
 MAX_TRANSIENT_RETRIES = 3
+HOLD_POLL_SECONDS = 1.0  # how often a call waiting for room re-checks the envelope
+HOLD_WAIT_SECONDS = 600.0  # longest wait for in-flight calls to settle (each is bounded at 90 s, 04)
+_SETTLING: set[asyncio.Future[None]] = set()  # settlements of cut-off calls, kept until they finish
 
 
 class BudgetExhausted(Exception):
     """No room is left in the build envelope for this call."""
+
+
+class EnvelopeBusy(BudgetExhausted):
+    """No room now, but enough once the build's in-flight calls settle: wait and earmark again."""
 
 
 class BuildStopped(Exception):
@@ -138,8 +151,12 @@ async def _earmark(db: AsyncSession, claimed: Claim, request: GenerationRequest,
         raise BuildStopped(build.status)
     open_holds = await ledger.unresolved_holds(db, claimed.workspace_id, claimed.build)
     if open_holds + maximum > build.reserved_micro_usd:
+        in_flight = await ledger.holds_in_flight(db, claimed.workspace_id, claimed.build)
         await db.rollback()
-        raise BudgetExhausted(f"needs {maximum}, {build.reserved_micro_usd - open_holds} left")
+        left = build.reserved_micro_usd - open_holds
+        if in_flight and open_holds - in_flight + maximum <= build.reserved_micro_usd:
+            raise EnvelopeBusy(f"needs {maximum}, {left} left until {in_flight} in flight settles")
+        raise BudgetExhausted(f"needs {maximum}, {left} left")
     attempt = (
         await db.execute(
             text(
@@ -242,6 +259,38 @@ async def _settle(
     return charged
 
 
+async def _earmark_when_room(sessions: Any, claimed: Claim, request: GenerationRequest, maximum: int) -> Any:
+    waited = 0.0
+    while True:
+        try:
+            async with sessions() as db:
+                return await _earmark(db, claimed, request, maximum)
+        except EnvelopeBusy as busy:
+            if waited >= HOLD_WAIT_SECONDS:
+                raise BudgetExhausted(str(busy)) from busy
+        await asyncio.sleep(HOLD_POLL_SECONDS)
+        waited += HOLD_POLL_SECONDS
+
+
+async def _settle_cancelled(
+    sessions: Any, claimed: Claim, request: GenerationRequest, attempt_id: Any
+) -> None:
+    try:
+        async with sessions() as db:
+            await _settle(
+                db,
+                claimed,
+                request,
+                attempt_id,
+                state="unknown",
+                usage=None,
+                provider_request_id=None,
+                error_code="call_cancelled",
+            )
+    except LeaseLost:
+        pass  # the next claim marks the attempt unknown (lease_lost)
+
+
 async def run(
     sessions: Any,
     gateway: Any,
@@ -265,11 +314,17 @@ async def run(
     attempts = 0
     while True:
         maximum = max_cost(request)
-        async with sessions() as db:
-            attempt = await _earmark(db, claimed, request, maximum)
+        attempt = await _earmark_when_room(sessions, claimed, request, maximum)
         attempts += 1
         try:
             result = await gateway.generate(request)
+        except asyncio.CancelledError:
+            # The request may already have reached the provider and been billed: unknown, hold kept. A
+            # task of its own, so a second cancellation (the stage unwinding) cannot cut this off too.
+            settling = asyncio.ensure_future(_settle_cancelled(sessions, claimed, request, attempt.id))
+            _SETTLING.add(settling)
+            settling.add_done_callback(_SETTLING.discard)
+            raise
         except ProviderError as error:
             async with sessions() as db:
                 await _settle(

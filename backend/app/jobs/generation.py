@@ -140,22 +140,41 @@ async def load_files(rt: Any, claimed: Claim, ctx: BuildContext) -> list[generat
     return files
 
 
+class _NotStarted(Exception):
+    """A unit skipped because an earlier unit stopped the stage."""
+
+
 async def bounded[T](items: list[Callable[[], Awaitable[T]]]) -> list[T]:
-    """Run at most MAX_CONCURRENT_CALLS units at once; the first stop (budget, cancel, lease) wins."""
+    """Run at most MAX_CONCURRENT_CALLS units at once; the first stop (budget, cancel, lease) wins.
+
+    After a stop no further unit starts, but units already running finish, so their provider calls
+    settle at actual cost (06 cancel: "in-flight calls settle") instead of being cut off with an unknown
+    outcome. Cancelling bounded() itself (a worker shutting down) still cancels every unit."""
     gate = asyncio.Semaphore(MAX_CONCURRENT_CALLS)
+    first: list[BaseException] = []
 
     async def one(item: Callable[[], Awaitable[T]]) -> T:
         async with gate:
-            return await item()
+            if first:
+                raise _NotStarted
+            try:
+                return await item()
+            except BaseException as error:
+                if not first:
+                    first.append(error)
+                raise
 
     tasks = [asyncio.create_task(one(item)) for item in items]
     try:
-        return await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
     except BaseException:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         raise
+    if first:
+        raise first[0]
+    return results  # type: ignore[return-value]  # no unit raised, so none is an exception
 
 
 async def gateway_for(rt: Any, claimed: Claim, provider: str) -> Any:
