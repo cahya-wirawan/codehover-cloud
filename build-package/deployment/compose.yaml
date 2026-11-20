@@ -132,6 +132,7 @@ services:
   api:
     <<: *backend
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
+    volumes: ["${MODEL_CATALOG_HOST_DIR:-./catalog}:/etc/codehover/catalog:ro"]  # MODEL_CATALOG_FILE (07)
     depends_on:
       migrate: {condition: service_completed_successfully}
       bootstrap: {condition: service_completed_successfully}
@@ -145,6 +146,7 @@ services:
   worker:
     <<: *backend
     command: [python, -m, app.workers.main]
+    volumes: ["${MODEL_CATALOG_HOST_DIR:-./catalog}:/etc/codehover/catalog:ro"]  # MODEL_CATALOG_FILE (07)
     depends_on:
       migrate: {condition: service_completed_successfully}
       rabbitmq: {condition: service_healthy}

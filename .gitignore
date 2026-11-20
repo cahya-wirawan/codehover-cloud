@@ -41,6 +41,7 @@ __pycache__/
 .env
 deployment/.env
 deployment/secrets/
+deployment/catalog/*.json
 
 # Python environments and tool caches
 .venv/
