@@ -41,6 +41,33 @@ def test_python_definitions_methods_docstrings_and_params() -> None:
     assert parsed["error"] is None
 
 
+def test_destructured_parameters_list_the_names_they_bind() -> None:
+    """A model describes `label` of `({ label }: Props)`; a parser that listed no parameter made that
+    answer invalid. Defaults, annotations, property keys and decorators bind nothing."""
+    tsx = "function f({ label, a: renamed, b = FALLBACK, ...rest }: P, [x, y]: T, z = OTHER) {}"
+    js = "function g({ label, a: r }, [x, [y]], z = 2, ...more) {}"
+    ts = "class C { constructor(private svc: S, @Inject(TOKEN) tok: T) {} m(this: Window, n?: number) {} }"
+    params = {
+        s["name"]: s["params"]
+        for kind, code in (("tsx", tsx), ("javascript", js), ("typescript", ts))
+        for s in parse_file(LANGS[kind], kind, code)["symbols"]
+    }
+    assert params["f"] == ["label", "renamed", "b", "rest", "x", "y", "z"]
+    assert params["g"] == ["label", "r", "x", "y", "z", "more"]
+    assert params["constructor"] == ["svc", "tok"] and params["m"] == ["n"]
+
+
+def test_function_type_aliases_list_their_parameters() -> None:
+    """A model describes `value` of `type Clamp = (value: number) => number`, so the parser lists it."""
+    code = (
+        "type Clamp = (value: number, range: Range) => number;\n"
+        "type Make = new (name: string) => Box;\n"
+        "type Either = string | ((event: Event) => void);\n"
+    )
+    params = {s["name"]: s["params"] for s in parse_file(LANGS["typescript"], "typescript", code)["symbols"]}
+    assert params == {"Clamp": ["value", "range"], "Make": ["name"], "Either": []}
+
+
 def test_typescript_unicode_columns_are_scalar_offsets() -> None:
     parsed = parse_file(LANGS["typescript"], "typescript", TS)
     badge = next(s for s in parsed["symbols"] if s["name"] == "badge")

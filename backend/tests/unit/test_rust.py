@@ -81,7 +81,7 @@ def test_rust_signatures_docs_and_parameters() -> None:
     symbols = _symbols()
     total = symbols["total"]
     assert total["signature"] == "pub fn total(shapes: &[Circle], mut scale: f64, (a, b): (i32, i32)) -> f64"
-    assert total["params"] == ["shapes", "scale"]  # `self` and destructuring patterns are not names
+    assert total["params"] == ["shapes", "scale", "a", "b"]  # names a pattern binds; never `self`
     assert total["docstring"] == "Sum of the areas.\nSecond line."  # through the #[inline] attribute
     assert total["start_line"] == 7  # the item itself, not its docs or attributes
     assert symbols["Area"]["docstring"] == "A shape\nwith an area."

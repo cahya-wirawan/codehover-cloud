@@ -45,7 +45,7 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - the legal texts are drafts awaiting jurisdiction review;
 - owner notices are in-app only (there is no email delivery);
 - only the explain stage is batched, and only for Anthropic models;
-- the OpenAI, Gemini and OpenRouter adapters are tested against mocked responses only, never against the live APIs; whether OpenAI's and OpenRouter's input counts include cached tokens is assumed (OpenAI convention), not confirmed;
+- the OpenAI, Gemini (`gemini-3.8-flash`, `generateContent` with `responseJsonSchema`) and OpenRouter (`qwen/qwen4-max`) adapters have run live only through the eval harness (2026-11-20), not a full build; OpenAI's input counts include cached tokens (shown by repeated runs), OpenRouter's is assumed to follow the same convention;
 - SCIP links calls through an interface or Protocol to the interface method, and never reads a repository's tsconfig path aliases;
 - Rust resolution has no crates.io dependencies, proc-macro expansion or build-script output, and assumes a 64-bit Linux target;
 - a published site shows one variant;
