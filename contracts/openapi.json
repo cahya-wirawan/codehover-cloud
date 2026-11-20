@@ -9883,7 +9883,12 @@
             "name": "provider",
             "required": true,
             "schema": {
-              "const": "anthropic",
+              "enum": [
+                "anthropic",
+                "openai",
+                "gemini",
+                "openrouter"
+              ],
               "title": "Provider",
               "type": "string"
             }
@@ -9927,7 +9932,12 @@
             "name": "provider",
             "required": true,
             "schema": {
-              "const": "anthropic",
+              "enum": [
+                "anthropic",
+                "openai",
+                "gemini",
+                "openrouter"
+              ],
               "title": "Provider",
               "type": "string"
             }

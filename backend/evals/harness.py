@@ -13,8 +13,9 @@ Runs the engine on the redistributable corpus in `evals/corpus` and scores it ag
 - cost: request bytes and reported usage, so prompt changes show token regressions.
 
 The default gateway is the deterministic replay, so the report is reproducible and free; CI runs it.
-`--provider anthropic` calls a real model and spends money: it needs `--allow-spend`, an operator
-catalog and ANTHROPIC_API_KEY, and is never run by tests.
+`--provider anthropic|openai|gemini|openrouter` calls a real model and spends money: it needs
+`--allow-spend`, an operator catalog whose preset uses that provider, and the provider's key
+(`<PROVIDER>_API_KEY`). It is never run by tests.
 """
 
 from __future__ import annotations
@@ -418,34 +419,46 @@ def gates(report: dict[str, Any]) -> dict[str, bool]:
     }
 
 
+async def _billed(provider: str, key: str, model: catalog.Model, preset: catalog.Preset) -> dict[str, Any]:
+    """The provider's gateway on its official API, as a workspace's own key would use it."""
+    import httpx
+
+    from app.jobs.runtime import own_key_gateways
+
+    async with httpx.AsyncClient(follow_redirects=False) as http:
+        gateway: ModelGateway = own_key_gateways(http)(provider, key)
+        return await run(gateway, model, preset.writer, preset.checker, provider)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--provider", choices=["replay", "anthropic"], default="replay")
-    parser.add_argument("--catalog", help="operator catalog file (anthropic)")
+    parser.add_argument(
+        "--provider", choices=["replay", "anthropic", "openai", "gemini", "openrouter"], default="replay"
+    )
+    parser.add_argument("--catalog", help="operator catalog file (a billed provider)")
     parser.add_argument("--preset", default="balanced-v1")
     parser.add_argument("--allow-spend", action="store_true", help="required for a provider that bills")
     parser.add_argument("--out", type=Path, help="write the JSON report here")
     args = parser.parse_args(argv)
     if args.provider == "replay":
         model, preset = catalog.REPLAY_MODEL, catalog.REPLAY_PRESET
-        gateway: ModelGateway = ReplayGateway()
+        report = asyncio.run(run(ReplayGateway(), model, preset.writer, preset.checker, args.provider))
     else:
-        key = os.environ.get("ANTHROPIC_API_KEY")
+        env = f"{args.provider.upper()}_API_KEY"
+        key = os.environ.get(env)
         if not args.allow_spend or not key or not args.catalog:
-            print(
-                "A real provider bills: pass --allow-spend and --catalog, and set ANTHROPIC_API_KEY.",
-                file=sys.stderr,
-            )
+            print(f"A real provider bills: pass --allow-spend and --catalog, and set {env}.", file=sys.stderr)
             return 2
-        from app.adapters.models.anthropic import AnthropicGateway
-
         loaded = catalog.load(args.catalog)
         chosen = loaded.preset(args.preset)
         if chosen is None:
             print(f"preset {args.preset} is not in the catalog", file=sys.stderr)
             return 2
-        preset, model, gateway = chosen, loaded.model(chosen.writer.model), AnthropicGateway(key)
-    report = asyncio.run(run(gateway, model, preset.writer, preset.checker, args.provider))
+        preset, model = chosen, loaded.model(chosen.writer.model)
+        if {model.provider, loaded.model(chosen.checker.model).provider} != {args.provider}:
+            print(f"preset {args.preset} does not run only on {args.provider}", file=sys.stderr)
+            return 2
+        report = asyncio.run(_billed(args.provider, key, model, preset))
     text = json.dumps(report, indent=1, sort_keys=True, ensure_ascii=False)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

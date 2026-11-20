@@ -22,6 +22,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 BUILTIN_REVISION = "catalog-2026-11-a"
 MILLION = 1_000_000
+# Providers whose gateway submits batches; a batch price elsewhere would price work that runs unbatched.
+BATCH_PROVIDERS = frozenset({"anthropic"})
+# Effort levels a provider has no control for (Gemini's thinking levels stop at xhigh).
+UNSUPPORTED_EFFORT = {"gemini": frozenset({"max"})}
 
 Revision = Annotated[str, Field(pattern=r"^catalog-[0-9]{4}-[0-9]{2}-[a-z]$")]
 PresetName = Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]{0,40}-v[1-9][0-9]{0,3}$")]
@@ -42,7 +46,7 @@ class Price(_Frozen):
 
 class Model(_Frozen):
     id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")]
-    provider: Literal["replay", "anthropic"]
+    provider: Literal["replay", "anthropic", "openai", "gemini", "openrouter"]
     provider_model: Annotated[str, Field(min_length=1, max_length=128)]
     context_tokens: Annotated[int, Field(ge=1024)]
     max_output_tokens: Annotated[int, Field(ge=256)]
@@ -52,6 +56,12 @@ class Model(_Frozen):
     price: Price
     # The provider's batch price (M6, T24); a model without one is never batched (no silent price fallback).
     batch_price: Price | None = None
+
+    @model_validator(mode="after")
+    def _batchable(self) -> Model:
+        if self.batch_price is not None and self.provider not in BATCH_PROVIDERS:
+            raise ValueError(f"{self.id}: batches run only for {', '.join(sorted(BATCH_PROVIDERS))} models")
+        return self
 
 
 class Role(_Frozen):
@@ -91,6 +101,8 @@ class Catalog(_Frozen):
                     raise ValueError(f"preset {preset.name} exceeds the output limit of {model.id}")
                 if not model.structured_output:
                     raise ValueError(f"{model.id} lacks structured output, required by every role")
+                if role.effort in UNSUPPORTED_EFFORT.get(model.provider, frozenset()):
+                    raise ValueError(f"preset {preset.name}: {model.provider} has no effort {role.effort}")
             writer, checker = models[preset.writer.model], models[preset.checker.model]
             if checker.provider == "replay" and writer.provider != "replay":
                 # The replay checker matches identifiers; the eval baseline shows it labels unsupported

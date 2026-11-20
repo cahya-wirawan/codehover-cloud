@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 
 import { ApiError } from "../../lib/api/client";
 import { api, type Estimate, formatUsd, LANGUAGES, LEVELS, type Snapshot } from "../../lib/api/resources";
+import { ownKeysLabel } from "../workspaces/providers";
 
 const lines = (text: string) =>
   text
@@ -244,7 +245,7 @@ export function GenerationPanel({
               <label className="mt-3 flex items-start gap-2">
                 <input type="checkbox" className="mt-1" checked={ownKey} onChange={(e) => setOwnKey(e.target.checked)} />
                 <span>
-                  Use this workspace&apos;s own Anthropic key
+                  Use this workspace&apos;s {ownKeysLabel(chosen.providers)}
                   <span className="block text-sm text-muted">
                     The provider bills your account directly and the plan allowance is not used. Set a spending cap.
                   </span>

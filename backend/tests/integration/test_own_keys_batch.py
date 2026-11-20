@@ -109,9 +109,11 @@ def runtime(app: Any, operator: Any = None, own: Any = None) -> Runtime:
     )
 
 
-async def save_key(owner: httpx.AsyncClient, ws: str, key: str = GOOD_KEY) -> httpx.Response:
+async def save_key(
+    owner: httpx.AsyncClient, ws: str, key: str = GOOD_KEY, provider: str = "anthropic"
+) -> httpx.Response:
     return await unsafe(
-        owner, "PUT", f"/api/v1/workspaces/{ws}/provider-keys/anthropic", json={"api_key": key}
+        owner, "PUT", f"/api/v1/workspaces/{ws}/provider-keys/{provider}", json={"api_key": key}
     )
 
 
@@ -227,7 +229,7 @@ async def test_an_own_key_build_spends_on_that_key_within_its_cap_and_not_the_al
     built = started.json()["id"]
     providers: list[KeyedProvider] = []
 
-    def own(key: str) -> KeyedProvider:
+    def own(provider: str, key: str) -> KeyedProvider:
         providers.append(KeyedProvider(key=key))
         return providers[-1]
 
@@ -276,6 +278,75 @@ async def test_an_own_key_build_spends_on_that_key_within_its_cap_and_not_the_al
         "ESTIMATE_STALE",
         "ESTIMATE_EXPIRED",
     )
+
+
+def with_openai_preset(app: Any) -> None:
+    model = {**PRICED["models"][0], "id": "test/gpt", "provider": "openai", "provider_model": "test-gpt"}  # type: ignore[dict-item]
+    preset = {
+        "name": "openai-v1",
+        "description": "OpenAI test preset.",
+        "writer": {"model": "test/gpt", "max_output_tokens": 4096, "effort": "low"},
+        "checker": {"model": "test/gpt", "max_output_tokens": 2048},
+    }
+    app.state.catalog = catalog.Catalog.model_validate(
+        {
+            "revision": PRICED["revision"],
+            "models": [catalog.REPLAY_MODEL.model_dump(), model],
+            "presets": [catalog.REPLAY_PRESET.model_dump(), preset],
+        }
+    )
+
+
+async def test_every_provider_takes_its_own_key_and_builds_use_the_preset_providers_key(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, ws, project, build, app = await ready_build(client, idp, github)
+    checked: list[str] = []
+
+    async def verifier(provider: str, key: str) -> bool:
+        checked.append(provider)
+        return key.startswith(f"{provider}-good-")
+
+    app.state.key_verifier = verifier
+    for provider in ("openai", "gemini", "openrouter"):
+        good = f"{provider}-good-" + "k" * 24
+        bad = await save_key(owner, ws, f"{provider}-bad-" + "k" * 24, provider=provider)
+        assert code(bad) == "KEY_REJECTED"
+        assert (await save_key(owner, ws, good, provider=provider)).status_code == 200
+    assert checked == ["openai", "openai", "gemini", "gemini", "openrouter", "openrouter"]
+    assert code(await save_key(owner, ws, "x" * 30, provider="mistral")) in ("VALIDATION_FAILED", "NOT_FOUND")
+    listed = (await owner.get(f"/api/v1/workspaces/{ws}/provider-keys")).json()["items"]
+    assert [k["provider"] for k in listed] == ["gemini", "openai", "openrouter"]
+    assert (await unsafe(owner, "DELETE", f"/api/v1/workspaces/{ws}/provider-keys/gemini")).status_code == 204
+
+    with_openai_preset(app)
+    app.state.settings = app.state.settings.model_copy(
+        update={"anthropic_api_key": None, "openai_api_key": None}
+    )
+    presets = (await owner.get("/api/v1/catalog/presets", params={"workspace_id": ws})).json()["items"]
+    assert {p["name"]: p["own_key"] for p in presets} == {"replay-v2": False, "openai-v1": True}
+    snapshot = str(ddl("SELECT snapshot_id FROM builds WHERE id = :b", b=build)[0][0])
+    estimate = (await make_estimate(owner, project, snapshot, preset="openai-v1", guide_pages=3)).json()
+    started = await unsafe(
+        owner,
+        "POST",
+        f"/api/v1/projects/{project}/builds",
+        json={"estimate_id": estimate["id"], "funding": "own_key", "cap_micro_usd": 3_000_000},
+        headers={"Idempotency-Key": secrets.token_hex(12)},
+    )
+    assert started.status_code == 202, started.text
+    opened: list[tuple[str, str]] = []
+
+    def own(provider: str, key: str) -> KeyedProvider:
+        opened.append((provider, key))
+        return KeyedProvider(key=key)
+
+    await drive(app, started.json()["id"], runtime=runtime(app, own=own))
+    status = (await owner.get(f"/api/v1/builds/{started.json()['id']}")).json()
+    assert status["status"] == "ready", status
+    assert opened == [
+        ("openai", "openai-good-" + "k" * 24)
+    ]  # opened once per build, for the preset's provider
 
 
 # ---------------------------------------------------------------- batches

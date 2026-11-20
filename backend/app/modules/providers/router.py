@@ -4,7 +4,7 @@ the masked hint. The key itself is never returned, logged or audited."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
@@ -42,7 +42,7 @@ async def list_keys(db: Db, member: ReadMember) -> KeyList:
 
 @router.put("/workspaces/{workspace_id}/provider-keys/{provider}", response_model=KeyOut)
 async def save_key(
-    provider: Literal["anthropic"], body: KeyIn, request: Request, db: Db, member: WriteMember
+    provider: keys.Provider, body: KeyIn, request: Request, db: Db, member: WriteMember
 ) -> KeyOut:
     require_role(member, "owner")
     await ratelimit.hit(
@@ -55,7 +55,7 @@ async def save_key(
 
 
 @router.delete("/workspaces/{workspace_id}/provider-keys/{provider}", status_code=204)
-async def remove_key(provider: Literal["anthropic"], db: Db, member: WriteMember) -> Response:
+async def remove_key(provider: keys.Provider, db: Db, member: WriteMember) -> Response:
     require_role(member, "owner")
     await keys.remove_key(db, member, provider)
     return Response(status_code=204)

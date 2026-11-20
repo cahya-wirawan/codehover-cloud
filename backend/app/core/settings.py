@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import Self
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MIN_SECRET_LENGTH = 32
@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     # Optional operator endpoint for calls with ANTHROPIC_API_KEY (a gateway or proxy): an https origin with
     # an optional path. Unset means the official API. Workspaces' own keys always use the official API.
     anthropic_base_url: str | None = None
+    openai_api_key: SecretStr | None = None
+    # The same for calls with OPENAI_API_KEY: an https endpoint serving the Responses API (default
+    # https://api.openai.com/v1). Workspaces' own OpenAI keys always use the official API.
+    openai_base_url: str | None = None
+    gemini_api_key: SecretStr | None = None  # the Gemini API (generativelanguage.googleapis.com), not Vertex
+    openrouter_api_key: SecretStr | None = None
     # Approved catalog file (07, 23); without it only the zero-cost replay preset exists.
     model_catalog_file: str | None = None
     # Generation allowance of each workspace per calendar month until entitlements exist (11, M4/M5).
@@ -114,7 +120,13 @@ class Settings(BaseSettings):
 
     def configured_providers(self) -> frozenset[str]:
         """Providers whose catalog models can run: replay always, others only with credentials."""
-        return frozenset({"replay"} | ({"anthropic"} if self.anthropic_api_key is not None else set()))
+        keys = {
+            "anthropic": self.anthropic_api_key,
+            "openai": self.openai_api_key,
+            "gemini": self.gemini_api_key,
+            "openrouter": self.openrouter_api_key,
+        }
+        return frozenset({"replay"} | {provider for provider, key in keys.items() if key is not None})
 
     @field_validator(
         "migration_database_url",
@@ -133,6 +145,10 @@ class Settings(BaseSettings):
         "github_public_token",
         "anthropic_api_key",
         "anthropic_base_url",
+        "openai_api_key",
+        "openai_base_url",
+        "gemini_api_key",
+        "openrouter_api_key",
         "model_catalog_file",
         "stripe_secret_key",
         "stripe_webhook_secret",
@@ -174,16 +190,17 @@ class Settings(BaseSettings):
             raise ValueError("PUBLIC_ORIGIN must be an origin without path, query or fragment")
         return f"{parts.scheme}://{parts.netloc}"
 
-    @field_validator("anthropic_base_url")
+    @field_validator("anthropic_base_url", "openai_base_url")
     @classmethod
-    def _https_endpoint(cls, value: str | None) -> str | None:
+    def _https_endpoint(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
+        name = (info.field_name or "").upper()
         parts = urlsplit(value.strip())
         if parts.scheme != "https" or not parts.hostname:
-            raise ValueError("ANTHROPIC_BASE_URL must be an https URL")
+            raise ValueError(f"{name} must be an https URL")
         if parts.username or parts.password or parts.query or parts.fragment:
-            raise ValueError("ANTHROPIC_BASE_URL must not contain credentials, a query or a fragment")
+            raise ValueError(f"{name} must not contain credentials, a query or a fragment")
         return value.strip().rstrip("/")
 
     @field_validator("database_url", "migration_database_url")

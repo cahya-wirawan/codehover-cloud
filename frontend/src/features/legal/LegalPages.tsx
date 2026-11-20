@@ -111,7 +111,10 @@ export function PrivacyPage() {
         <ul className="ml-5 list-disc space-y-1.5">
           <li>Google and GitHub, when you sign in with them.</li>
           <li>GitHub, to read the repositories you grant.</li>
-          <li>The model provider named by the preset you approve before each build (for example Anthropic).</li>
+          <li>
+            The model provider named by the preset you approve before each build: Anthropic, OpenAI, Google (Gemini), or
+            OpenRouter and the host it routes that model to. With your own key, that provider&apos;s terms with you apply.
+          </li>
           <li>Stripe, for checkout, subscriptions, invoices and payment methods.</li>
           <li>The hosting and storage providers of this deployment.</li>
         </ul>

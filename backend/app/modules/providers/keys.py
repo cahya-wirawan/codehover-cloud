@@ -1,7 +1,7 @@
 """Bring your own key (M6, T24; 07 "BYOK P1 stores envelope-encrypted secrets server-side and exposes only
 masked metadata").
 
-A workspace owner can store one Anthropic API key. It is checked with the provider before it is saved,
+A workspace owner can store one API key per provider (Anthropic, OpenAI, Gemini, OpenRouter). It is checked with the provider before it is saved,
 sealed with AES-256-GCM bound to the workspace and provider (the associated data), and shown only as a
 hint. Builds that choose `funding: own_key` call the provider with it; their spend is billed by the
 provider to the key's account, so it is bounded by the build cap but never uses the plan allowance.
@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal, get_args
 from uuid import UUID
 
 import anthropic
+import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.models import gemini, openai, openrouter
 from app.adapters.models.anthropic import OFFICIAL_BASE_URL
 from app.core.errors import ApiError
 from app.core.security import Sealer
@@ -27,7 +29,8 @@ from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
 
 logger = logging.getLogger(__name__)
-PROVIDERS = ("anthropic",)
+Provider = Literal["anthropic", "openai", "gemini", "openrouter"]
+PROVIDERS: tuple[str, ...] = get_args(Provider)
 Verifier = Callable[[str, str], Awaitable[bool]]  # (provider, key) -> accepted; raises on outages
 
 
@@ -40,8 +43,16 @@ def hint(key: str) -> str:
 
 
 async def verify_with_provider(provider: str, key: str) -> bool:
-    """One cheap authenticated call through the official SDK to the official API (never the operator's
-    `ANTHROPIC_BASE_URL`, 08); False when the key is refused."""
+    """One cheap authenticated call to the provider's official API (never an operator base URL, 08); False
+    when the key is refused. Anthropic goes through its SDK, the others through their adapters' checks."""
+    if provider != "anthropic":
+        verify = {
+            "openai": openai.verify_key,
+            "gemini": gemini.verify_key,
+            "openrouter": openrouter.verify_key,
+        }
+        async with httpx.AsyncClient(follow_redirects=False) as http:
+            return await verify[provider](http, key)
     client = anthropic.AsyncAnthropic(api_key=key, base_url=OFFICIAL_BASE_URL, max_retries=0, timeout=15.0)
     try:
         await client.models.list(limit=1)

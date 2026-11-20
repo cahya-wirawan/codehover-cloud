@@ -36,6 +36,8 @@ ANTHROPIC_API_KEY=... .venv/bin/python -m evals.harness --provider anthropic \
   --catalog ../deployment/model-catalog.json --preset balanced-v1 --allow-spend --out evals/reports/<preset>.json
 ```
 
+The same works for `--provider openai`, `gemini` or `openrouter`, with `OPENAI_API_KEY`, `GEMINI_API_KEY` or `OPENROUTER_API_KEY`. Both roles of the preset must use that provider.
+
 The corpus needs about 60 KB of input, as the report's `request_input_bound` shows, plus outputs, for one explain pass and one check pass.
 
 ## Gates

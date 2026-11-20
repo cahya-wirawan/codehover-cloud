@@ -4,6 +4,19 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.33] - 2026-11-20
+
+### Added
+
+- 07: OpenAI, Gemini and OpenRouter join Anthropic as catalog providers (`provider` is `openai`, `gemini` or `openrouter`). The adapters call each provider's official HTTPS API directly, without an SDK:
+  - OpenAI: the Responses API with a strict JSON schema and `store: false`.
+  - Gemini: the Gemini API's `generateContent` with `responseJsonSchema`, the key in a header.
+  - OpenRouter: chat completions with a strict schema, no `models` fallback, `provider.max_price` set to the catalog price, `data_collection: deny` and `require_parameters`.
+  - All three: cached input is priced apart, reasoning and thinking tokens count as output, and errors map onto the gateway's error kinds, including OpenRouter errors inside a 200 response.
+- 07: catalog rules for the new providers. Only Anthropic models may carry a `batch_price`, since no other gateway submits batches, and Gemini presets cannot ask for `max` effort.
+- 05, 06, 08: a workspace can store its own OpenAI, Gemini and OpenRouter keys beside its Anthropic key. `PUT/DELETE /workspaces/{wid}/provider-keys/{provider}` takes the new provider names, and `provider_keys.provider` allows them (migration 0030; downgrading destroys those keys). Each key is checked against the provider's official API. An OpenRouter key that can only manage keys is refused.
+- 07, 22: the operator settings `OPENAI_API_KEY`, `GEMINI_API_KEY` and `OPENROUTER_API_KEY`, and `OPENAI_BASE_URL` (https only, for the operator's OpenAI key; workspaces' own keys always use the official API). Both deployment copies of Compose and `.env.example` gain them, and `catalog/README.md` describes the new providers' catalog entries.
+
 ## [0.5.32] - 2026-11-20
 
 ### Added

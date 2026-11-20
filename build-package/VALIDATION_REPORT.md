@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-20 · Package version 0.5.32
+Date: 2026-11-20 · Package version 0.5.33
+
+0.5.33 adds OpenAI, Gemini and OpenRouter as providers. `tests/unit/test_model_adapters.py` checks each adapter against `httpx.MockTransport`:
+- **Requests.** Each adapter calls only its official endpoint, or the operator's `OPENAI_BASE_URL` for the operator's OpenAI key. Each sends the strict schema projection, the output cap and the effort, and Gemini sends the key in a header, not the URL. OpenRouter sends `max_price` equal to the catalog price, `data_collection: deny`, `require_parameters` and no `models` list.
+- **Usage.** Cached input is counted apart, and reasoning or thinking tokens count as output.
+- **Failures.** Truncation, refusals, safety stops, blocked prompts, non-JSON answers, quota and auth errors, rate limits, OpenRouter errors inside a 200, and transport failures map onto the gateway's error kinds. Response text never appears in the error.
+- **Key checks.** Each provider's check calls its official API and raises on an outage. An OpenRouter management key is refused.
+- **Catalog.** A `batch_price` on a non-Anthropic model and Gemini `max` effort are refused.
+
+In `tests/integration/test_own_keys_batch.py`, all three new providers store checked keys (migration 0030), and an own-key build on an OpenAI preset opens the workspace's OpenAI key once and finishes ready. Results: integration 229 passed, unit 237 passed (7 skipped), frontend 44 passed. The adapters have not been run against the live provider APIs.
 
 0.5.32 mounts the model catalog in Compose. `docker compose config` resolves the read-only bind of `deployment/catalog` into the API and the worker, and both deployment copies are identical. In a one-off API container from the local image, a copy of the example catalog placed in the folder loaded through `MODEL_CATALOG_FILE=/etc/codehover/catalog/…` (presets `replay-v2` and `balanced-v1`), and writing into the folder was refused as a read-only file system. No application code changed.
 
