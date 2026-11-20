@@ -96,6 +96,7 @@
   "answers_with_injected_text": 0,
   "chunks": 9,
   "failures": [],
+  "injected_text": [],
   "prompts_with_intact_blocks": 9,
   "request_input_bound": 57800,
   "usage": {
