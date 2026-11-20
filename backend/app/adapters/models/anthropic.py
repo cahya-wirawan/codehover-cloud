@@ -10,6 +10,9 @@
   the official API (07, 08). No user-supplied base URL is ever accepted.
 - No server-side model fallback: every model that serves a request must be an approved, priced catalog
   model, so a refusal is a permanent error for this call rather than a silent switch to another model.
+- A connection that never opened (refused, a failed TLS handshake, a connect timeout) sent nothing, so it
+  was not billed: transient, like the raw-HTTP adapters (`_http.post`). Any other connection error or
+  timeout may have reached the provider: unknown, and the call keeps its hold.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import json
 from typing import Any
 
 import anthropic
+import httpx2  # the SDK's HTTP library (anthropic 2.x), whose errors it chains
 from anthropic.types import OutputConfigParam, UserMessageParam
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.messages.batch_create_params import Request
@@ -35,6 +39,12 @@ def _usage(raw: Any) -> Usage:
         cache_read_tokens=int(getattr(raw, "cache_read_input_tokens", 0) or 0),
         cache_write_tokens=int(getattr(raw, "cache_creation_input_tokens", 0) or 0),
     )
+
+
+def _never_connected(error: anthropic.APIConnectionError) -> bool:
+    """The SDK chains its HTTP library's error; a connect error or connect timeout means no request byte
+    was sent."""
+    return isinstance(error.__cause__, (httpx2.ConnectError, httpx2.ConnectTimeout))
 
 
 def _retry_after(error: anthropic.APIStatusError) -> float | None:
@@ -72,9 +82,11 @@ class AnthropicGateway:
                 messages=[user],
                 output_config=output_config,
             )
-        except anthropic.APITimeoutError as error:
-            raise ProviderError("unknown", "provider_timeout") from error
-        except anthropic.APIConnectionError as error:
+        except anthropic.APIConnectionError as error:  # APITimeoutError is a subclass
+            if _never_connected(error):
+                raise ProviderError("transient", "provider_connection") from error
+            if isinstance(error, anthropic.APITimeoutError):
+                raise ProviderError("unknown", "provider_timeout") from error
             raise ProviderError("unknown", "provider_connection") from error
         except anthropic.DeadlineExceededError as error:
             raise ProviderError(
