@@ -110,6 +110,7 @@ Conventions that span files:
   - Prompts are immutable per set in `app/engine/prompts/<X.Y.Z>/`; any text change is a new set and a new `GENERATION_PROMPT_VERSION`.
   - The checker never falls back to a heuristic for model output; any checker failure leaves claims `unchecked`.
   - Get gateways through `generation.gateway_for`, never `rt.gateways[...]`: own-key builds use the workspace's key, looked up on every call.
+  - Every Anthropic client names its endpoint (`OFFICIAL_BASE_URL`, or `ANTHROPIC_BASE_URL` for the operator's key only), so the SDK never falls back to the environment or a credentials profile; own keys always go to the official API.
   - Writer requests carry `audience` (`_writer_request`); the checker never does. Cache keys include the variant.
   - Batches go only through `batching.prefill`. Batched attempts are `batched`, and waiting raises `StageWait`, which does not use up an attempt.
   - Regenerate `backend/evals/reports/baseline-replay.json` after changing parser, prompts, chunking or claim extraction (CI diffs it).

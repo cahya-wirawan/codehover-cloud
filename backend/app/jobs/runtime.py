@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from app.adapters.models.anthropic import AnthropicGateway
+from app.adapters.models.anthropic import OFFICIAL_BASE_URL, AnthropicGateway
 from app.adapters.models.replay import ReplayGateway
 from app.core.db import create_engine, session_factory
 from app.core.security import Sealer
@@ -20,7 +20,10 @@ def build_runtime(settings: Settings, application_name: str) -> tuple[Runtime, h
     http = httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=False)
     gateways: dict[str, ModelGateway] = {"replay": ReplayGateway()}
     if settings.anthropic_api_key is not None:
-        gateways["anthropic"] = AnthropicGateway(settings.anthropic_api_key.get_secret_value())
+        gateways["anthropic"] = AnthropicGateway(
+            settings.anthropic_api_key.get_secret_value(),
+            base_url=settings.anthropic_base_url or OFFICIAL_BASE_URL,
+        )
     runtime = Runtime(
         sessions=session_factory(engine),
         store=object_store(settings),
@@ -30,7 +33,9 @@ def build_runtime(settings: Settings, application_name: str) -> tuple[Runtime, h
         catalog=catalog.load(settings.model_catalog_file),
         gateways=gateways,
         sealer=Sealer(settings.app_encryption_key.get_secret_value()),
-        own_key_gateway=AnthropicGateway,  # M6, T24: a workspace's own key, opened per build
+        # M6, T24: a workspace's own key, opened per build; always the official API, never the operator's
+        # base URL (08: own keys go only to the provider's official endpoint).
+        own_key_gateway=AnthropicGateway,
         indexers=(
             indexers.Config(
                 node=settings.scip_node_path,

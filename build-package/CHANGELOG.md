@@ -4,6 +4,16 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.31] - 2026-11-20
+
+### Added
+
+- 07, 22: the optional operator setting `ANTHROPIC_BASE_URL`, an https endpoint for calls with `ANTHROPIC_API_KEY`, such as the operator's own gateway or proxy. It may not contain credentials, a query or a fragment, and blank means the official API. Both deployment copies of Compose and `.env.example` gain it.
+
+### Security
+
+- 07, 08: every Anthropic client is now created with an explicit endpoint. Before, the SDK fell back to the `ANTHROPIC_BASE_URL` environment variable or a local credentials profile, so a backend started outside Compose with that variable set would have sent model calls, including workspaces' own keys, to that endpoint. Workspaces' own keys are now verified and used only against the official API, whatever the operator configures.
+
 ## [0.5.30] - 2026-11-20
 
 ### Added

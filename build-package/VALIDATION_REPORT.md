@@ -1,6 +1,12 @@
 # Package validation
 
-Date: 2026-11-20 · Package version 0.5.30
+Date: 2026-11-20 · Package version 0.5.31
+
+0.5.31 adds the operator's `ANTHROPIC_BASE_URL` and pins every Anthropic client's endpoint. `tests/unit/test_anthropic_endpoint.py` (4 tests):
+- **The setting.** It accepts only https URLs without credentials, a query or a fragment; blank means the official API.
+- **No SDK fallback.** With `ANTHROPIC_BASE_URL` pointing elsewhere in the environment, a gateway created without an endpoint still calls the official API.
+- **Operator key only.** The worker runtime gives the operator's gateway the configured endpoint, while a gateway for a workspace's own key, and the check when an owner saves one, use the official API.
+- Full suites: backend unit 196 (macOS). No database, API or frontend code changed.
 
 0.5.30 adds license-gated public sites of public-source repositories (FR-029), run locally against the fake of GitHub's public endpoints, which now answers the license endpoint:
 - `tests/integration/test_publication_licenses.py` (9 tests):

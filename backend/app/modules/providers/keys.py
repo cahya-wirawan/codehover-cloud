@@ -19,6 +19,7 @@ import anthropic
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.models.anthropic import OFFICIAL_BASE_URL
 from app.core.errors import ApiError
 from app.core.security import Sealer
 from app.core.tenancy import set_context
@@ -39,8 +40,9 @@ def hint(key: str) -> str:
 
 
 async def verify_with_provider(provider: str, key: str) -> bool:
-    """One cheap authenticated call through the official SDK; False when the key is refused."""
-    client = anthropic.AsyncAnthropic(api_key=key, max_retries=0, timeout=15.0)
+    """One cheap authenticated call through the official SDK to the official API (never the operator's
+    `ANTHROPIC_BASE_URL`, 08); False when the key is refused."""
+    client = anthropic.AsyncAnthropic(api_key=key, base_url=OFFICIAL_BASE_URL, max_retries=0, timeout=15.0)
     try:
         await client.models.list(limit=1)
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
