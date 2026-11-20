@@ -66,6 +66,9 @@ class Settings(BaseSettings):
 
     # Provider credentials (07): a provider's catalog models are usable only when its key is set.
     anthropic_api_key: SecretStr | None = None
+    # Optional operator endpoint for calls with ANTHROPIC_API_KEY (a gateway or proxy): an https origin with
+    # an optional path. Unset means the official API. Workspaces' own keys always use the official API.
+    anthropic_base_url: str | None = None
     # Approved catalog file (07, 23); without it only the zero-cost replay preset exists.
     model_catalog_file: str | None = None
     # Generation allowance of each workspace per calendar month until entitlements exist (11, M4/M5).
@@ -129,6 +132,7 @@ class Settings(BaseSettings):
         "github_webhook_secret",
         "github_public_token",
         "anthropic_api_key",
+        "anthropic_base_url",
         "model_catalog_file",
         "stripe_secret_key",
         "stripe_webhook_secret",
@@ -169,6 +173,18 @@ class Settings(BaseSettings):
         if parts.path not in ("", "/") or parts.query or parts.fragment:
             raise ValueError("PUBLIC_ORIGIN must be an origin without path, query or fragment")
         return f"{parts.scheme}://{parts.netloc}"
+
+    @field_validator("anthropic_base_url")
+    @classmethod
+    def _https_endpoint(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parts = urlsplit(value.strip())
+        if parts.scheme != "https" or not parts.hostname:
+            raise ValueError("ANTHROPIC_BASE_URL must be an https URL")
+        if parts.username or parts.password or parts.query or parts.fragment:
+            raise ValueError("ANTHROPIC_BASE_URL must not contain credentials, a query or a fragment")
+        return value.strip().rstrip("/")
 
     @field_validator("database_url", "migration_database_url")
     @classmethod
