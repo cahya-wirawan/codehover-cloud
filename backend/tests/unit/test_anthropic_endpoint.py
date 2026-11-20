@@ -59,7 +59,9 @@ def test_the_operator_endpoint_applies_only_to_the_operator_key(monkeypatch: pyt
     runtime, http = build_runtime(settings, "test")
     try:
         assert _host(runtime.gateways["anthropic"]) == "https://proxy.example.test/v"
-        assert _host(runtime.own_key_gateway("sk-workspace")) == OFFICIAL_BASE_URL  # own keys: official only
+        assert (
+            _host(runtime.own_key_gateway("anthropic", "sk-workspace")) == OFFICIAL_BASE_URL
+        )  # own keys: official only
     finally:
         asyncio.run(http.aclose())
 

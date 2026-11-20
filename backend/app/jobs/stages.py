@@ -64,7 +64,7 @@ class Runtime:
     retry_delays: tuple[float, ...] = (2.0, 8.0, 30.0)
     # Own-key builds (M6, T24): the sealer opens a workspace's key; the factory makes its gateway.
     sealer: Any = None
-    own_key_gateway: Any = None  # Callable[[str], ModelGateway]
+    own_key_gateway: Any = None  # Callable[[provider, key], ModelGateway]
     own_key_cache: dict[Any, Any] = field(default_factory=dict)
     # Public repositories without the App (anonymous source downloads); None refuses them.
     public_github: PublicGitHub | None = None

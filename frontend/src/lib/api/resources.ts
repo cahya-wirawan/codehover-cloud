@@ -163,8 +163,9 @@ export interface PushRequest {
   first_received_at: string;
   updated_at: string;
 }
+export type KeyProvider = "anthropic" | "openai" | "gemini" | "openrouter";
 export interface ProviderKey {
-  provider: "anthropic";
+  provider: KeyProvider;
   hint: string;
   created_at: string;
   created_by_name: string | null;
@@ -561,10 +562,10 @@ export const api = {
       workspaceId ? `/catalog/presets?workspace_id=${encodeURIComponent(workspaceId)}` : "/catalog/presets",
     ),
   providerKeys: (wid: string) => apiJson<Page<ProviderKey>>(`/workspaces/${wid}/provider-keys`),
-  saveProviderKey: async (wid: string, apiKey: string) =>
-    json<ProviderKey>(await apiSend("PUT", `/workspaces/${wid}/provider-keys/anthropic`, { api_key: apiKey })),
-  removeProviderKey: async (wid: string) => {
-    await apiSend("DELETE", `/workspaces/${wid}/provider-keys/anthropic`);
+  saveProviderKey: async (wid: string, provider: KeyProvider, apiKey: string) =>
+    json<ProviderKey>(await apiSend("PUT", `/workspaces/${wid}/provider-keys/${provider}`, { api_key: apiKey })),
+  removeProviderKey: async (wid: string, provider: KeyProvider) => {
+    await apiSend("DELETE", `/workspaces/${wid}/provider-keys/${provider}`);
   },
   usage: (wid: string) => apiJson<Usage>(`/workspaces/${wid}/usage`),
   usageEntries: (wid: string) => apiJson<Page<UsageEntry>>(`/workspaces/${wid}/usage/entries?limit=20`),

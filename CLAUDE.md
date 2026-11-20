@@ -30,6 +30,7 @@ M0 to M6 are implemented, including SCIP (T23), plus per-project access control.
   - SCIP (T23; `engine/indexers.py`, `index_worker.py`, `scip.py`): scip-python, scip-typescript and rust-analyzer run in the sandbox's `indexer` profile, one program per run; resolved references are `index` edges, and a failed or timed-out family keeps labeled `name` edges.
   - Rust: tree-sitter-rust in the parser; rust-analyzer reads a `rust-project.json` that the sandboxed worker builds from the Cargo manifests (`engine/rust_project.py`), so cargo, build scripts and proc macros never run. It is installed by `backend/indexers/fetch_rust.py` (pinned by SHA-256) together with Rust's library sources.
 - **Public GitHub repositories** (0028, `projects/public_repos.py`, `adapters/github/public.py`): a `public` connection kind reads public repositories without the App; visibility is re-checked on every resolve and download, tarballs come anonymously from codeload, and the optional `GITHUB_PUBLIC_TOKEN` only raises the metadata rate limit. No push rebuilds. A public site of one needs a permitted license at the build's commit, with the license file in the build (FR-029, 0029, `projects/licenses.py`); private sites need none.
+- **More model providers** (0030, `adapters/models/{openai,gemini,openrouter}.py`, shared `_http.py`): OpenAI (Responses API), Gemini (Gemini API `generateContent`) and OpenRouter (chat completions, `max_price` = catalog price, no `models` fallback) over plain httpx, for operator keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, optional `OPENAI_BASE_URL`) and workspaces' own keys. Batches stay Anthropic-only (the catalog refuses other `batch_price`s).
 - **Per-project access** (0027, `projects/access.py`): a project is open to the workspace or restricted; restricted projects are visible to admins, owners and members with a viewer or editor grant, and the grant is their role there.
 
 The eval labels are drafts until two maintainers label them. Live use needs real Google/GitHub OAuth and GitHub App credentials, plus an operator model catalog and provider key for paid presets. The specification lives in `build-package/`. codehover-cloud is a planned multi-tenant SaaS that turns a GitHub repository into a browsable, cited explanation website, with hover cards, reference graphs and architecture guides. It is a hosted version of the `cahya-wirawan/codehover` CLI. Its engine is written independently: reusing any reference code needs an explicit decision and a license review.
@@ -43,7 +44,8 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - the payment failure matrix has run only against the replayed provider, not Stripe test mode in staging;
 - the legal texts are drafts awaiting jurisdiction review;
 - owner notices are in-app only (there is no email delivery);
-- only the explain stage is batched;
+- only the explain stage is batched, and only for Anthropic models;
+- the OpenAI, Gemini and OpenRouter adapters are tested against mocked responses only, never against the live APIs; whether OpenAI's and OpenRouter's input counts include cached tokens is assumed (OpenAI convention), not confirmed;
 - SCIP links calls through an interface or Protocol to the interface method, and never reads a repository's tsconfig path aliases;
 - Rust resolution has no crates.io dependencies, proc-macro expansion or build-script output, and assumes a 64-bit Linux target;
 - a published site shows one variant;
@@ -110,7 +112,8 @@ Conventions that span files:
   - Prompts are immutable per set in `app/engine/prompts/<X.Y.Z>/`; any text change is a new set and a new `GENERATION_PROMPT_VERSION`.
   - The checker never falls back to a heuristic for model output; any checker failure leaves claims `unchecked`.
   - Get gateways through `generation.gateway_for`, never `rt.gateways[...]`: own-key builds use the workspace's key, looked up on every call.
-  - Every Anthropic client names its endpoint (`OFFICIAL_BASE_URL`, or `ANTHROPIC_BASE_URL` for the operator's key only), so the SDK never falls back to the environment or a credentials profile; own keys always go to the official API.
+  - Every Anthropic client names its endpoint (`OFFICIAL_BASE_URL`, or `ANTHROPIC_BASE_URL` for the operator's key only), so the SDK never falls back to the environment or a credentials profile; own keys always go to the official API. The other providers' adapters use the runtime's shared httpx client with full URLs (`OPENAI_BASE_URL` only for the operator's OpenAI key); own-key gateways come from `runtime.own_key_gateways` (`rt.own_key_gateway(provider, key)`).
+  - A new provider needs: the catalog `provider` Literal, a gateway, `operator_gateways`/`own_key_gateways`, `Settings.configured_providers`, `keys.Provider` plus a `verify_key`, and a migration widening `provider_keys.provider`.
   - Writer requests carry `audience` (`_writer_request`); the checker never does. Cache keys include the variant.
   - Batches go only through `batching.prefill`. Batched attempts are `batched`, and waiting raises `StageWait`, which does not use up an attempt.
   - Regenerate `backend/evals/reports/baseline-replay.json` after changing parser, prompts, chunking or claim extraction (CI diffs it).

@@ -189,7 +189,7 @@ async def gateway_for(rt: Any, claimed: Claim, provider: str) -> Any:
             await db.commit()
         if key is None:
             raise StageStop("provider_key_missing")
-        rt.own_key_cache[cache_key] = rt.own_key_gateway(key)
+        rt.own_key_cache[cache_key] = rt.own_key_gateway(provider, key)
     return rt.own_key_cache[cache_key]
 
 
