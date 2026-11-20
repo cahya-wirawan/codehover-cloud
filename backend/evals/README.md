@@ -38,6 +38,8 @@ ANTHROPIC_API_KEY=... .venv/bin/python -m evals.harness --provider anthropic \
 
 The same works for `--provider openai`, `gemini` or `openrouter`, with `OPENAI_API_KEY`, `GEMINI_API_KEY` or `OPENROUTER_API_KEY`. Both roles of the preset must use that provider.
 
+Each pass reports its token usage, including what the provider reports for failed calls. Every call that gave no usable answer is listed under `explanations.failures` or `claims.failures`, with the chunk (`file`, `lines`) or the claim IDs, and either the provider's error (`kind`, `code`) or the first local validation problems. A failed `explanations_valid` gate is explained there.
+
 The corpus needs about 60 KB of input, as the report's `request_input_bound` shows, plus outputs, for one explain pass and one check pass.
 
 ## Gates

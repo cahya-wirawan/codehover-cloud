@@ -2,6 +2,7 @@
  "claims": {
   "baseline_status": "provisional: needs labels from two maintainers",
   "checked_claims": 34,
+  "failures": [],
   "inter_labeler_kappa": null,
   "invalid_citations": {
    "cases": 4,
@@ -66,6 +67,11 @@
      0.8281
     ]
    }
+  },
+  "usage": {
+   "cache_read_tokens": 0,
+   "input_tokens": 5070,
+   "output_tokens": 1450
   }
  },
  "corpus": {
@@ -89,9 +95,11 @@
  "explanations": {
   "answers_with_injected_text": 0,
   "chunks": 9,
+  "failures": [],
   "prompts_with_intact_blocks": 9,
   "request_input_bound": 57760,
   "usage": {
+   "cache_read_tokens": 0,
    "input_tokens": 10584,
    "output_tokens": 3920
   },

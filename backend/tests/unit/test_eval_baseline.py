@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from app.adapters.models.replay import ReplayGateway
 from app.engine import catalog
+from app.engine.gateway import GenerationRequest, GenerationResult, ProviderError, Usage
 from evals import harness
 
 REPORT = Path(harness.__file__).parent / "reports" / "baseline-replay.json"
@@ -48,3 +50,41 @@ def test_kappa_and_wilson() -> None:
     assert harness.kappa(["a", "a", "b", "b"], ["a", "b", "a", "b"]) == 0.0
     low, high = harness.wilson(14, 26) or [0, 0]
     assert 0 < low < 14 / 26 < high < 1
+
+
+class FlakyGateway(ReplayGateway):
+    """The replay, except the first explain call fails at the provider and the first check answer has
+    no `checks` field."""
+
+    def __init__(self) -> None:
+        self.failed: set[str] = set()
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        first = request.purpose not in self.failed
+        self.failed.add(request.purpose)
+        if first and request.purpose == "explain":
+            raise ProviderError(
+                "permanent", "provider_rejected", usage=Usage(input_tokens=7, output_tokens=3)
+            )
+        result = await super().generate(request)
+        if first and request.purpose == "check":
+            return replace(result, output={"verdicts": []})
+        return result
+
+
+def test_failed_calls_are_reported_with_their_reason_and_usage() -> None:
+    preset = catalog.REPLAY_PRESET
+    report = asyncio.run(
+        harness.run(FlakyGateway(), catalog.REPLAY_MODEL, preset.writer, preset.checker, "replay")
+    )
+    baseline = replay_report()
+    explanations, checks = report["explanations"], report["claims"]
+    assert report["gates"]["explanations_valid"] is False
+    assert explanations["valid_answers"] == explanations["chunks"] - 1
+    [failure] = explanations["failures"]
+    assert failure["provider_error"] == {"kind": "permanent", "code": "provider_rejected"}
+    assert failure["file"] and failure["lines"]
+    assert explanations["usage"]["input_tokens"] > 7  # the failed call's reported usage counts too
+    [invalid] = checks["failures"]
+    assert invalid["claims"] and invalid["validation"] and invalid["problems"] >= len(invalid["validation"])
+    assert checks["checked_claims"] == baseline["claims"]["checked_claims"] - len(invalid["claims"])
