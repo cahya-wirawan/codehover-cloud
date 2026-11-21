@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.40] - 2026-11-21
+
+### Fixed
+
+- 19: guide pages that cite one line as `[[file_id:N]]` are stored as `[[file_id:N-N]]`, and any other malformed citation marker is sent back for repair before the page is stored. Both writers (Claude Sonnet 5.5 and Gemini 3.8 Flash) wrote single-line citations, which became invalid claims that blocked publication.
+- 04, 07: a provider call waits up to 300 s for its answer (was 90 s), and 15 s to connect. A Gemini 3.8 Flash checker call was cut off at 90 s, leaving 14 claims unchecked and the build unpublishable.
+
 ## [0.5.39] - 2026-11-21
 
 ### Changed

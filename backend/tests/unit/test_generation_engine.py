@@ -208,6 +208,18 @@ EVIDENCE = [
             "mermaid",
         ),
         ("## Not h1\n\nx [[FID:1-2]]".replace("FID", FILE_ID), "level-one heading"),
+        # A single line is accepted (stored as N-N); other malformed markers are repaired, not stored.
+        ("# T\n\nRuns [[FID:3]].".replace("FID", FILE_ID), None),
+        ("# T\n\nOne line out of range [[FID:21]].".replace("FID", FILE_ID), "not inside SOURCE_EVIDENCE"),
+        (
+            "# T\n\nRuns [[src/app.py:1-3]] and [[FID:1-3]].".replace("FID", FILE_ID),
+            "is not [[file_id:start-end]]",
+        ),
+        (
+            "# T\n\n- item [[FID:1-3, 5-6]]\n\nok [[FID:1-3]]".replace("FID", FILE_ID),
+            "is not [[file_id:start-end]]",
+        ),
+        ("# T\n\n```mermaid\ngraph TD\nA[[sub]] --> B\n```\n\nok [[FID:1-3]]".replace("FID", FILE_ID), None),
     ],
 )
 def test_guide_markdown_allowlist(markdown: str, problem: str | None) -> None:
@@ -216,6 +228,13 @@ def test_guide_markdown_allowlist(markdown: str, problem: str | None) -> None:
         assert problems == []
     else:
         assert any(problem in p for p in problems), problems
+
+
+def test_single_line_citations_are_stored_as_ranges() -> None:
+    markdown = f"# T\n\nA [[{FILE_ID}:7]] and B [[{FILE_ID}:2-4]]. Not a file id: [[x:7]]."
+    assert generate.normalize_citations(markdown) == (
+        f"# T\n\nA [[{FILE_ID}:7-7]] and B [[{FILE_ID}:2-4]]. Not a file id: [[x:7]]."
+    )
 
 
 def test_provider_projection_keeps_properties_named_like_keywords() -> None:

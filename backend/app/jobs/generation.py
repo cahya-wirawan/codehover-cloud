@@ -628,9 +628,10 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
             )
             if generate.validate_guide(output, evidence):
                 return page, None, {"generator": "none", "error": "no_valid_page"}
+            markdown = generate.normalize_citations(output["markdown"])
             key = build_key(claimed.workspace_id, ctx.project_id, claimed.build, f"guide/{page.slug}.md")
-            await rt.store.put(key, output["markdown"].encode(), "text/markdown; charset=utf-8")
-            heading = generate.heading_text(output["markdown"])
+            await rt.store.put(key, markdown.encode(), "text/markdown; charset=utf-8")
+            heading = generate.heading_text(markdown)
             if heading:
                 titles[page.slug] = heading[:200]  # a variant's page title, in its own language
             return page, key, provenance

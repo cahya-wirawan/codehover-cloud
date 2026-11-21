@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.5.39",
+  "package_version": "0.5.40",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -61,7 +61,7 @@
     },
     "04_SYSTEM_ARCHITECTURE.md": {
       "status": "complete specification",
-      "sha256": "1cb3e4a1d095fc5a6bd3f97cc04547af9a86a188defb41071970a8b2285080c0"
+      "sha256": "14a17eab4430ec98248fec7e66de87438d619472e435ef3afa483b4b2f7ffd40"
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
@@ -73,7 +73,7 @@
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
-      "sha256": "98ea3679f65a6c41bc5ad06ab4341f2bc029a1b8dce23949b9401a8ab0ced113"
+      "sha256": "ebfb241dd2fb052c09ee64dafca233060e4af305253b26102632c06dc6f71f89"
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
@@ -121,7 +121,7 @@
     },
     "19_PROMPT_LIBRARY.md": {
       "status": "complete specification",
-      "sha256": "c2e5bde389dd7a0bcbdd5c896d415c73818e64dd5ca487487aa45af3cb7d505c"
+      "sha256": "8e5331b4ecafcccc95f66b395c3578135e735892053809fbc96f730d4b9aeaff"
     },
     "20_ACCEPTANCE_CRITERIA.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "2fbdfff7ce04213bfdec99bf92c43f838ad90d6400ce97da3e7ae4901e444f7a"
+      "sha256": "94b59c4d45063caac0d8e7b587b05c9e0af70c22ad8245fa9c391e03645d39c0"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "2248753e45c5239708905a3ddbf6cadbf89d16c3360465708ad0f61cfb2b698e"
+      "sha256": "cb635c2c0cae80ed38a6bd91027138b717e05d8ad1c92293cc34341baa3a521f"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "7b6bf780d64b35ece256028661a1733e611b5c49bae630c8b6f68dd95030f8d9"
+      "sha256": "16a158d18a72bab357bdb06597d4134f24710901b86c48d783d83dbe2850d817"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "c414f2403563d7ed479bd27b038cd3659e85e6730d14edb191cf12f888f0570a"
+      "sha256": "ecbf2f9d782aa197ca6567dc900587698ece3bc73cb62b03f68dade5418c149b"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -260,5 +260,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "52c171f560cb77409dfec5ef62ab40229edc9283acbabb9413016f1b967d8fbe"
+  "master_spec_sha256": "2295fd33c4634ae99390a42ba4482842b871a32edc76e3057b51e8042cdb569b"
 }

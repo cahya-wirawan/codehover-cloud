@@ -102,6 +102,11 @@ def _segments(markdown: str) -> list[str]:
     return segments
 
 
+def markers(markdown: str) -> list[str]:
+    """Every citation marker that claim extraction will read (prose outside code fences and headings)."""
+    return [raw for segment in _segments(markdown) for raw in MARKER.findall(segment)]
+
+
 def extract(slug: str, markdown: str) -> list[Claim]:
     claims: list[Claim] = []
     for segment in _segments(markdown):

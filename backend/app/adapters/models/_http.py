@@ -3,7 +3,7 @@
 These adapters use httpx directly, like the Stripe adapter, rather than vendor SDKs:
 - Every request names its full URL, so no SDK fallback (an `OPENAI_BASE_URL` environment variable, a
   credentials file) can redirect a call.
-- The runtime's one shared client is used. It never follows redirects, and a call is bounded at 90 s (04).
+- The runtime's one shared client is used. It never follows redirects; a call waits up to 300 s for its answer, and 15 s to connect (04).
 - There are no hidden retries: retries are persisted, budgeted attempts.
 
 Failures are normalized into `ProviderError` kinds here. A connection that never opened was not billed, so
@@ -20,7 +20,11 @@ import httpx
 
 from app.engine.gateway import GenerationRequest, GenerationResult, ProviderError, Usage
 
-CALL_TIMEOUT_SECONDS = 90.0
+# Reasoning models at medium effort take a minute or more on a large check or page; a call cut off by
+# its bound is `unknown` (it keeps its hold and gives no answer), so the bound leaves room for slow answers.
+CALL_TIMEOUT_SECONDS = 300.0
+CONNECT_TIMEOUT_SECONDS = 15.0
+CALL_TIMEOUT = httpx.Timeout(CALL_TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT_SECONDS)
 VERIFY_TIMEOUT_SECONDS = 15.0
 
 
@@ -73,7 +77,7 @@ async def post(
     client: httpx.AsyncClient, url: str, *, headers: dict[str, str], body: dict[str, Any]
 ) -> httpx.Response:
     try:
-        return await client.post(url, json=body, headers=headers, timeout=CALL_TIMEOUT_SECONDS)
+        return await client.post(url, json=body, headers=headers, timeout=CALL_TIMEOUT)
     except (httpx.ConnectError, httpx.ConnectTimeout) as error:  # nothing was sent, so nothing was billed
         raise ProviderError("transient", "provider_connection") from error
     except httpx.TimeoutException as error:

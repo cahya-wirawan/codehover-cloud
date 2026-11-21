@@ -7,6 +7,8 @@ provider is called.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -14,6 +16,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
+from app.engine import generate
 from app.engine.gateway import GenerationRequest, GenerationResult, ProviderError, Usage
 from tests.integration.auth_support import FakeIdP, ddl, unsafe
 from tests.integration.conftest import needs_db
@@ -185,11 +188,63 @@ async def test_unsupported_claims_block_until_waived_and_waivers_are_audited(
     assert audit and sorted(audit[0][0]["claim_keys"]) == sorted(unsupported)
 
 
-async def test_malformed_citations_are_invalid_and_cannot_be_waived(
+@dataclass
+class Rewriting(ScriptedProvider):
+    """Rewrites every guide page the writer returns (not its repairs)."""
+
+    rewrite: Callable[[str], str] = lambda markdown: markdown
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        result = await super().generate(request)
+        if request.purpose != "guide":
+            return result
+        output = {"markdown": self.rewrite(result.output["markdown"])}
+        return GenerationResult(output, result.usage, result.provider_request_id, result.model_id)
+
+
+async def guide_markdown(owner: httpx.AsyncClient, build: str) -> list[str]:
+    slugs = [r[0] for r in ddl("SELECT slug FROM guide_pages WHERE build_id = :b ORDER BY ordinal", b=build)]
+    return [(await owner.get(f"/api/v1/builds/{build}/guide/{slug}")).json()["markdown"] for slug in slugs]
+
+
+async def test_single_line_citations_are_stored_as_ranges_and_stay_valid(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
+    """Models write `[[file_id:N]]` for one line; the page is stored with `[[file_id:N-N]]`, without a
+    repair call, and its claims are deterministically valid."""
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Rewriting(rewrite=lambda md: re.sub(r"\[\[([0-9a-f-]{36}):(\d+)-\d+\]\]", r"[[\1:\2]]", md))
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    assert "repair" not in provider.calls
+    pages = await guide_markdown(owner, build)
+    assert pages and all(re.search(r"\[\[[0-9a-f-]{36}:(\d+)-\1\]\]", md) for md in pages)
+    assert not any(re.search(r"\[\[[0-9a-f-]{36}:\d+\]\]", md) for md in pages)
+    rows = current_claims(build)
+    assert rows and all(r[3] == "valid" for r in rows)
+
+
+async def test_a_malformed_citation_is_repaired_before_the_page_is_stored(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Rewriting(rewrite=lambda md: md + "\n\nThe entry point reads arguments [[src/app.py:5-7]].\n")
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    assert "repair" in provider.calls
+    assert any(
+        "[[src/app.py:5-7]]" in prompt and "is not [[file_id:start-end]]" in prompt
+        for prompt in provider.prompts
+    )
+    assert not any("src/app.py:5-7" in md for md in await guide_markdown(owner, build))
+    assert not [r for r in current_claims(build) if r[2] == "invalid"]
+
+
+async def test_malformed_citations_are_invalid_and_cannot_be_waived(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A14: a citation by path instead of immutable file ID fails deterministic validation; it blocks
-    publication and no waiver can lift it."""
+    publication and no waiver can lift it. The guide stage now repairs such pages before storing them, so
+    this backstop is reached here by skipping that check (as for a page stored before it existed)."""
+    monkeypatch.setattr(generate, "validate_guide", lambda output, evidence: [])
     owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = Opinionated(
         guide_suffix="\n\nThe entry point reads arguments [[src/app.py:5-7]].\n", repair=False

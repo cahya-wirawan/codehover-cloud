@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-21 · Package version 0.5.39
+Date: 2026-11-21 · Package version 0.5.40
+
+0.5.40 fixes two causes of unpublishable builds found in live json2bin builds. An Anthropic build had 6 invalid claims and a Gemini build had 9, all `citation_syntax` from single-line citations `[[file_id:N]]`. The Gemini build also had 14 unchecked claims, because its checker call was cut off at the 90 s call bound. `tests/unit/test_generation_engine.py` checks that single-line citations are accepted and stored as `N-N`, and that out-of-evidence single lines, path citations and multi-range markers are refused, while Mermaid's `[[...]]` shapes inside code fences are not. `tests/integration/test_quality.py` checks that a page with single-line citations is stored as ranges without a repair call and its claims are valid, and that a path citation is repaired before the page is stored. The A14 test of invalid citations, which cannot be waived, now reaches that backstop by skipping the page check. `tests/unit/test_model_adapters.py` checks the 300 s answer and 15 s connect bounds for both the raw-HTTP adapters and the Anthropic SDK client. The replay eval baseline is unchanged. Results: integration 236 passed, unit 257 passed (8 skipped).
 
 0.5.39 renders the repository overview's Markdown in the guide view, which had shown it as plain text. `frontend/src/features/viewer/guide.test.tsx` checks emphasis, inline code, a heading two levels below the Guide heading, a list, two paragraphs, an https link, and that a `javascript:` link and a script tag stay text. The XSS corpus (`xss.test.tsx`) adds a hostile overview. Results: frontend 48 tests passed; lint, typecheck, build and the env check pass.
 

@@ -36,6 +36,7 @@ GUIDE_EVIDENCE_MAX_LINES = 600
 MIN_PAGES, MAX_PAGES = 3, 8
 MAX_RANGE_LINES = 200
 CITATION = re.compile(r"\[\[([0-9a-f-]{36}):(\d+)-(\d+)\]\]")
+SINGLE_LINE_CITATION = re.compile(r"\[\[([0-9a-f-]{36}):(\d+)\]\]")
 MERMAID_FORBIDDEN = re.compile(r"(?i)\b(click|style|classDef|linkStyle|%%\{|init)\b|<[a-z/]")
 MERMAID_NODE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*)\s*[\[({>]")
 SCHEMA_MAJOR_MINOR = ENGINE_VERSION.rsplit(".", 1)[0]
@@ -510,14 +511,29 @@ def heading_text(markdown: str) -> str | None:
     return None
 
 
+def normalize_citations(markdown: str) -> str:
+    """Writes a single-line citation `[[file_id:N]]`, which models write despite the prompt, as the
+    canonical `[[file_id:N-N]]`. Applied once to a written page, before it is checked and stored, so
+    claims, the viewer and exports only ever see the canonical form."""
+    return SINGLE_LINE_CITATION.sub(r"[[\1:\2-\2]]", markdown)
+
+
 def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> list[str]:
-    """Allowlisted Markdown (19 P04). Citation correctness against the snapshot is the verify stage's job;
-    here a citation must at least point into the supplied evidence."""
+    """Allowlisted Markdown (19 P04), checked on the page as it will be stored (`normalize_citations`).
+    Citation correctness against the snapshot is the verify stage's job; here every citation marker must
+    be well formed and point into the supplied evidence, so a malformed one is repaired, not stored."""
+    from app.engine.claims import markers  # claims imports this module
+
     problems = _schema_errors("guide-page", output)
     if problems:
         return problems
-    markdown: str = output["markdown"]
+    markdown = normalize_citations(output["markdown"])
     problems.extend(markdown_problems(markdown))
+    for raw in markers(markdown):
+        if CITATION.fullmatch(raw) is None:
+            problems.append(
+                f"citation {raw[:80]!r} is not [[file_id:start-end]] with a file_id from SOURCE_EVIDENCE"
+            )
     ranges = [(e["file_id"], e["start_line"], e["end_line"]) for e in evidence]
     citations = CITATION.findall(markdown)
     if not citations:

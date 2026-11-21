@@ -47,7 +47,7 @@ from app.modules.usage import ledger
 logger = logging.getLogger("app.jobs.calls")
 MAX_TRANSIENT_RETRIES = 3
 HOLD_POLL_SECONDS = 1.0  # how often a call waiting for room re-checks the envelope
-HOLD_WAIT_SECONDS = 600.0  # longest wait for in-flight calls to settle (each is bounded at 90 s, 04)
+HOLD_WAIT_SECONDS = 600.0  # longest wait for in-flight calls to settle (each is bounded at 300 s, 04)
 _SETTLING: set[asyncio.Future[None]] = set()  # settlements of cut-off calls, kept until they finish
 
 
