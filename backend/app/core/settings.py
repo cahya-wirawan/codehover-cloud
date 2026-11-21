@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
-from typing import Self
+from typing import Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
@@ -117,6 +117,15 @@ class Settings(BaseSettings):
     # Shown on the support, privacy and terms pages.
     operator_name: str = "codehover-cloud"
     support_email: str | None = None
+    # Owner notices by email (11 "Owner notice"): an SMTP relay. Unset SMTP_HOST records notices without
+    # sending them (state `skipped`). TLS: starttls (587), tls (implicit, 465) or none (a local relay such
+    # as Mailpit; never with credentials).
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_tls: Literal["starttls", "tls", "none"] = "starttls"
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from: str | None = None  # e.g. "codehover <notices@example.com>"
 
     def configured_providers(self) -> frozenset[str]:
         """Providers whose catalog models can run: replay always, others only with credentials."""
@@ -155,6 +164,10 @@ class Settings(BaseSettings):
         "stripe_price_pro",
         "stripe_price_team",
         "support_email",
+        "smtp_host",
+        "smtp_username",
+        "smtp_password",
+        "smtp_from",
         "scip_node_path",
         "scip_tools_dir",
         "scip_rust_analyzer_path",
@@ -209,6 +222,23 @@ class Settings(BaseSettings):
         if value is not None and not value.get_secret_value().startswith("postgresql+psycopg://"):
             raise ValueError("database URLs must use the postgresql+psycopg:// driver")
         return value
+
+    @model_validator(mode="after")
+    def _smtp_rules(self) -> Self:
+        if self.smtp_host is None:
+            return self
+        if (
+            not self.smtp_from
+            or "\n" in self.smtp_from
+            or "\r" in self.smtp_from
+            or "@" not in self.smtp_from
+        ):
+            raise ValueError("SMTP_FROM must be a sender address when SMTP_HOST is set")
+        if (self.smtp_username is None) != (self.smtp_password is None):
+            raise ValueError("SMTP_USERNAME and SMTP_PASSWORD are set together")
+        if self.smtp_tls == "none" and self.smtp_username is not None:
+            raise ValueError("SMTP credentials need SMTP_TLS starttls or tls")
+        return self
 
     @model_validator(mode="after")
     def _production_rules(self) -> Self:

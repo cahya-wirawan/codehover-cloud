@@ -27,6 +27,7 @@ from app.core.settings import Settings
 from app.core.tenancy import set_context
 from app.modules.billing import service
 from app.modules.billing.plans import plan_for_price
+from app.modules.notices import service as notices
 
 logger = logging.getLogger(__name__)
 PROVIDER_ID = re.compile(r"^[A-Za-z0-9_]{1,255}$")
@@ -200,6 +201,15 @@ async def apply_subscriptions(
             if same:
                 continue
         changed += 1
+        if overdue and past_due_since is not None:
+            # Once per overdue spell of a subscription; a later spell (paid, then overdue again) is new.
+            await notices.record(
+                db,
+                workspace_id,
+                "billing_past_due",
+                f"{sub.id}:{past_due_since.astimezone(UTC).isoformat(timespec='microseconds')}",
+                {"subscription": row_id},
+            )
         await _audit(
             db,
             workspace_id,
@@ -363,6 +373,10 @@ async def process_receipt(
                 {"w": workspace_id, "d": details["dispute"], "open": opened, "lost": lost},
             )
             await _refresh_dispute_block(db, workspace_id)
+            if opened or lost:  # once per dispute and outcome, however many events repeat it
+                await notices.record(
+                    db, workspace_id, "dispute_opened" if opened else "dispute_lost", str(details["dispute"])
+                )
             await _audit(
                 db,
                 workspace_id,

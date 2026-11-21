@@ -8,7 +8,8 @@ Per workspace:
 - provider attempts whose outcome stayed unknown for a day (or that are still `started` a day later)
   settle at their maximum and become `reconciled`, so their holds stop counting against the allowance;
 - ready exports past their 24 hours lose their object and become `expired` (downloads stay 410);
-- build events after 30 days, generation cache entries when they expire, unused estimates after 30 days;
+- build events after 30 days, generation cache entries when they expire, unused estimates after 30 days,
+  owner notices 90 days after they were sent or given up;
 - build content (rows and objects) of failed, cancelled or budget-exhausted builds after 7 days, and of
   ready builds that are not published and not among their project's 5 newest ready builds after 30 days;
   the build row stays, marked `content_purged_at`, for the ledger and history;
@@ -43,6 +44,7 @@ KEEP_READY_BUILDS = 5
 EVENT_DAYS = 30
 ESTIMATE_DAYS = 30
 FAILED_SNAPSHOT_DAYS = 7
+NOTICE_DAYS = 90
 
 _BUILD_CONTENT = (
     "DELETE FROM search_documents WHERE workspace_id = :w AND build_id = :b",
@@ -144,7 +146,15 @@ async def _settle_stale_holds(sessions: async_sessionmaker[AsyncSession], worksp
 async def sweep_workspace(
     sessions: async_sessionmaker[AsyncSession], store: ObjectStore, workspace_id: UUID
 ) -> dict[str, int]:
-    counts = {"exports": 0, "events": 0, "cache": 0, "estimates": 0, "builds": 0, "snapshots": 0}
+    counts = {
+        "exports": 0,
+        "events": 0,
+        "cache": 0,
+        "estimates": 0,
+        "notices": 0,
+        "builds": 0,
+        "snapshots": 0,
+    }
     counts["stale_holds"] = await _settle_stale_holds(sessions, workspace_id)
     async with sessions() as db:
         await set_context(db, workspace_id=workspace_id)
@@ -186,9 +196,15 @@ async def sweep_workspace(
                 "DELETE FROM estimates e WHERE e.workspace_id = :w AND e.created_at < now() - make_interval(days => :es)"
                 " AND NOT EXISTS (SELECT 1 FROM builds b WHERE b.workspace_id = e.workspace_id AND b.estimate_id = e.id)",
             ),
+            (
+                "notices",
+                "DELETE FROM owner_notices WHERE workspace_id = :w AND created_at < now() - make_interval(days => :no)"
+                " AND state NOT IN ('pending', 'sending')",
+            ),
         ):
             result: Any = await db.execute(
-                text(statement), {"w": workspace_id, "ev": EVENT_DAYS, "es": ESTIMATE_DAYS}
+                text(statement),
+                {"w": workspace_id, "ev": EVENT_DAYS, "es": ESTIMATE_DAYS, "no": NOTICE_DAYS},
             )
             counts[key] += result.rowcount or 0
         due = (

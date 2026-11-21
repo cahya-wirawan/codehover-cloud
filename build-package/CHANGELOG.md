@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-11-21
+
+### Added
+
+- 05, 11, 12, 22, deployment: owner notices by email. Owners and admins are emailed when a subscription becomes past due, when a dispute opens or is lost, and when a site stops serving for any reason. Notices are recorded once per state change in the changing transaction (`owner_notices`, migration 0034; site suspensions through a statement-level trigger on `publications`) and sent by the worker over SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`; all optional), at least once with backoff. Compose adds a local Mailpit (`mail`) that the worker uses by default, so nothing leaves the machine. A metric counts deliveries by outcome.
+
 ## [0.6.4] - 2026-11-21
 
 ### Added
