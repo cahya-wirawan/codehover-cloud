@@ -21,7 +21,7 @@
 
 ## Defaults selected for implementation
 
-English standard output first; Python/TS/JS parser fixtures first; GitHub App read-only ingestion; one approved hosted model + replay; membership-only private sharing; all workspace projects shared with all members; PostgreSQL lexical search; no runtime LLM reads; manual beta entitlements; Stripe at paid launch; no automatic paid overage; controlled React hosted viewer; self-contained static ZIP export. These let implementation proceed without basic product decisions.
+C and C++ resolve uses by name only; type-aware resolution would need scip-clang and a compile database, which conflicts with never configuring or building tenant repositories. English standard output first; Python/TS/JS parser fixtures first; GitHub App read-only ingestion; one approved hosted model + replay; membership-only private sharing; all workspace projects shared with all members; PostgreSQL lexical search; no runtime LLM reads; manual beta entitlements; Stripe at paid launch; no automatic paid overage; controlled React hosted viewer; self-contained static ZIP export. These let implementation proceed without basic product decisions.
 
 ## Open decisions and timing
 

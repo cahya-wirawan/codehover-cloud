@@ -380,6 +380,7 @@ export interface FileReference {
 export interface FileView {
   id: string;
   path: string;
+  language?: string | null;
   start_line: number;
   end_line?: number;
   line_count?: number | null;

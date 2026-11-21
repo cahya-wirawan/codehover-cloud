@@ -142,6 +142,7 @@ export function staticSource(kb: Kb): ViewerSource {
       return {
         id: f.id,
         path: f.path,
+        language: f.language,
         start_line: first,
         end_line: last,
         line_count: f.lines.length,

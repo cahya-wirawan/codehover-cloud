@@ -32,6 +32,16 @@ const LANGUAGES: Record<string, string> = {
   yaml: "yaml",
   go: "go",
   rs: "rust",
+  c: "c",
+  h: "cpp", // C or C++; the C++ grammar reads both
+  cc: "cpp",
+  cpp: "cpp",
+  cxx: "cpp",
+  hh: "cpp",
+  hpp: "cpp",
+  hxx: "cpp",
+  ipp: "cpp",
+  tpp: "cpp",
 };
 const LANGUAGE_NAMES: Record<string, string> = {
   python: "Python",
@@ -42,10 +52,15 @@ const LANGUAGE_NAMES: Record<string, string> = {
   yaml: "YAML",
   go: "Go",
   rust: "Rust",
+  c: "C",
+  cpp: "C++",
 };
+/** The scanner's language names (scan.LANGUAGES) as highlighter grammars. */
+const SCANNED: Record<string, string> = { python: "python", javascript: "jsx", typescript: "tsx", tsx: "tsx", rust: "rust", c: "c", cpp: "cpp" };
 
-function languageOf(path: string): string {
-  return LANGUAGES[path.split(".").pop()?.toLowerCase() ?? ""] ?? "plain";
+/** The highlighter grammar: the language the scanner gave the file, else its extension. */
+function languageOf(path: string, scanned?: string | null): string {
+  return (scanned && SCANNED[scanned]) || (LANGUAGES[path.split(".").pop()?.toLowerCase() ?? ""] ?? "plain");
 }
 
 /** What a card shows: a definition, a use of one (one or several candidates), a parameter or a note. */
@@ -373,7 +388,7 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
             <FilePath path={data.path} />
             <p className="file-facts">
               {total ? `${total} lines` : ""}
-              {LANGUAGE_NAMES[languageOf(data.path)] ? `, ${LANGUAGE_NAMES[languageOf(data.path)]}` : ""}
+              {LANGUAGE_NAMES[languageOf(data.path, data.language)] ? `, ${LANGUAGE_NAMES[languageOf(data.path, data.language)]}` : ""}
               {data.start_line > 1 || last < total ? `; showing ${data.start_line}–${last}` : ""}
             </p>
           </header>
@@ -406,7 +421,7 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
               </Button>
             ) : null}
           </div>
-          <Highlight code={data.lines.join("\n")} language={languageOf(data.path)} theme={NO_THEME}>
+          <Highlight code={data.lines.join("\n")} language={languageOf(data.path, data.language)} theme={NO_THEME}>
             {({ tokens }) => (
               <div className="code">
                 {tokens.map((lineTokens, index) => {

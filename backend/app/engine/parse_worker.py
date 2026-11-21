@@ -22,6 +22,8 @@ MAX_REFERENCES_PER_FILE = 20000
 
 
 def _languages() -> dict[str, Language]:
+    import tree_sitter_c
+    import tree_sitter_cpp
     import tree_sitter_javascript
     import tree_sitter_python
     import tree_sitter_rust
@@ -33,6 +35,8 @@ def _languages() -> dict[str, Language]:
         "typescript": Language(tree_sitter_typescript.language_typescript()),
         "tsx": Language(tree_sitter_typescript.language_tsx()),
         "rust": Language(tree_sitter_rust.language()),
+        "c": Language(tree_sitter_c.language()),
+        "cpp": Language(tree_sitter_cpp.language()),
     }
 
 
@@ -62,14 +66,43 @@ RUST_DEFINITIONS = {
     "static_item": "variable",
     "macro_definition": "function",
 }
-DEFINITIONS = {"python": PY_DEFINITIONS, "rust": RUST_DEFINITIONS}
+# C and C++ map onto the same kinds: functions (and function-like macros) are functions, or methods inside
+# a class or qualified by one (`Parser::parse`); structs, unions, enums and typedefs are types; C++ classes
+# are classes and namespaces modules. Names sit in declarators (`int *f(void)`), so C_DEFINITIONS lists the
+# node types and `_c_definition` finds their names. A struct, union, enum or class counts only with a body
+# (not `struct S *p;`), and a prototype only when its file has no definition of the same name.
+C_DEFINITIONS = {
+    "function_definition": "function",
+    "declaration": "function",  # a prototype: `int f(int x);`
+    "field_declaration": "function",  # a method declared in a class body
+    "struct_specifier": "type",
+    "union_specifier": "type",
+    "enum_specifier": "type",
+    "class_specifier": "class",
+    "type_definition": "type",
+    "namespace_definition": "module",
+    "preproc_function_def": "function",
+}
+DEFINITIONS = {"python": PY_DEFINITIONS, "rust": RUST_DEFINITIONS, "c": C_DEFINITIONS, "cpp": C_DEFINITIONS}
 IDENTIFIER_TYPES = {"identifier", "type_identifier"}
-# Rust method calls and fields (`parser.next()`) name a `field_identifier`.
-REFERENCE_TYPES = {"rust": IDENTIFIER_TYPES | {"field_identifier"}}
+# Rust method calls and fields (`parser.next()`) name a `field_identifier`; so do C/C++ members (`p->next`).
+REFERENCE_TYPES = {
+    "rust": IDENTIFIER_TYPES | {"field_identifier"},
+    "c": IDENTIFIER_TYPES | {"field_identifier"},
+    "cpp": IDENTIFIER_TYPES | {"field_identifier"},
+}
+C_FAMILY = ("c", "cpp")
+C_DECLARATORS = (
+    "pointer_declarator",
+    "reference_declarator",
+    "parenthesized_declarator",
+    "array_declarator",
+    "attributed_declarator",
+)
 # Destructured parameters: `{ label }` in JS/TS, `Point { x }` in Rust.
 SHORTHAND_PATTERNS = {"shorthand_property_identifier_pattern", "shorthand_field_identifier"}
 # Fields of a parameter or pattern that bind no name: annotations, struct and variant names, defaults.
-NON_BINDING_FIELDS = {"type", "value", "right", "key"}
+NON_BINDING_FIELDS = {"type", "value", "right", "key", "default_value"}
 
 
 class _Positions:
@@ -133,6 +166,83 @@ def _rust_docstring(node: Node) -> str | None:
     return "\n".join(line for line in lines if line).strip() or None
 
 
+def _c_docstring(node: Node) -> str | None:
+    """The comments directly above a C/C++ definition, or above its `template <...>`, any style:
+    `/** ... */`, `/* ... */`, `///` or `//`. A blank line ends the comment block."""
+    found = _comments_above(node)
+    if found is None and node.parent is not None and node.parent.type == "template_declaration":
+        found = _comments_above(node.parent)
+    return found
+
+
+def _comments_above(anchor: Node) -> str | None:
+    lines: list[str] = []
+    row = anchor.start_point[0]
+    sibling = anchor.prev_named_sibling
+    while sibling is not None and sibling.type == "comment" and sibling.end_point[0] >= row - 1:
+        text = _text(sibling).strip()
+        if text.startswith("/*"):
+            body = text.removeprefix("/**").removeprefix("/*").removesuffix("*/")
+            block = [line.strip().removeprefix("*").strip() for line in body.splitlines()]
+        else:
+            block = [line.strip().lstrip("/").lstrip("!").strip() for line in text.splitlines()]
+        lines[:0] = block
+        row = sibling.start_point[0]
+        sibling = sibling.prev_named_sibling
+    return "\n".join(line for line in lines if line).strip() or None
+
+
+def _function_declarator(node: Node | None) -> Node | None:
+    """The `function_declarator` under a declarator chain (`*f(...)`, `&f(...)`), or None."""
+    while node is not None:
+        if node.type == "function_declarator":
+            return node
+        if node.type not in C_DECLARATORS:
+            return None
+        node = node.child_by_field_name("declarator")
+    return None
+
+
+def _c_definition(node: Node) -> tuple[Node, list[str], Node | None] | None:
+    """(name node, qualifying scopes, function declarator) of a C/C++ definition, or None when the node
+    defines nothing nameable (an anonymous struct, a use like `struct S *p`, a variable)."""
+    if node.type in ("struct_specifier", "union_specifier", "enum_specifier", "class_specifier"):
+        name = node.child_by_field_name("name")
+        if name is None or node.child_by_field_name("body") is None:
+            return None
+        return name, [], None
+    if node.type == "namespace_definition":
+        name = node.child_by_field_name("name")
+        return (name, [], None) if name is not None else None
+    if node.type == "preproc_function_def":
+        name = node.child_by_field_name("name")
+        return (name, [], node) if name is not None else None
+    if node.type == "type_definition":
+        declarator = node.child_by_field_name("declarator")
+        while declarator is not None and declarator.type != "type_identifier":
+            declarator = declarator.child_by_field_name("declarator")
+        return (declarator, [], None) if declarator is not None else None
+    function = _function_declarator(node.child_by_field_name("declarator"))
+    if function is None:
+        return None  # a variable or field, not a function
+    target = function.child_by_field_name("declarator")
+    scopes: list[str] = []
+    while target is not None and target.type == "qualified_identifier":  # `ns::Parser::parse`
+        scope = target.child_by_field_name("scope")
+        if scope is not None:
+            scopes.append(_text(scope))
+        target = target.child_by_field_name("name")
+    if target is None or target.type not in (
+        "identifier",
+        "field_identifier",
+        "destructor_name",
+        "operator_name",
+        "type_identifier",
+    ):
+        return None
+    return target, scopes, function
+
+
 def _rust_impl_name(node: Node) -> str | None:
     """The implemented type's name: `S` for `impl<T> Trait for path::S<T>` (or `&S`, `[S]`)."""
     target = node.child_by_field_name("type")
@@ -182,7 +292,7 @@ def _signature(node: Node, source: bytes, kind: str = "") -> str:
     body = node.child_by_field_name("body")
     end = body.start_byte if body is not None else node.end_byte
     head = source[node.start_byte : end].decode("utf-8", "replace")
-    return " ".join(head.split()).rstrip(" :{;" if kind == "rust" else " :{")[:300]
+    return " ".join(head.split()).rstrip(" :{;" if kind in ("rust", "c", "cpp") else " :{")[:300]
 
 
 def parse_file(language: Language, kind: str, text: str) -> dict[str, Any]:
@@ -205,6 +315,11 @@ def parse_file(language: Language, kind: str, text: str) -> dict[str, Any]:
                 continue
             symbol_kind = definitions.get(child.type)
             name_node = child.child_by_field_name("name") if symbol_kind else None
+            scopes: list[str] = []
+            params_from: Node | None = None
+            if symbol_kind and kind in C_FAMILY:
+                found = _c_definition(child)
+                name_node, scopes, params_from = found if found is not None else (None, [], None)
             # JS/TS `const f = () => ...` and `const f = function () {...}`
             if child.type == "variable_declarator":
                 value = child.child_by_field_name("value")
@@ -212,34 +327,50 @@ def parse_file(language: Language, kind: str, text: str) -> dict[str, Any]:
                     symbol_kind, name_node = "function", child.child_by_field_name("name")
             if symbol_kind and name_node is not None and len(symbols) < MAX_SYMBOLS_PER_FILE:
                 name = _text(name_node)
-                effective = "method" if (in_class and symbol_kind == "function") else symbol_kind
-                qualified = ".".join([*parents, name])
-                count = seen_keys.get(qualified, 0)
-                seen_keys[qualified] = count + 1
-                key = qualified if count == 0 else f"{qualified}#{count + 1}"
+                effective = "method" if ((in_class or scopes) and symbol_kind == "function") else symbol_kind
+                owners = [*parents, *scopes]
+                qualified = ".".join([*owners, name])
                 definition_name_nodes.add((name_node.start_byte, name_node.end_byte))
                 target = child if child.type != "variable_declarator" else child.child_by_field_name("value")
                 symbols.append(
                     {
-                        "symbol_key": key,
+                        "symbol_key": qualified,  # numbered below when a name repeats
                         "name": name,
                         "kind": effective,
-                        "parent_key": ".".join(parents) or None,
+                        "parent_key": ".".join(owners) or None,
                         **positions.span(child),
                         "signature": _signature(target or child, source, kind),
                         "docstring": _python_docstring(child)
                         if kind == "python"
                         else _rust_docstring(child)
                         if kind == "rust"
+                        else _c_docstring(child)
+                        if kind in C_FAMILY
                         else None,
-                        "params": _parameters(target or child),
+                        "params": _parameters(params_from or target or child),
+                        "prototype": child.type in ("declaration", "field_declaration") and kind in C_FAMILY,
                     }
                 )
-                visit(child, [*parents, name], in_class=effective == "class" or child.type == "trait_item")
+                in_type = effective == "class" or child.type in ("trait_item", "struct_specifier")
+                # A typedef names its type; a struct it defines inline stays at the outer level.
+                visit(child, owners if child.type == "type_definition" else [*owners, name], in_class=in_type)
             else:
                 visit(child, parents, in_class)
 
     visit(tree.root_node, [], in_class=False)
+    # A C/C++ prototype is a symbol only when its file does not also define it (`int f(int);` then
+    # `int f(int x) {...}` is one function, documented at its definition).
+    defined = {s["symbol_key"] for s in symbols if not s["prototype"]}
+    symbols = [
+        {k: v for k, v in s.items() if k != "prototype"}
+        for s in symbols
+        if not (s["prototype"] and s["symbol_key"] in defined)
+    ]
+    for s in symbols:  # a repeated name (overloads, `impl` blocks) gets `#2`, `#3`, ... in source order
+        count = seen_keys.get(s["symbol_key"], 0)
+        seen_keys[s["symbol_key"]] = count + 1
+        if count:
+            s["symbol_key"] = f"{s['symbol_key']}#{count + 1}"
     references = []
     for node in _walk(tree.root_node):
         if node.type in identifiers and (node.start_byte, node.end_byte) not in definition_name_nodes:
