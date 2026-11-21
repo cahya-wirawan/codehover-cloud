@@ -14,7 +14,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "check:env": "node scripts/check-env-usage.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:export": "vite build --config vite.export.config.ts && mkdir -p dist-export/licenses && cp public/licenses/codehover.txt dist-export/licenses/"
   },
   "dependencies": {
     "@fontsource-variable/newsreader": "5.3.0",

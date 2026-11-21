@@ -1,7 +1,13 @@
 # BuildKit Dockerfile-specific ignore file (context = repository root).
-# Allowlist: only the backend sources reach the build context.
+# Allowlist: only the backend sources, and the frontend for the export viewer stage, reach the build context.
 **
 !backend/
+!frontend/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-export/
+frontend/test-results/
+frontend/.env*
 backend/.venv/
 backend/indexers/node_modules/
 backend/**/__pycache__/

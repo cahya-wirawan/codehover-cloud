@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-21
+
+### Changed
+
+- 02, 10, 13, 22, `contracts/kb-export.schema.json` 1.1.0: the offline ZIP's reader is the product's own reading view (guide with Markdown, tables and diagrams; code with notes and cards at every use; search), built from the frontend's `export.html` entry and shipped in every static ZIP; the backend image builds it. The KB adds each file's references and each guide page's section and purpose (optional fields, so the change is additive). A missing viewer fails the export with `export_viewer_missing`. The hand-written `viewer.js` is removed.
+
 ## [0.6.0] - 2026-11-21
 
 ### Added

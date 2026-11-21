@@ -170,7 +170,7 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   const root = join(directory, "site");
   const offline = await browser.newContext();
   const blocked: string[] = [];
-  const types: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
+  const types: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".woff2": "font/woff2", ".woff": "font/woff", ".txt": "text/plain" };
   await offline.route("**/*", (route) => {
     const url = new URL(route.request().url());
     if (url.hostname !== "offline.test") {
@@ -184,8 +184,11 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   const reader = await offline.newPage();
   await reader.goto("http://offline.test/index.html");
   await expect(reader.getByRole("heading", { name: "API", level: 1 })).toBeVisible();
-  await reader.getByRole("button", { name: "src/app.py" }).click();
-  await reader.getByRole("button", { name: "Explain function main" }).click();
+  await expect(reader.getByRole("navigation", { name: "Guide pages" })).toBeVisible(); // the app's own reading view
+  await reader.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Code" }).click();
+  await reader.getByRole("button", { name: "src", exact: true }).click();
+  await reader.getByRole("button", { name: "app.py" }).click();
+  await reader.getByRole("button", { name: "Explain function main", exact: true }).click();
   const offlineCard = reader.getByRole("dialog", { name: "function main" }); // floats at the name, pinned
   await expect(offlineCard).toContainText("Entry point.");
   expect(blocked).toEqual([]); // the export loads nothing from the network

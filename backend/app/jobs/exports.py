@@ -5,9 +5,12 @@ Both formats carry exactly what the viewer shows: text files of the snapshot tha
 guide pages with their current claim checks, and the overview.
 
 - kb_json: the knowledge base, validated against `kb-export.schema.json` before it is stored.
-- static_zip: an offline reader. Fixed archive entries only (index.html, assets/, data/, NOTICE.txt,
-  manifest.json): source files live inside the data, never as archive paths, so no name from the
-  repository becomes a file name. The page loads nothing but its own files under a strict CSP.
+- static_zip: an offline reader: the product's own reading view, built from the frontend's `export.html`
+  entry (`npm run build:export`, `frontend/dist-export`; the backend image builds it), reading the
+  embedded knowledge base. Entry names come only from that build and fixed names (index.html, assets/,
+  data/, NOTICE.txt, manifest.json): source files live inside the data, never as archive paths, so no
+  name from the repository becomes a file name. The page loads nothing but its own files under a strict
+  CSP.
 
 The task runs on the ready build (stage `export`, work key = export id); its result is recorded in the
 fenced completion, and a failure marks only the export as failed.
@@ -18,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import zipfile
 from functools import lru_cache
 from pathlib import Path
@@ -34,7 +38,9 @@ from app.jobs.generation import _rows
 from app.jobs.store import Apply, Claim
 
 ASSETS = Path(__file__).resolve().parents[1] / "engine" / "export_assets"
-KB_SCHEMA_ID = "urn:codehover-cloud:schema:kb-export:1.0.0"
+# The built export viewer: EXPORT_VIEWER_DIR in the image, else the frontend's build in a checkout.
+DEFAULT_VIEWER = Path(__file__).resolve().parents[3] / "frontend" / "dist-export"
+KB_SCHEMA_ID = "urn:codehover-cloud:schema:kb-export:1.1.0"
 EXPIRY_HOURS = 24
 ZIP_TIMESTAMP = (2020, 1, 1, 0, 0, 0)  # deterministic archives: same build, same bytes
 
@@ -86,8 +92,31 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
                 "sha256": f.sha256,
                 "lines": lines,
                 "explanation": explanation,
+                "references": [],
             }
         )
+    by_file = {f["id"]: f for f in files}
+    uses_at: dict[tuple[str, int, int], dict[str, Any]] = {}
+    for e in await _rows(
+        rt,
+        claimed,
+        'SELECT source_file_id, line, "column", resolution, ambiguity_group IS NOT NULL AS ambiguous, to_symbol_id'
+        ' FROM reference_edges WHERE workspace_id = :w AND build_id = :b ORDER BY source_file_id, line, "column",'
+        " to_symbol_id",
+    ):
+        if str(e.source_file_id) not in by_file:
+            continue
+        at = uses_at.setdefault(
+            (str(e.source_file_id), e.line, e.column),
+            {"line": e.line, "column": e.column, "targets": [], "resolution": "name", "ambiguous": False},
+        )
+        if str(e.to_symbol_id) not in at["targets"]:
+            at["targets"].append(str(e.to_symbol_id))
+        at["ambiguous"] = at["ambiguous"] or e.ambiguous or len(at["targets"]) > 1
+        if e.resolution == "index":
+            at["resolution"] = "index"
+    for (file_id, _line, _column), use in uses_at.items():
+        by_file[file_id]["references"].append(use)
     uses: dict[str, list[str]] = {}
     for e in await _rows(
         rt,
@@ -140,7 +169,7 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
     for g in await _rows(
         rt,
         claimed,
-        "SELECT id, slug, title, markdown_key, check_status FROM guide_pages"
+        "SELECT id, slug, title, section, purpose, markdown_key, check_status FROM guide_pages"
         " WHERE workspace_id = :w AND build_id = :b AND status = 'written' ORDER BY ordinal",
     ):
         markdown = (await rt.store.get(g.markdown_key)).decode("utf-8")
@@ -148,6 +177,8 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
             {
                 "slug": g.slug,
                 "title": g.title,
+                "section": g.section,
+                "purpose": g.purpose,
                 "markdown": markdown,
                 "check_status": g.check_status,
                 "claims": claims.get(str(g.id), []),
@@ -190,14 +221,26 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
     return kb, meta
 
 
+def viewer_files() -> dict[str, bytes]:
+    """The built export viewer's files by archive name; its `export.html` becomes `index.html`."""
+    root = Path(os.environ.get("EXPORT_VIEWER_DIR") or DEFAULT_VIEWER)
+    if not (root / "export.html").is_file():
+        raise ExportError("export_viewer_missing")
+    files = {}
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        name = path.relative_to(root).as_posix()
+        if name.endswith(".map") or (name.endswith(".html") and name != "export.html"):
+            continue
+        files["index.html" if name == "export.html" else name] = path.read_bytes()
+    return files
+
+
 def static_zip(kb: dict[str, Any]) -> bytes:
     """Deterministic archive with fixed entry names only (10, 13 "safe filenames")."""
     data_js = "window.CODEHOVER_DATA = " + json.dumps(kb, ensure_ascii=True, sort_keys=True) + ";\n"
     kb_json = json.dumps(kb, ensure_ascii=False, sort_keys=True, indent=1)
     entries: dict[str, bytes] = {
-        "index.html": (ASSETS / "index.html").read_bytes(),
-        "assets/viewer.js": (ASSETS / "viewer.js").read_bytes(),
-        "assets/viewer.css": (ASSETS / "viewer.css").read_bytes(),
+        **viewer_files(),
         "data/data.js": data_js.encode(),
         "data/kb.json": kb_json.encode(),
         "NOTICE.txt": (ASSETS / "NOTICE.txt").read_bytes(),
@@ -229,13 +272,18 @@ async def export(rt: Any, claimed: Claim) -> Apply | None:
     )
     if not found or found[0].status != "pending":
         return None  # already finished (a duplicate delivery) or unknown
-    kb, meta = await collect(rt, claimed)
-    if found[0].format == "kb_json":
-        body = json.dumps(kb, ensure_ascii=False, sort_keys=True).encode()
-        name, content_type = f"exports/{export_id}.json", "application/json"
-    else:
-        body = static_zip(kb)
-        name, content_type = f"exports/{export_id}.zip", "application/zip"
+    try:
+        kb, meta = await collect(rt, claimed)
+        if found[0].format == "kb_json":
+            body = json.dumps(kb, ensure_ascii=False, sort_keys=True).encode()
+            name, content_type = f"exports/{export_id}.json", "application/json"
+        else:
+            body = static_zip(kb)
+            name, content_type = f"exports/{export_id}.zip", "application/zip"
+    except ExportError as error:  # permanent: the export fails with its code, the build stays ready
+        from app.jobs.stages import StageError  # stages imports this module
+
+        raise StageError(error.code, transient=False) from error
     key = build_key(claimed.workspace_id, meta.project_id, claimed.build, name)
     sha = await rt.store.put(key, body, content_type)
 

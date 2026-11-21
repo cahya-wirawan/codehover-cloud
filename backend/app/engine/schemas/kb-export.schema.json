@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:codehover-cloud:schema:kb-export:1.0.0",
+  "$id": "urn:codehover-cloud:schema:kb-export:1.1.0",
   "title": "codehover-cloud knowledge-base export v1 (10)",
   "description": "One published-or-ready build as data: exactly the source files the viewer shows (text files that passed the scan), their definitions with cards, file explanations, guide pages with their checked claims, and the overview. Readers dispatch on the MAJOR of `schema`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "generator", "project", "build", "files", "symbols", "guide", "overview"],
   "properties": {
-    "schema": {"const": "urn:codehover-cloud:schema:kb-export:1.0.0"},
+    "schema": {"const": "urn:codehover-cloud:schema:kb-export:1.1.0"},
     "generator": {
       "type": "object",
       "additionalProperties": false,
@@ -48,7 +48,23 @@
           "language": {"type": ["string", "null"]},
           "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "lines": {"type": "array", "items": {"type": "string"}},
-          "explanation": {"type": ["object", "null"]}
+          "explanation": {"type": ["object", "null"]},
+          "references": {
+            "description": "Uses of definitions in this file (1.1.0): the identifier at line and 0-based Unicode-scalar column, and the symbol IDs it may refer to.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["line", "column", "targets", "resolution", "ambiguous"],
+              "properties": {
+                "line": {"type": "integer", "minimum": 1},
+                "column": {"type": "integer", "minimum": 0},
+                "targets": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                "resolution": {"enum": ["index", "name"]},
+                "ambiguous": {"type": "boolean"}
+              }
+            }
+          }
         }
       }
     },
@@ -83,6 +99,8 @@
           "title": {"type": "string"},
           "markdown": {"type": "string"},
           "check_status": {"type": "string"},
+          "section": {"type": "string"},
+          "purpose": {"type": "string"},
           "claims": {
             "type": "array",
             "items": {

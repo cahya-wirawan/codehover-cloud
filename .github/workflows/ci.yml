@@ -146,7 +146,7 @@ jobs:
           SESSION_SECRET: canary-session-${{ github.run_id }}
           MODEL_API_KEY: canary-model-${{ github.run_id }}
           VITE_UNUSED_SECRET: canary-vite-${{ github.run_id }}
-        run: npm run build
+        run: npm run build && npm run build:export
       - name: No secret in frontend (allowlisted env keys, canaries absent from dist)
         env:
           CANARY_SECRETS: canary-session-${{ github.run_id }},canary-model-${{ github.run_id }},canary-vite-${{ github.run_id }}

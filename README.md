@@ -82,6 +82,7 @@ cd frontend
 npm ci
 npm run dev          # http://localhost:5173, proxies /api to 127.0.0.1:8000
 npm run lint && npm run typecheck && npm test && npm run build
+npm run build:export # the offline ZIP's reader (dist-export/); static exports fail without it
 npx vitest run src/app/routes.test.tsx   # a single test file
 npm run check:env    # allowlisted import.meta.env keys only; no secrets in the bundle
 ```
@@ -96,7 +97,7 @@ npm run test:e2e
 
 ## Local demo
 
-Try the whole product in a browser without real Google or GitHub accounts. You need the Compose stack's db and objectstore running and the frontend built (`cd frontend && npm run build`):
+Try the whole product in a browser without real Google or GitHub accounts. You need the Compose stack's db and objectstore running and the frontend built (`cd frontend && npm run build && npm run build:export`):
 
 ```bash
 cd backend && set -a && . ../deployment/.env && set +a && .venv/bin/python -m tests.e2e.demo   # --reset starts over

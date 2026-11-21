@@ -202,6 +202,7 @@
 
 /* ---------------------------------------------------------------- the gloss (hover card) */
 .gloss { font: 15.5px/1.48 var(--serif); color: var(--ink); }
+.gloss-body > * { flex-shrink: 0; } /* the body scrolls; its parts keep their height */
 .gloss-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .gloss-kind { color: var(--kc); font-style: italic; }
 .gloss-name { font: 600 14.5px var(--mono); overflow-wrap: anywhere; }

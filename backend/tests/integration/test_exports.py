@@ -10,6 +10,7 @@ import json
 import re
 import secrets
 import zipfile
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -26,15 +27,38 @@ from tests.integration.test_workspaces import NewUser, join, new_user  # noqa: F
 
 pytestmark = [pytest.mark.integration, needs_db]
 SECRETS = (b"hunter2", b"AKIAABCDEFGHIJKLMNOP", b"SECRET_TOKEN", b"not really a key")
+# A stand-in for the built export viewer (frontend `npm run build:export`); the e2e journey reads the real one.
+VIEWER = {
+    "export.html": (
+        '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src'
+        " 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'\">"
+        '<script src="./data/data.js"></script><script type="module" src="./assets/export-1.js"></script>'
+        '<link rel="stylesheet" href="./assets/export-1.css">'
+    ),
+    "assets/export-1.js": "/* the reading view; links such as https://react.dev/errors are strings only */",
+    "assets/export-1.css": "body{}",
+    "assets/export-1.js.map": "{}",
+    "licenses/codehover.txt": "MIT License",
+}
 ENTRIES = {
     "index.html",
-    "assets/viewer.js",
-    "assets/viewer.css",
+    "assets/export-1.js",
+    "assets/export-1.css",
+    "licenses/codehover.txt",
     "data/data.js",
     "data/kb.json",
     "NOTICE.txt",
     "manifest.json",
 }
+
+
+@pytest.fixture(autouse=True)
+def export_viewer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    for name, body in VIEWER.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(body)
+    monkeypatch.setenv("EXPORT_VIEWER_DIR", str(tmp_path))
+    return tmp_path
 
 
 async def request(person: httpx.AsyncClient, build: str, fmt: str) -> httpx.Response:
@@ -77,21 +101,20 @@ async def test_static_zip_is_self_contained_and_contains_only_shown_source(
     )
     assert download.headers["cache-control"] == "no-store"
     archive = zipfile.ZipFile(io.BytesIO(download.content))
-    assert set(archive.namelist()) == ENTRIES  # fixed names: nothing from the repository becomes a file name
+    # Names come only from the viewer build and fixed names; nothing from the repository becomes a file
+    # name, and source maps and other pages stay out.
+    assert set(archive.namelist()) == ENTRIES
     for name in ENTRIES:
         body = archive.read(name)
         assert not any(secret in body for secret in SECRETS), (
             name
         )  # A19/A07: excluded and blocked content absent
-        if name != "data/kb.json" and name != "data/data.js":
-            assert b"http://" not in body and b"https://" not in body, name  # nothing loads from the network
     index = archive.read("index.html").decode()
-    assert (
-        "Content-Security-Policy" in index and "default-src 'none'" in index and "script-src 'self'" in index
-    )
-    assert re.findall(r'(?:src|href)="([^"#]+)"', index) and all(
-        ref in ENTRIES for ref in re.findall(r'(?:src|href)="([^"#]+)"', index)
-    )  # every referenced asset is in the archive
+    policy = re.search(r'Content-Security-Policy" content="([^"]+)"', index)
+    assert policy and "default-src 'none'" in policy.group(1) and "script-src 'self'" in policy.group(1)
+    assert "http" not in policy.group(1)  # nothing loads from the network: no source but the page's own
+    refs = [ref.removeprefix("./") for ref in re.findall(r'(?:src|href)="([^"#]+)"', index)]
+    assert refs and all(ref in ENTRIES for ref in refs)  # every referenced asset is in the archive
     kb = json.loads(archive.read("data/kb.json"))
     assert not list(Draft202012Validator(generate.schema("kb-export")).iter_errors(kb))
     paths = {f["path"] for f in kb["files"]}
@@ -103,6 +126,10 @@ async def test_static_zip_is_self_contained_and_contains_only_shown_source(
     }  # excluded/blocked files are not listed at all
     assert any(s["name"] == "main" and s["card"]["summary"] == "Entry point." for s in kb["symbols"])
     assert kb["guide"] and all(page["claims"] for page in kb["guide"])
+    assert all(page["section"] == "Code walkthrough" and page["purpose"] for page in kb["guide"])  # 1.1.0
+    symbol_ids = {s["id"] for s in kb["symbols"]}
+    uses = [r for f in kb["files"] for r in f["references"]]
+    assert uses and all(set(r["targets"]) <= symbol_ids for r in uses)  # every use names exported definitions
     manifest = json.loads(archive.read("manifest.json"))
     import hashlib
 
@@ -122,7 +149,7 @@ async def test_kb_json_export_validates_against_its_contract(
     assert download.headers["content-type"] == "application/json"
     assert download.headers["content-disposition"].endswith('-kb.json"')
     kb = download.json()
-    assert kb["schema"] == "urn:codehover-cloud:schema:kb-export:1.0.0"
+    assert kb["schema"] == "urn:codehover-cloud:schema:kb-export:1.1.0"
     assert not list(Draft202012Validator(generate.schema("kb-export")).iter_errors(kb))
     assert kb["generator"]["preset"] == "replay-v2" and kb["build"]["commit_sha"] == github.commit_sha
     assert not any(secret in download.content for secret in SECRETS)
@@ -182,3 +209,20 @@ async def test_exports_need_a_ready_build_and_respect_the_hourly_quota(
     assert (await owner.get(f"/api/v1/builds/{build}")).json()[
         "status"
     ] == "ready"  # exports never touch the build
+
+
+async def test_a_missing_export_viewer_fails_the_export_not_the_build(
+    client: httpx.AsyncClient,
+    idp: FakeIdP,
+    github: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    owner, _ws, build, app = await ready(client, idp, github)
+    monkeypatch.setenv("EXPORT_VIEWER_DIR", str(tmp_path / "nowhere"))
+    created = await request(owner, build, "static_zip")
+    assert created.status_code == 202, created.text
+    await drive(app, build, runtime=runtime_for(app))
+    status = (await owner.get(f"/api/v1/exports/{created.json()['id']}")).json()
+    assert status["status"] == "failed" and status["error_code"] == "export_viewer_missing"
+    assert (await owner.get(f"/api/v1/builds/{build}")).json()["status"] == "ready"
