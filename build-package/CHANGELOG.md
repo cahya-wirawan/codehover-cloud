@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-11-21
+
+### Added
+
+- 07: explain batches run for OpenAI (a JSONL file on `/v1/responses`, 24-hour window) and Gemini (inline `batchGenerateContent`) as well as Anthropic, at each model's catalog batch price; the catalog now accepts batch prices for those providers and still refuses OpenRouter. A submission that cannot have reached the provider (`batch_not_sent`) releases its holds instead of keeping them as unknown.
+
 ## [0.6.2] - 2026-11-21
 
 ### Added

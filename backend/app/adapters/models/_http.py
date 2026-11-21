@@ -86,6 +86,36 @@ async def post(
         raise ProviderError("unknown", "provider_connection") from error
 
 
+# Batch operations (07 "optional submit_batch/get_batch"). A batch's requests run later at the provider, so
+# these calls bill nothing themselves. Two codes matter to the caller (`batching.prefill`):
+# NOT_SENT means the provider cannot have received the batch, so its holds are released;
+# any other submit failure leaves the batch's outcome unknown, and its holds stay.
+NOT_SENT = "batch_not_sent"
+
+
+async def batch_call(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    code: str,
+    unsent_code: str | None = None,
+    **kwargs: Any,
+) -> httpx.Response:
+    """One batch API call. A connection that never opened raises `unsent_code` (default `code`), anything
+    else that is not a 2xx raises `code`; the response body never leaves the adapter."""
+    try:
+        response = await client.request(method, url, headers=headers, timeout=CALL_TIMEOUT, **kwargs)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as error:
+        raise ProviderError("transient", unsent_code or code) from error
+    except httpx.HTTPError as error:
+        raise ProviderError("transient", code) from error
+    if not 200 <= response.status_code < 300:
+        raise ProviderError("transient", unsent_code if response.status_code < 500 and unsent_code else code)
+    return response
+
+
 def json_body(response: httpx.Response, request_id: str | None) -> dict[str, Any]:
     """A successful response's body. A 200 that is not JSON may still have been billed."""
     try:

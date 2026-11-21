@@ -17,7 +17,9 @@ is a prefill of the tenant cache in front of the normal stage:
 
 A worker that crashed between steps 1 and 2 cannot know whether the batch reached the provider, so the
 batch is `abandoned` and its attempts become `unknown`, keeping their holds (07 "unknown outcomes keep
-conservative holds"). A batch older than BATCH_MAX_AGE_SECONDS is abandoned the same way.
+conservative holds"). A batch older than BATCH_MAX_AGE_SECONDS is abandoned the same way. A submission the
+gateway reports as never sent (`batch_not_sent`: a refused upload, a batch over the provider's size
+limit) releases its holds instead: its attempts fail at no cost, and the stage runs synchronously.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ logger = logging.getLogger("app.jobs.batching")
 POLL_SECONDS = 60
 BATCH_MAX_AGE_SECONDS = 25 * 3600  # providers end batches within 24 hours
 MAX_BATCH_REQUESTS = 10_000
+NOT_SENT = "batch_not_sent"  # the gateway's code for a submission that cannot have reached the provider
 
 
 class StageWait(Exception):
@@ -98,6 +101,28 @@ async def _abandon(db: AsyncSession, claimed: Claim, batch_id: Any, reason: str)
     )
     await db.commit()
     logger.warning("provider batch abandoned", extra={"reason": reason})
+
+
+async def _release(db: AsyncSession, claimed: Claim, batch_id: Any, reason: str) -> None:
+    """The provider never received the batch: nothing can be billed, so its holds are released."""
+    await set_context(db, workspace_id=claimed.workspace_id)
+    await db.execute(
+        text(
+            "UPDATE provider_attempts SET state = 'failed', settled_micro_usd = 0, error_code = :e, completed_at = now()"
+            " WHERE workspace_id = :w AND build_id = :b AND state = 'batched'"
+            " AND id IN (SELECT CAST(i->>'custom_id' AS uuid) FROM provider_batches p,"
+            "   jsonb_array_elements(p.items) i WHERE p.workspace_id = :w AND p.id = :id)"
+        ),
+        {"e": reason, "w": claimed.workspace_id, "b": claimed.build, "id": batch_id},
+    )
+    await db.execute(
+        text(
+            "UPDATE provider_batches SET state = 'abandoned', completed_at = now() WHERE workspace_id = :w AND id = :id"
+        ),
+        {"w": claimed.workspace_id, "id": batch_id},
+    )
+    await db.commit()
+    logger.info("provider batch not sent", extra={"reason": reason})
 
 
 async def _earmark_all(
@@ -277,9 +302,12 @@ async def prefill(
             provider_id = await gateway.submit_batch(
                 [(i["custom_id"], by_cache[i["cache_key"]][0].request) for i in batch.items]
             )
-        except ProviderError:
+        except ProviderError as error:
             async with sessions() as db:
-                await _abandon(db, claimed, batch.id, "batch_submit_failed")
+                if error.code == NOT_SENT:
+                    await _release(db, claimed, batch.id, NOT_SENT)
+                else:
+                    await _abandon(db, claimed, batch.id, "batch_submit_failed")
             return
         async with sessions() as db:
             await set_context(db, workspace_id=claimed.workspace_id)

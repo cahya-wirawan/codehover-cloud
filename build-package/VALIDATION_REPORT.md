@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-21 · Package version 0.6.2
+Date: 2026-11-21 · Package version 0.6.3
+
+0.6.3 runs explain batches for OpenAI and Gemini as well as Anthropic. `tests/unit/test_batch_adapters.py` checks, against `httpx.MockTransport`: OpenAI uploads one JSONL file of the synchronous call's `/v1/responses` bodies and creates a 24-hour batch; a refused upload or create is `batch_not_sent` while a 5xx create stays unknown; batch states; output and error files read like synchronous answers, foreign IDs ignored, an expired batch's unanswered requests unbilled errors and a completed batch's omissions left unanswered. Gemini submits inline requests keyed by attempt ID, refuses a batch over the inline limit without sending it and an unexpected batch name, reads the job state and results wherever its docs place them, matches by key or position, and fails a failed job's requests unbilled. `tests/integration/test_own_keys_batch.py` checks that a batch never sent releases its holds (attempts failed at no cost) while one that may have been sent keeps them unknown. The catalog accepts OpenAI and Gemini batch prices and refuses OpenRouter's. Results: unit 276 passed (8 skipped), integration 243 passed.
 
 0.6.2 adds C and C++ (parser 0.5.0). `tests/unit/test_c_cpp.py` checks definitions found through declarators (pointer returns, qualified out-of-class methods, function-like macros, typedefs, structs with bodies only), prototypes merged into their definitions, overloads, doc comments above definitions and templates, parameters, references to members and types, and `.h` read as C++ beside C++ sources. `tests/integration/test_builds.py` builds a C/C++ repository end to end: languages, symbols and name-matched uses. The replay eval baseline records parser 0.5.0. Results: unit 264 passed (8 skipped), integration 241 passed, frontend 54 passed.
 

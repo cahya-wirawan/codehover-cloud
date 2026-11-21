@@ -147,6 +147,9 @@ class AnthropicGateway:
             batch = await self.client.messages.batches.create(
                 requests=[Request(custom_id=cid, params=self._params(r)) for cid, r in items]
             )
+        except anthropic.APIConnectionError as error:  # a connection that never opened sent no batch
+            code = "batch_not_sent" if _never_connected(error) else "batch_submit_failed"
+            raise ProviderError("transient", code) from error
         except anthropic.APIError as error:
             raise ProviderError("transient", "batch_submit_failed") from error
         return str(batch.id)

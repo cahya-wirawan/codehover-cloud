@@ -354,13 +354,13 @@ def test_openrouter_failures_including_errors_inside_a_200(
 
 
 # ---------------------------------------------------------------- catalog, settings, runtime, keys
-def test_the_catalog_takes_the_new_providers_but_batches_only_anthropic() -> None:
-    model = request("openai").model.model_dump()
-    assert Model.model_validate(model).provider == "openai"
-    with pytest.raises(ValidationError, match="batches run only for anthropic"):
-        Model.model_validate(
-            {**model, "batch_price": {"input_per_mtok_micro_usd": 1, "output_per_mtok_micro_usd": 1}}
-        )
+def test_the_catalog_takes_batch_prices_for_providers_with_a_batch_api_only() -> None:
+    price = {"input_per_mtok_micro_usd": 1, "output_per_mtok_micro_usd": 1}
+    for provider in ("openai", "gemini"):
+        model = request(provider).model.model_dump()
+        assert Model.model_validate({**model, "batch_price": price}).batch_price is not None
+    with pytest.raises(ValidationError, match="batches run only for anthropic, gemini, openai"):
+        Model.model_validate({**request("openrouter").model.model_dump(), "batch_price": price})
 
 
 def test_gemini_presets_cannot_ask_for_max_effort() -> None:
