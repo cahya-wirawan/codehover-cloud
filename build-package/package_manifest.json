@@ -53,7 +53,7 @@
     },
     "02_UX_SCREEN_SPEC.md": {
       "status": "complete specification",
-      "sha256": "edff76da6676d2fe287362496ca1c776c67227d4f57e158e4cfa11a816403caa"
+      "sha256": "617bbc25e094da7d6fdf6c41274d30aa2538f543647e66b52dc4968bd133f540"
     },
     "03_USER_FLOWS.md": {
       "status": "complete specification",
@@ -69,7 +69,7 @@
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "580f77004fe4a9703d9e00210a296545ed8b05aca53931ec5acf52495590c4bf"
+      "sha256": "24506b4c2fe558ff92dd019490315103a7b66c33eb495eaeaf3a6fa0a52b19b0"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -97,7 +97,7 @@
     },
     "13_TEST_PLAN.md": {
       "status": "complete specification",
-      "sha256": "f271090b13f45ff43c9d95d30c7ff08aeeae078d8637052b3a28a9c29f365317"
+      "sha256": "c70e37f385e70f421c643f1284a2e73accb28124734978938527a14dd98ce961"
     },
     "14_IMPLEMENTATION_ROADMAP.md": {
       "status": "complete specification",
@@ -113,7 +113,7 @@
     },
     "17_DESIGN_SYSTEM.md": {
       "status": "complete specification",
-      "sha256": "c57ccc12f3e961d0414432166c35950d5c51a47be5d68414a449863a830452b4"
+      "sha256": "da47f88edde101fb4f0e3f8e1d577357aa48e74bc1e71f7d3f8072ca39431d63"
     },
     "18_RELEASE_CHECKLIST.md": {
       "status": "complete specification",
@@ -141,7 +141,7 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "79973eb4bada70c0d7158380e10ec04bc64d870e8f9f5f3a41ceaa0d888bb1b1"
+      "sha256": "f62c02f37de11e9c688e4bf52f340ffc3b4ee05fdabe4d4d6f0c477ab61ebc8a"
     },
     "README.md": {
       "status": "complete specification",
@@ -260,5 +260,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "a68095c0c54871714a81c1049d0f912b2eac2ddb2332a0411fadaa994e49dc78"
+  "master_spec_sha256": "5e6c1aaac6f4f6a33201d83736291160eac14cee1d93d3e1d02fb833b964514e"
 }

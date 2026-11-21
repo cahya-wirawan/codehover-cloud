@@ -16,6 +16,8 @@ const parser = new MarkdownIt("commonmark", { html: false }).enable("table");
 type Text = (text: string, key: string) => ReactNode;
 /** Where a `guide:<slug>` link goes, or null when this view has no guide to link to. */
 type GuideHref = (slug: string) => string | null;
+/** Inline code, which the guide turns into a link when it names a definition. */
+type InlineCode = (code: string, key: string) => ReactNode;
 
 const SAFE_HREF = /^(https:\/\/|#)/i;
 const GUIDE_HREF = /^guide:([a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)$/;
@@ -35,7 +37,14 @@ function closing(tokens: Token[], start: number): number {
   return tokens.length - 1;
 }
 
-function inline(tokens: Token[], text: Text, prefix: string, guideHref: GuideHref): ReactNode[] {
+interface Hooks {
+  text: Text;
+  guideHref: GuideHref;
+  code: InlineCode;
+}
+
+function inline(tokens: Token[], hooks: Hooks, prefix: string): ReactNode[] {
+  const { text, guideHref } = hooks;
   const out: ReactNode[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
@@ -43,7 +52,7 @@ function inline(tokens: Token[], text: Text, prefix: string, guideHref: GuideHre
     const key = `${prefix}.${i}`;
     if (token.nesting === 1) {
       const end = closing(tokens, i);
-      const children = inline(tokens.slice(i + 1, end), text, key, guideHref);
+      const children = inline(tokens.slice(i + 1, end), hooks, key);
       i = end;
       if (token.type === "strong_open") out.push(<strong key={key} className="font-semibold">{children}</strong>);
       else if (token.type === "em_open") out.push(<em key={key}>{children}</em>);
@@ -73,12 +82,7 @@ function inline(tokens: Token[], text: Text, prefix: string, guideHref: GuideHre
       continue;
     }
     if (token.type === "text") out.push(text(token.content, key));
-    else if (token.type === "code_inline")
-      out.push(
-        <code key={key} className="rounded-[4px] bg-surface-muted px-1 py-0.5 font-mono text-[13px]">
-          {token.content}
-        </code>,
-      );
+    else if (token.type === "code_inline") out.push(hooks.code(token.content, key));
     else if (token.type === "softbreak") out.push("\n");
     else if (token.type === "hardbreak") out.push(<br key={key} />);
     else if (token.type === "image") out.push(text(token.content, key)); // alt text only: no images (19 P04)
@@ -90,25 +94,26 @@ function inline(tokens: Token[], text: Text, prefix: string, guideHref: GuideHre
 const HEADING_OFFSET = 2;
 
 const HEADING: Record<string, string> = {
-  h1: "text-[24px] leading-8 font-semibold tracking-[-0.01em]",
-  h2: "mt-8 text-[19px] leading-7 font-semibold",
-  h3: "mt-6 text-[16px] leading-6 font-semibold",
-  h4: "mt-5 text-[15px] leading-6 font-semibold",
-  h5: "mt-4 text-[15px] leading-6 font-medium",
-  h6: "mt-4 text-[15px] leading-6 font-medium text-muted",
+  h1: "page-title",
+  h2: "mt-11 mb-3 text-[26px] leading-[1.2] font-medium tracking-[-0.01em]",
+  h3: "mt-8 mb-2 text-[20px] leading-[1.3] font-semibold",
+  h4: "mt-6 mb-2 text-[18px] leading-[1.35] font-semibold",
+  h5: "mt-5 text-[17px] font-semibold",
+  h6: "mt-5 text-[17px] font-medium text-muted",
 };
 
 const ALIGN: Record<string, string> = { "text-align:left": "left", "text-align:center": "center", "text-align:right": "right" };
 
-function blocks(tokens: Token[], text: Text, prefix: string, guideHref: GuideHref, tight = false): ReactNode[] {
-  const nested = (inner: Token[], key: string, isTight = false) => blocks(inner, text, key, guideHref, isTight);
+function blocks(tokens: Token[], hooks: Hooks, prefix: string, tight = false): ReactNode[] {
+  const { text } = hooks;
+  const nested = (inner: Token[], key: string, isTight = false) => blocks(inner, hooks, key, isTight);
   const out: ReactNode[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (!token) continue;
     const key = `${prefix}.${i}`;
     if (token.type === "inline") {
-      out.push(...inline(token.children ?? [], text, key, guideHref));
+      out.push(...inline(token.children ?? [], hooks, key));
       continue;
     }
     if (token.type === "fence" && /^mermaid$/i.test(token.info.trim().split(/\s+/)[0] ?? "")) {
@@ -231,17 +236,22 @@ function blocks(tokens: Token[], text: Text, prefix: string, guideHref: GuideHre
 }
 
 const NO_GUIDE: GuideHref = () => null;
+const PLAIN_CODE: InlineCode = (code, key) => <code key={key}>{code}</code>;
 
 /** Renders `markdown`; `text` turns each run of plain text into nodes (the guide uses it for citations),
- * and `guideHref` places links to other guide pages. */
+ * `guideHref` places links to other guide pages and `code` renders inline code. */
 export function GuideMarkdown({
   markdown,
   text,
   guideHref = NO_GUIDE,
+  code = PLAIN_CODE,
 }: {
   markdown: string;
   text: Text;
   guideHref?: GuideHref;
+  code?: InlineCode;
 }) {
-  return <div className="[&>*:first-child]:mt-0">{blocks(parser.parse(markdown, {}), text, "md", guideHref)}</div>;
+  return (
+    <div className="[&>*:first-child]:mt-0">{blocks(parser.parse(markdown, {}), { text, guideHref, code }, "md")}</div>
+  );
 }

@@ -219,7 +219,7 @@ export interface GuideIndex {
     overview: string;
     status: string;
     key_concepts: { term: string; explanation: string }[];
-    reading_order: { file_id: string; reason: string }[];
+    reading_order: { file_id: string; reason: string; path?: string | null }[];
   } | null;
   pages: GuidePageSummary[];
 }
@@ -433,7 +433,9 @@ export interface SymbolView {
   kind: string;
   signature: string | null;
   path: string;
+  file_id: string;
   start_line: number;
+  end_line: number;
   card: { summary?: string; details?: string; params?: { name: string; description: string }[]; notes?: string };
   uses: Related[];
   used_by: Related[];

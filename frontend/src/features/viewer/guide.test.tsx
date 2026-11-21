@@ -1,8 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router";
 
-import { formatUsd, type GuidePage } from "../../lib/api/resources";
-import { GuideText, OverviewText } from "./GuidePanel";
+import { formatUsd, type GuideIndex, type GuidePage, type ViewerSource } from "../../lib/api/resources";
+import { GuidePanel, GuideText, OverviewText } from "./GuidePanel";
 
 // Mermaid needs a real layout engine; this stand-in returns SVG carrying a script, which must never run or
 // become part of the document.
@@ -163,4 +165,68 @@ test("a diagram that cannot be drawn shows its source", async () => {
   render(<GuideText page={guidePage("# D\n\n```mermaid\nbroken\n```")} />);
   await waitFor(() => expect(screen.getByText(/could not be drawn/)).toBeInTheDocument());
   expect(screen.queryByRole("img")).toBeNull();
+});
+
+const INDEX: GuideIndex = {
+  overview: {
+    overview: "A **converter** from JSON Lines to binidx.",
+    status: "generated",
+    key_concepts: [{ term: "binidx", explanation: "A token file plus an index." }],
+    reading_order: [{ file_id: FILE, reason: "Everything starts here.", path: "src/main.rs" }],
+  },
+  pages: [
+    { slug: "architecture", title: "Architecture", section: "Basics", ordinal: 1, purpose: "The shape of a run.", status: "written", check_status: "supported", provenance: {} },
+    { slug: "workers", title: "Workers", section: "Conversion", ordinal: 2, purpose: "How threads split the file.", status: "written", check_status: "partial", provenance: {} },
+  ],
+};
+
+function fakeSource(): ViewerSource {
+  return {
+    key: "t",
+    tree: vi.fn(),
+    file: vi.fn(),
+    symbol: vi.fn(),
+    guide: async () => INDEX,
+    guidePage: async (slug: string) => ({
+      ...guidePage(`# ${slug === "workers" ? "Workers" : "Architecture"}\n\nUses \`json2bin()\` and \`nowhere\`.`),
+      slug,
+      symbols: [{ mention: "json2bin", id: "s9", name: "json2bin", kind: "function", file_id: FILE, start_line: 79 }],
+    }),
+    search: vi.fn(),
+    quality: null,
+  } as unknown as ViewerSource;
+}
+
+function renderGuide(path: string) {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/b/guide" element={<GuidePanel source={fakeSource()} base="/b" />} />
+          <Route path="/b/guide/:slug" element={<GuidePanel source={fakeSource()} base="/b" />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+test("the guide's landing view shows the overview, key ideas, where to start and the pages by section", async () => {
+  renderGuide("/b/guide");
+  expect(await screen.findByText("converter", { selector: "strong" })).toBeInTheDocument();
+  expect(screen.getByText("binidx", { selector: "dt" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "src/main.rs" })).toHaveAttribute("href", `/b/code?file=${FILE}`);
+  const nav = screen.getByRole("navigation", { name: "Guide pages" });
+  expect(nav).toHaveTextContent(/^BasicsArchitectureConversionWorkersPartly supported$/);
+  fireEvent.click(screen.getByRole("link", { name: "Workers" }));
+  expect(await screen.findByRole("heading", { name: "Workers" })).toBeInTheDocument();
+});
+
+test("a page links the definitions it names and offers the previous and next pages", async () => {
+  renderGuide("/b/guide/architecture");
+  const named = await screen.findByRole("link", { name: "json2bin()" });
+  expect(named).toHaveAttribute("href", `/b/code?file=${FILE}&line=79&symbol=s9`);
+  expect(screen.queryByRole("link", { name: "nowhere" })).toBeNull(); // an unknown name stays plain code
+  const pager = screen.getByRole("navigation", { name: "Next and previous pages" });
+  expect(pager).toHaveTextContent("NextWorkers");
+  expect(pager).not.toHaveTextContent("Previous");
 });

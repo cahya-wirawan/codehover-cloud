@@ -42,7 +42,8 @@ test("ready build shows stages, file tree, source and a definition card", async 
     "/api/v1/builds/b1/tree?path=": { items: [{ name: "app.py", path: "app.py", type: "file", file_id: "f1", status: "selected", reason: null }], next_cursor: null },
     "/api/v1/builds/b1/files/f1?start_line=1": {
       id: "f1", path: "app.py", start_line: 1, lines: ["def main():", "    return 1"],
-      symbols: [{ id: "s1", name: "main", kind: "function", start_line: 1, end_line: 2, summary: "Entry point." }],
+      symbols: [{ id: "s1", name: "main", kind: "function", start_line: 1, end_line: 2, summary: "Entry point.", params: [] }],
+      references: [],
     },
     "/api/v1/builds/b1/symbols/s1": {
       id: "s1", name: "main", kind: "function", signature: "def main()", path: "app.py", start_line: 1,
@@ -73,6 +74,61 @@ test("ready build shows stages, file tree, source and a definition card", async 
   fireEvent.keyDown(card, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(screen.getByRole("button", { name: "Explain function main" })).toHaveFocus(); // and Esc returns it
+});
+
+test("uses, parameters and noted lines open their own cards; notes can be shown inline", async () => {
+  fakeApi({
+    "/api/v1/builds/b1": BUILD,
+    "/api/v1/builds/b1/tree?path=": { items: [{ name: "app.py", path: "app.py", type: "file", file_id: "f1", status: "selected", reason: null }], next_cursor: null },
+    "/api/v1/builds/b1/files/f1?start_line=1": {
+      id: "f1", path: "src/app.py", start_line: 1, line_count: 3,
+      lines: ["def main(argv):", "    # argv is not used here", "    return helper(argv)"],
+      symbols: [{ id: "s1", name: "main", kind: "function", start_line: 1, end_line: 3, summary: "Entry point.", params: ["argv"] }],
+      references: [{ line: 3, column: 11, targets: [{ id: "s2", name: "helper", kind: "function" }], resolution: "name", ambiguous: false }],
+      explanation: {
+        status: "generated", summary: "The `app` entry point.",
+        chunks: [{ start_line: 1, end_line: 3, summary: "", status: "generated", notes: [{ start_line: 3, end_line: 3, text: "Hands `argv` on unchanged." }] }],
+      },
+    },
+    "/api/v1/builds/b1/symbols/s1": {
+      id: "s1", name: "main", kind: "function", signature: "def main(argv)", path: "src/app.py", file_id: "f1", start_line: 1, end_line: 3,
+      card: { summary: "Entry point.", params: [{ name: "argv", description: "The command-line words." }] }, uses: [], used_by: [], guides: [],
+    },
+    "/api/v1/builds/b1/symbols/s2": {
+      id: "s2", name: "helper", kind: "function", signature: "def helper(args)", path: "src/util.py", file_id: "f2", start_line: 1, end_line: 2,
+      card: { summary: "Counts the words." }, uses: [], used_by: [], guides: [],
+    },
+  });
+  renderAt("/p/p1/builds/b1/code?file=f1");
+  expect(await screen.findByRole("heading", { name: "src/app.py" })).toBeInTheDocument();
+  expect(screen.getByText("app", { selector: ".file-about code" })).toBeInTheDocument(); // backticks are code
+
+  fireEvent.click(screen.getByRole("button", { name: "Explain function helper, used here" }));
+  const use = await screen.findByRole("dialog", { name: "function helper" });
+  await waitFor(() => expect(use).toHaveTextContent("Counts the words."));
+  expect(within(use).getByRole("button", { name: "Open definition" })).toBeInTheDocument();
+  fireEvent.keyDown(use, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+  // A parameter's uses, but not the word inside a comment.
+  const uses = screen.getAllByRole("button", { name: "Explain parameter argv of main" });
+  expect(uses).toHaveLength(2);
+  fireEvent.click(uses[1] as HTMLElement);
+  const param = await screen.findByRole("dialog", { name: "parameter argv" });
+  await waitFor(() => expect(param).toHaveTextContent("The command-line words."));
+  fireEvent.keyDown(param, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+  fireEvent.click(screen.getByRole("button", { name: "Note on line 3" }));
+  expect(await screen.findByRole("dialog", { name: "Line note" })).toHaveTextContent("Hands argv on unchanged.");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+  fireEvent.click(screen.getByRole("button", { name: "Notes inline" }));
+  await waitFor(() => expect(document.querySelector(".inl")).toHaveTextContent("line 3Hands argv on unchanged."));
+  expect(screen.getByRole("button", { name: "Notes inline" })).toHaveAttribute("aria-pressed", "true");
+  // The source text is unchanged by the controls around it.
+  expect(document.getElementById("L3")?.textContent).toBe("3    return helper(argv)");
 });
 
 test("connection errors from the GitHub callback are explained", async () => {

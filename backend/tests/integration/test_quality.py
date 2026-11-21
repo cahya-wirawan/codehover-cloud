@@ -59,6 +59,8 @@ async def test_replay_guide_is_fully_supported_and_publishable(
     assert len(listing["items"]) == 2 and listing["next_cursor"]
     index = (await owner.get(f"/api/v1/builds/{build}/guide")).json()
     assert index["pages"] and all(p["section"] == "Code walkthrough" for p in index["pages"])
+    order = index["overview"]["reading_order"]
+    assert order and all(item["path"] for item in order)  # the reading order names files by path too
     symbols = [r[0] for r in ddl("SELECT id FROM symbols WHERE build_id = :b", b=build)]
     cards = [(await owner.get(f"/api/v1/builds/{build}/symbols/{sid}")).json() for sid in symbols]
     linked = [c for c in cards if c["guides"]]

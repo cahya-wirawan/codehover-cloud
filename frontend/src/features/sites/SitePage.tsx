@@ -45,7 +45,7 @@ export function SitePage() {
     );
   }
   return (
-    <section aria-labelledby="site-title">
+    <section aria-labelledby="site-title" className="reading rounded-[var(--radius-overlay)] bg-background px-4 pb-8 sm:px-6">
       <PageHeader
         title={<span id="site-title">{info.data?.project ?? "Loading…"}</span>}
         meta={

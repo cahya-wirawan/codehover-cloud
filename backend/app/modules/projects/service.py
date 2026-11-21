@@ -697,7 +697,7 @@ async def symbol_view(db: AsyncSession, member: Reader, build_id: UUID, symbol_i
 async def guide_index(
     db: AsyncSession, objects: ObjectStore, member: Reader, build_id: UUID
 ) -> dict[str, Any]:
-    await _ready_build(db, member, build_id)
+    build = await _ready_build(db, member, build_id)
     pages = await db.execute(
         text(
             "SELECT slug, title, section, ordinal, purpose, status, check_status, provenance FROM guide_pages"
@@ -714,8 +714,18 @@ async def guide_index(
             {"w": member.workspace_id, "b": build_id},
         )
     ).scalar_one_or_none()
+    paths = {
+        str(r.id): r.path
+        for r in await db.execute(
+            text("SELECT id, path FROM source_files WHERE workspace_id = :w AND snapshot_id = :s"),
+            {"w": member.workspace_id, "s": build.snapshot_id},
+        )
+    }
     await db.commit()
     overview = json.loads(await objects.get(overview_key)) if overview_key else None
+    if overview:  # the reading order names files by ID; the viewer shows their paths
+        for item in overview.get("reading_order", []):
+            item["path"] = paths.get(str(item.get("file_id")))
     return {"overview": overview, "pages": page_list}
 
 
