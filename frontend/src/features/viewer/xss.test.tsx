@@ -8,9 +8,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 
 import { routes } from "../../app/routes";
-// The offline export's own files, from the backend that ships them in every ZIP.
-import exportPage from "../../../../backend/app/engine/export_assets/index.html?raw";
-import viewerScript from "../../../../backend/app/engine/export_assets/viewer.js?raw";
+import { ExportApp } from "../../export/ExportApp";
+import type { Kb } from "../../export/staticSource";
 import { GuideText, OverviewText } from "./GuidePanel";
 
 const PAYLOADS = [
@@ -120,27 +119,36 @@ test("hostile source lines, names and cards stay text in the code viewer", async
   expect(document.body.textContent).toContain('<img src=x onerror="window.__pwned = 1">');
 });
 
-test("the offline export viewer writes repository content as text only", () => {
-  const html = exportPage;
-  // The export's own trusted page skeleton (fixed markup from the repository, no tenant data).
-  document.body.innerHTML = html.slice(html.indexOf("<body>") + 6, html.indexOf("<script"));
+test("the offline export, the reading view over the archive's data, writes repository content as text only", async () => {
   const fileId = "00000000-0000-4000-8000-000000000001";
-  (window as unknown as { CODEHOVER_DATA: unknown }).CODEHOVER_DATA = {
-    project: { name: HOSTILE, repository: HOSTILE },
+  const kb: Kb = {
+    project: { name: "Hostile", repository: HOSTILE },
     build: { commit_sha: "c".repeat(40), created_at: "2026-11-18T00:00:00Z", variant: "en-standard" },
-    generator: {},
-    overview: null,
-    files: [{ id: fileId, path: HOSTILE, language: "python", sha256: "0".repeat(64), lines: [`def main(): ${HOSTILE}`, ...PAYLOADS], explanation: { status: "generated", summary: HOSTILE, chunks: [] } }],
-    symbols: [{ id: "s1", file_id: fileId, key: "k", name: "main", kind: "function", start_line: 1, end_line: 2, signature: HOSTILE, card: { summary: HOSTILE, details: HOSTILE }, uses: [] }],
-    guide: [{ slug: "start", title: HOSTILE, markdown: `${HOSTILE} [[${fileId}:1-2]] [x](javascript:alert(1))`, check_status: "passed", claims: [{ key: "c", text: HOSTILE, status: "supported", reason: HOSTILE, waived: false }] }],
+    overview: { overview: HOSTILE, key_concepts: [{ term: HOSTILE, explanation: HOSTILE }], reading_order: [{ file_id: fileId, reason: HOSTILE }] },
+    files: [
+      {
+        id: fileId, path: "src/app.py", language: "python", sha256: "0".repeat(64),
+        lines: [`def main(): ${HOSTILE}`, ...PAYLOADS],
+        explanation: { status: "generated", summary: HOSTILE, chunks: [{ start_line: 1, end_line: 2, summary: HOSTILE, status: "generated", notes: [{ start_line: 1, end_line: 2, text: HOSTILE }] }] },
+        references: [{ line: 1, column: 4, targets: ["s1"], resolution: "name", ambiguous: false }],
+      },
+    ],
+    symbols: [{ id: "s1", file_id: fileId, key: "k", name: "main", kind: HOSTILE, start_line: 1, end_line: 2, signature: HOSTILE, card: { summary: HOSTILE, details: HOSTILE, params: [{ name: "main", description: HOSTILE }] }, uses: ["s1"] }],
+    guide: [{ slug: "start", title: HOSTILE, section: HOSTILE, purpose: HOSTILE, markdown: `# ${HOSTILE}\n\n${HOSTILE} \`main\` [[${fileId}:1-2]] [x](javascript:alert(1)) [y](guide:start)\n\n| ${HOSTILE} |\n|---|\n| ${HOSTILE} |`, check_status: "supported", claims: [{ key: "c", text: HOSTILE, status: "supported", reason: HOSTILE, waived: false }] }],
   };
   Element.prototype.scrollIntoView = () => undefined; // not implemented by jsdom
-  // Our own viewer.js from the repository, evaluated as the export's page would (no interpolation).
-  new Function(viewerScript)();
-  for (const button of Array.from(document.querySelectorAll("nav button"))) {
-    fireEvent.click(button);
-    for (const inner of Array.from(document.querySelectorAll("main button"))) fireEvent.click(inner);
-    assertInert(document.body);
-  }
+  window.location.hash = "";
+  const { container } = render(<ExportApp kb={kb} />);
+  await screen.findByRole("navigation", { name: "Guide pages" });
+  assertInert(container);
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(HOSTILE.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }));
+  await waitFor(() => expect(container.querySelector(".cite")).not.toBeNull());
+  assertInert(container);
+  fireEvent.click(screen.getByRole("link", { name: "Code" }));
+  fireEvent.click(await screen.findByRole("button", { name: "src" }));
+  fireEvent.click(await screen.findByRole("button", { name: "app.py" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Explain .* main$/ }));
+  await screen.findByRole("dialog");
+  assertInert(document.body);
   expect(document.body.textContent).toContain("<script>window.__pwned = 1</script>");
 });

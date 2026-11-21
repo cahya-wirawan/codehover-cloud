@@ -2,7 +2,7 @@
 // M0 exit criterion "no secret in frontend" (14, 22).
 // 1. Source may read only allowlisted import.meta.env keys (public configuration).
 // 2. With CANARY_SECRETS="v1,v2" set during `npm run build`, none of those values may appear in dist/.
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const ALLOWED = new Set(["VITE_API_BASE", "MODE", "DEV", "PROD", "BASE_URL", "SSR"]);
@@ -30,8 +30,9 @@ for (const path of files(join(root, "src"))) {
 
 const canaries = (process.env.CANARY_SECRETS ?? "").split(",").map((v) => v.trim()).filter(Boolean);
 if (canaries.length > 0) {
-  const dist = join(root, "dist");
-  for (const path of files(dist)) {
+  // The app's build and, when built, the offline export's viewer (it ships inside every static ZIP).
+  const builds = ["dist", "dist-export"].map((d) => join(root, d)).filter((d) => d === join(root, "dist") || existsSync(d));
+  for (const path of builds.flatMap((d) => [...files(d)])) {
     const text = readFileSync(path, "latin1");
     for (const canary of canaries) {
       if (text.includes(canary)) problems.push(`${path}: contains a canary secret value`);
@@ -43,4 +44,4 @@ if (problems.length > 0) {
   for (const p of problems) console.error(`FAIL ${p}`);
   process.exit(1);
 }
-console.log(`frontend env check OK (${canaries.length} canary value(s) checked in dist)`);
+console.log(`frontend env check OK (${canaries.length} canary value(s) checked in dist and dist-export)`);

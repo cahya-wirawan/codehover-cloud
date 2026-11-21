@@ -10,8 +10,6 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: { "/api": { target: "http://127.0.0.1:8000", changeOrigin: false } },
-    // The XSS tests load the offline export's viewer, which the backend ships in every ZIP.
-    fs: { allow: [".", "../backend/app/engine/export_assets"] },
   },
   build: { sourcemap: false, target: "es2022" },
   test: {

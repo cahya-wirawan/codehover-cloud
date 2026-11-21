@@ -50,7 +50,7 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
         </>
       );
       const href =
-        paths.has(fileId) && codeBase
+        paths.has(fileId) && codeBase !== undefined
           ? `${codeBase}/code?file=${encodeURIComponent(fileId)}&line=${start}&end=${end}`
           : null;
       parts.push(
@@ -71,7 +71,7 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
   };
   const code = (content: string, key: string): ReactNode => {
     const symbol = mentions.get(content.replace(/\(\)$/, ""));
-    if (!symbol || !codeBase) return <code key={key}>{content}</code>;
+    if (!symbol || codeBase === undefined) return <code key={key}>{content}</code>;
     return (
       <Link
         key={key}
@@ -88,7 +88,7 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
       <GuideMarkdown
         markdown={page.markdown}
         text={withCitations}
-        guideHref={(slug) => (codeBase ? `${codeBase}/guide/${encodeURIComponent(slug)}` : null)}
+        guideHref={(slug) => (codeBase !== undefined ? `${codeBase}/guide/${encodeURIComponent(slug)}` : null)}
         code={code}
       />
     </div>

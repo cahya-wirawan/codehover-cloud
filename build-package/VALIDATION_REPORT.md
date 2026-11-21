@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-21 · Package version 0.6.0
+Date: 2026-11-21 · Package version 0.6.1
+
+0.6.1 makes the offline ZIP's reader the product's own reading view, which until now was a hand-written viewer that showed guide Markdown as text and only definition cards. `frontend/src/export/staticSource.test.ts` checks that the export answers the viewer's requests from the archive's knowledge base (tree, file windows, references, used-by with their resolution, guide back-links, linked definitions, search). The XSS corpus renders `ExportApp` over a hostile knowledge base. `tests/integration/test_exports.py` checks the archive against a stand-in viewer build: only the build's files and fixed names, no source maps, a CSP with no network source, KB 1.1.0 with references and page sections, and `export_viewer_missing` failing the export but not the build. The Playwright journey reads the real exported copy offline: the guide, the code, a pinned card, the axe checks, and no request leaving the page. Results: export integration 5 passed, frontend 54 passed, e2e 2 passed.
 
 0.6.0 brings codehover's design and writing guidance to codehover-cloud, as the product owner decided (00 "Reuse decision", MIT notice at `/licenses/codehover.txt`). The guide-plan contract 2.0.0 requires a `section` per page (migration 0031), so the package MINOR changes. Checks:
 - Backend unit tests (`test_claims.py`, `test_generation_engine.py`): tables are allowed and each table row is one claim that repair removes rather than rewrites; `guide:<slug>` links must name a page of the guide; a plan page without a section is refused; prompt set 0.5.0 gives the page prompt the guide plan and the definitions in its evidence, both in its cache key, while 0.4.0 neither reads them nor changes its cache keys.

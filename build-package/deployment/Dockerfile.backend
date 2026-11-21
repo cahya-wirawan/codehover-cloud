@@ -8,6 +8,16 @@ WORKDIR /opt/codehover/indexers
 COPY backend/indexers/package.json backend/indexers/package-lock.json backend/indexers/.npmrc ./
 RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund && npm cache clean --force
 
+# The offline export's viewer (10): the frontend's export.html entry, the same reading view as the app,
+# built here so every static ZIP carries it. Installed from the lockfile with no install scripts; only
+# the built files reach the runtime image.
+FROM node:24.22.3-slim AS exportviewer
+WORKDIR /src
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build:export
+
 # Rust SCIP (T23): the rust-analyzer binary and Rust's standard library sources, pinned by release and
 # SHA-256 in fetch_rust.py. No toolchain, cargo or proc-macro server is installed.
 FROM python:3.13-slim AS rust
@@ -35,6 +45,8 @@ COPY --from=indexers /opt/codehover/indexers/ /opt/codehover/indexers/
 ENV SCIP_NODE_PATH=/opt/codehover/node/bin/node SCIP_TOOLS_DIR=/opt/codehover/indexers
 COPY --from=rust /opt/codehover/rust/ /opt/codehover/rust/
 ENV SCIP_RUST_ANALYZER_PATH=/opt/codehover/rust/bin/rust-analyzer SCIP_RUST_SRC_DIR=/opt/codehover/rust/library
+COPY --from=exportviewer /src/dist-export/ /opt/codehover/export-viewer/
+ENV EXPORT_VIEWER_DIR=/opt/codehover/export-viewer
 # Code stays root-owned and read-only for the app user (defense in depth beside read_only rootfs).
 COPY backend/ /app/
 USER 10001:10001

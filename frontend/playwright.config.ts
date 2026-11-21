@@ -19,7 +19,7 @@ export default defineConfig({
     colorScheme: process.env.PW_COLOR_SCHEME === "dark" ? "dark" : "light",
   },
   webServer: {
-    command: `npm run build && cd ../backend && .venv/bin/python -m tests.e2e.server --port ${PORT}`,
+    command: `npm run build && npm run build:export && cd ../backend && .venv/bin/python -m tests.e2e.server --port ${PORT}`,
     url: `http://127.0.0.1:${PORT}/api/v1/health/live`,
     timeout: 180_000,
     reuseExistingServer: false,

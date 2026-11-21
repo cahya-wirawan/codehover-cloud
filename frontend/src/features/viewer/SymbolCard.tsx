@@ -86,7 +86,9 @@ function Shell({
   children: ReactNode;
 }) {
   return (
-    <article className={`gloss ${kindClass(kind)} flex max-h-[min(70vh,560px)] flex-col`}>
+    <article
+      className={`gloss ${kindClass(kind)} flex max-h-[min(560px,var(--radix-popover-content-available-height,70vh))] flex-col`}
+    >
       <header className="flex items-start gap-2 px-4 pt-3 pb-1.5">
         <div className="gloss-head min-w-0 flex-1">
           <span className="gloss-kind">{label}</span>
@@ -107,7 +109,7 @@ function Shell({
           </Button>
         )}
       </header>
-      <div className="flex flex-col gap-2.5 overflow-y-auto px-4 pb-3">{children}</div>
+      <div className="gloss-body flex min-h-0 flex-col gap-2.5 overflow-y-auto px-4 pb-3">{children}</div>
       {pinned ? null : (
         <p className="gloss-foot flex items-center gap-1 border-t border-border px-4 py-1.5">
           <ArrowUpRight aria-hidden="true" className="size-3" />
@@ -206,7 +208,7 @@ export function SymbolCard({
       ) : null}
       <Relations title="Uses" items={data.uses} onFollow={onFollow} />
       <Relations title="Used by" items={data.used_by} onFollow={onFollow} />
-      {guideBase && data.guides.length ? (
+      {guideBase !== undefined && data.guides.length ? (
         <p className="card-guides gloss-sec">
           <span className="card-label">In the guide</span>
           {data.guides.map((g, i) => (

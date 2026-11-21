@@ -5,4 +5,7 @@ marked as AI-generated can be wrong; check them against the cited source lines. 
 cannot be recalled by the service once downloaded.
 
 Open index.html through a local web server (for example `python3 -m http.server` in this directory).
-Some browsers restrict scripts on file:// pages; the archive needs no network access either way.
+Browsers do not run its scripts from a file:// page. The archive needs no network access.
+
+The reader is codehover-cloud's viewer. Its design is adapted from codehover (MIT); that notice is in
+licenses/codehover.txt. The fonts (Newsreader, Red Hat Mono, IBM Plex) are under the SIL Open Font License.
