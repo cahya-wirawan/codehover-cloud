@@ -25,7 +25,7 @@ M0 to M6 are implemented, including SCIP (T23), plus per-project access control.
 - **M6** (P1, each with its own exit gate):
   - Push rebuilds (`projects/pushes.py`, 0024): a per-project push policy (off, snapshot or build) with a push cap, debounced `push_requests`, and work on behalf of the policy's admin. Nothing a push starts is ever published.
   - ZIP import (`projects/uploads.py`, `acquire.extract_zip`, 0025): one `upload` connection per workspace; each content-addressed snapshot is stored under `…/snapshots/{sid}/upload.zip`.
-  - Language and level variants (prompt set 0.4.0 with the audience text): `variant_of` a ready base reuses its snapshot, scope and guide plan, so anchors match.
+  - Language and level variants (prompt set 0.4.0 with the audience text): `variant_of` a ready base reuses its snapshot, scope and guide plan, so anchors match. Several languages in one estimate (up to three) start the base and a variant per further language together (`service.start_generation_build`, `_start_one`; the server sets `config.family` on those variants, which count as one active build and run beside the base, 0032); a family variant's plan stage waits for the base's plan (`generation._await_base_plan`). A publish records the variants it approves (`publication.approved_variants`, `publications.variant_build_ids`, 0033); sites serve them by `language` (`published/router.site_build`), and static ZIPs carry the other languages (`exports.family_variants`).
   - BYOK and batch (`providers/keys.py`, `jobs/batching.py`, 0026): sealed workspace Anthropic keys and `funding: own_key` builds without the allowance; explain batches at the catalog batch price, with persisted batch IDs and `StageWait`.
   - SCIP (T23; `engine/indexers.py`, `index_worker.py`, `scip.py`): scip-python, scip-typescript and rust-analyzer run in the sandbox's `indexer` profile, one program per run; resolved references are `index` edges, and a failed or timed-out family keeps labeled `name` edges.
   - Rust: tree-sitter-rust in the parser; rust-analyzer reads a `rust-project.json` that the sandboxed worker builds from the Cargo manifests (`engine/rust_project.py`), so cargo, build scripts and proc macros never run. It is installed by `backend/indexers/fetch_rust.py` (pinned by SHA-256) together with Rust's library sources.
@@ -51,7 +51,7 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - SCIP links calls through an interface or Protocol to the interface method, and never reads a repository's tsconfig path aliases;
 - C and C++ uses resolve by name only (no indexer; scip-clang would need a compile database), and macros other than function-like `#define`s are not definitions;
 - Rust resolution has no crates.io dependencies, proc-macro expansion or build-script output, and assumes a 64-bit Linux target;
-- a published site shows one variant;
+- a published site and an offline ZIP switch languages only at the published or exported build's reader level;
 - the permitted-license list awaits legal review, and GitHub's single-license answer refuses some multi-license or `NOASSERTION` repositories (spec 21);
 - rotating `APP_ENCRYPTION_KEY` makes stored provider keys unreadable.
 

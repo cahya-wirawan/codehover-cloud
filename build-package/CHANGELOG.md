@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-11-21
+
+### Added
+
+- 01, 02, 05, 06, 10, 13: several languages in one request (FR-026), like the codehover CLI. An estimate may name up to three languages; starting it creates the base build and a variant build per further language together, each with an equal share of the cap, counted as one active build and allowed to run beside the base (migration 0032; the server marks them `family`). A family variant's plan waits for the base's plan. A publish approves and records the ready language variants of the build's family (migration 0033, each through the review gate and the publish's own acknowledgment); its site serves them by `language` with a switcher (`/published/{slug}/variants`). A static ZIP carries the build's other languages with a switcher.
+
 ## [0.6.3] - 2026-11-21
 
 ### Added
