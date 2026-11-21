@@ -175,32 +175,54 @@ def check_requests(
     batches = []
     for start in range(0, len(claims), CLAIMS_PER_CALL):
         batch = claims[start : start + CLAIMS_PER_CALL]
-        items = [
-            {"claim_id": c.key, "claim": c.text, "cited_lines": [cited_lines(x, files) for x in c.citations]}
-            for c in batch
-        ]
-        user = prompts.render(prompt_version, "check", CLAIMS=prompts.json_block("CLAIMS", items))
-        request = GenerationRequest(
+        prepared = check_request(
+            workspace_id=workspace_id,
+            preset=preset,
             model=model,
             role=role,
-            purpose="check",
             prompt_version=prompt_version,
-            system=prompts.system(prompt_version),
-            user=user,
-            schema=schema("claim-check"),
-            evidence={"claims": items},
+            batch=batch,
+            files=files,
         )
-        inputs = {
-            "claims": [
-                [c.key, c.text, [[x.file_id, x.start_line, x.end_line] for x in c.citations]] for c in batch
-            ],
-            "sources": sorted({files[x.file_id or ""].sha256 for c in batch for x in c.citations}),
-            "schema": schema("claim-check")["$id"],
-        }
-        batches.append(
-            (Prepared(request, _cache_key(workspace_id, "check", preset, prompt_version, inputs)), batch)
-        )
+        batches.append((prepared, batch))
     return batches
+
+
+def check_request(
+    *,
+    workspace_id: str,
+    preset: str,
+    model: Model,
+    role: Role,
+    prompt_version: str,
+    batch: list[Claim],
+    files: dict[str, SourceFile],
+) -> Prepared:
+    """One checker call over `batch`; its cache key names exactly these claims, so a split batch's halves
+    are cached apart from it."""
+    items = [
+        {"claim_id": c.key, "claim": c.text, "cited_lines": [cited_lines(x, files) for x in c.citations]}
+        for c in batch
+    ]
+    user = prompts.render(prompt_version, "check", CLAIMS=prompts.json_block("CLAIMS", items))
+    request = GenerationRequest(
+        model=model,
+        role=role,
+        purpose="check",
+        prompt_version=prompt_version,
+        system=prompts.system(prompt_version),
+        user=user,
+        schema=schema("claim-check"),
+        evidence={"claims": items},
+    )
+    inputs = {
+        "claims": [
+            [c.key, c.text, [[x.file_id, x.start_line, x.end_line] for x in c.citations]] for c in batch
+        ],
+        "sources": sorted({files[x.file_id or ""].sha256 for c in batch for x in c.citations}),
+        "schema": schema("claim-check")["$id"],
+    }
+    return Prepared(request, _cache_key(workspace_id, "check", preset, prompt_version, inputs))
 
 
 def validate_checks(output: dict[str, Any], batch: list[Claim]) -> list[str]:

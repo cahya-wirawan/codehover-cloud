@@ -73,7 +73,7 @@
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
-      "sha256": "ebfb241dd2fb052c09ee64dafca233060e4af305253b26102632c06dc6f71f89"
+      "sha256": "1532a4114ed176c4f303588ddb97a5ce881fd780c47560f2b0a3ade089040674"
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
@@ -141,7 +141,7 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "94b59c4d45063caac0d8e7b587b05c9e0af70c22ad8245fa9c391e03645d39c0"
+      "sha256": "f338c3052a9a06b9d64514a53a02f321aec3e48f00cdb46549a4fb1ebd491150"
     },
     "README.md": {
       "status": "complete specification",
@@ -153,7 +153,7 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "16a158d18a72bab357bdb06597d4134f24710901b86c48d783d83dbe2850d817"
+      "sha256": "8615cf4f4df6e1673525b2447d6c869f817a1e7496a80b8d3bbe9b3a97e541ef"
     },
     "VERSION": {
       "status": "package tooling",
@@ -260,5 +260,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "2295fd33c4634ae99390a42ba4482842b871a32edc76e3057b51e8042cdb569b"
+  "master_spec_sha256": "e6f135ddecafa39a8993b2ade31681b14199fcb8c5c5738e596e706a24c4ec3d"
 }

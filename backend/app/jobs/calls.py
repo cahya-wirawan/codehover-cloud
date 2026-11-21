@@ -15,7 +15,8 @@ the provider request.
   tenant cache, which is the checkpoint a retried task resumes from. A worker that lost its lease writes
   nothing; its attempt stays `started` and becomes `unknown` when the task is claimed again.
 - Outcomes: transient errors retry at most three times with backoff; an invalid answer gets one repair
-  call; every retry and repair is its own budgeted attempt. An unknown outcome keeps its hold and is not
+  call, unless the caller handles a truncated answer itself (the checker splits its batch); every retry
+  and repair is its own budgeted attempt. An unknown outcome keeps its hold and is not
   retried here: the provider may have billed it, and retrying at once would add a worst-case hold per
   try. The call fails (`CallFailed("unknown")`), the stage stops, and the task retries later from its
   checkpoints.
@@ -47,6 +48,7 @@ from app.modules.usage import ledger
 logger = logging.getLogger("app.jobs.calls")
 MAX_TRANSIENT_RETRIES = 3
 HOLD_POLL_SECONDS = 1.0  # how often a call waiting for room re-checks the envelope
+TRUNCATED = "output_truncated"  # the adapters' code for an answer cut off at max_output_tokens
 HOLD_WAIT_SECONDS = 600.0  # longest wait for in-flight calls to settle (each is bounded at 300 s, 04)
 _SETTLING: set[asyncio.Future[None]] = set()  # settlements of cut-off calls, kept until they finish
 
@@ -302,8 +304,12 @@ async def run(
     validate: Callable[[dict[str, Any]], list[str]],
     *,
     retry_delays: tuple[float, ...] = (2.0, 8.0, 30.0),
+    repair_truncated: bool = True,
 ) -> Outcome:
-    """Answer one prepared request: from the tenant cache, or through budgeted provider attempts."""
+    """Answer one prepared request: from the tenant cache, or through budgeted provider attempts.
+
+    `repair_truncated=False` skips the repair of an answer cut off at the output limit, which would ask
+    the same task under the same limit; the caller makes the task smaller instead (the checker splits)."""
     async with sessions() as db:
         hit = await cached(db, claimed, prepared.cache_key)
     if hit is not None and not validate(hit["output"]):
@@ -347,7 +353,7 @@ async def run(
                 transient += 1
                 await asyncio.sleep(delay)
                 continue
-            if error.kind == "invalid" and not repaired:
+            if error.kind == "invalid" and not repaired and (repair_truncated or error.code != TRUNCATED):
                 repaired = True
                 request = generate.repair_request(prepared, {"unparseable": error.code}, [error.code])
                 continue

@@ -238,6 +238,63 @@ async def test_a_malformed_citation_is_repaired_before_the_page_is_stored(
     assert not [r for r in current_claims(build) if r[2] == "invalid"]
 
 
+def more_claims(markdown: str) -> str:
+    """Eight more cited sentences, citing the page's first range."""
+    first = re.search(r"\[\[[0-9a-f-]{36}:\d+-\d+\]\]", markdown)
+    assert first
+    return markdown + "".join(f"\n\nStep {i} happens in these lines {first.group(0)}." for i in range(8))
+
+
+@dataclass
+class Truncating(Rewriting):
+    """The checker's answer is cut off at its output limit when a call has more than `fits` claims."""
+
+    fits: int = 2
+    sizes: list[int] = field(default_factory=list)
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        if request.purpose == "check":
+            self.sizes.append(len(request.evidence["claims"]))
+            if len(request.evidence["claims"]) > self.fits:
+                self.calls.append("check")
+                raise ProviderError("invalid", "output_truncated", usage=Usage(1000, 4096))
+        return await super().generate(request)
+
+
+async def test_a_cut_off_check_is_split_instead_of_repaired(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """A truncated checker answer is not repaired (that asks the same task under the same limit); the
+    batch is checked in halves, at most twice, and every claim gets the checker's answer."""
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Truncating(fits=2)
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    assert max(provider.sizes) > 2 and max(provider.sizes) <= 8, (
+        provider.sizes
+    )  # the replay pages fit 2 splits
+    repairs = ddl(
+        "SELECT count(*) FROM provider_attempts WHERE build_id = :b AND purpose = 'repair' AND role = 'checker'",
+        b=build,
+    )[0][0]
+    assert repairs == 0
+    rows = current_claims(build)
+    assert rows and all(r[2] == "supported" for r in rows), rows
+    assert (await quality(owner, build))["blockers"] == []
+
+
+async def test_splitting_a_cut_off_check_stops_after_two_levels(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    _owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Truncating(fits=0, rewrite=more_claims)  # every answer is cut off; pages have 8+ claims
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    pages = ddl("SELECT count(DISTINCT guide_page_id) FROM claim_checks WHERE build_id = :b", b=build)[0][0]
+    assert len(provider.sizes) == 7 * pages  # per page: the batch, its halves and their halves
+    assert min(provider.sizes) >= 2  # quarters of 8+ claims are not split again
+    rows = current_claims(build)
+    assert rows and all(r[2] == "unchecked" and r[4] == "checker unavailable: output_truncated" for r in rows)
+
+
 async def test_malformed_citations_are_invalid_and_cannot_be_waived(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
 ) -> None:
