@@ -313,6 +313,7 @@ class FileExplanationOut(BaseModel):
 class GuidePageSummary(BaseModel):
     slug: str
     title: str
+    section: str  # the guide section the page belongs to; '' for pages planned before sections (0031)
     ordinal: int
     purpose: str
     status: str
@@ -426,6 +427,11 @@ class Related(BaseModel):
     ambiguous: bool
 
 
+class GuideRef(BaseModel):
+    slug: str
+    title: str
+
+
 class SymbolOut(BaseModel):
     id: UUID
     symbol_key: str
@@ -441,6 +447,7 @@ class SymbolOut(BaseModel):
     path: str
     uses: list[Related]
     used_by: list[Related]
+    guides: list[GuideRef]  # guide pages with a current, valid citation inside this definition
 
 
 def _github(request: Request) -> GitHubApp | None:

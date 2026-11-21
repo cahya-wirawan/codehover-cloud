@@ -99,8 +99,8 @@ export function SiteGuide() {
 }
 
 export function SiteCode() {
-  const { source } = useSite();
-  return <CodeViewer source={source} />;
+  const { source, base } = useSite();
+  return <CodeViewer source={source} base={base} />;
 }
 
 export function SiteSearch() {

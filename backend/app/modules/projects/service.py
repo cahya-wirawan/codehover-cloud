@@ -644,10 +644,20 @@ async def symbol_view(db: AsyncSession, member: Reader, build_id: UUID, symbol_i
         )
         return [dict(r._mapping) for r in rows]
 
+    guides = await db.execute(
+        text(
+            "SELECT g.slug, g.title FROM guide_pages g WHERE g.workspace_id = :w AND g.build_id = :b AND EXISTS ("
+            " SELECT 1 FROM claim_checks c WHERE c.workspace_id = g.workspace_id AND c.guide_page_id = g.id"
+            " AND c.current AND c.deterministic = 'valid' AND c.source_file_id = :f"
+            " AND c.start_line <= :end AND c.end_line >= :start) ORDER BY g.ordinal"
+        ),
+        {"w": member.workspace_id, "b": build_id, "f": s.file_id, "start": s.start_line, "end": s.end_line},
+    )
     return {
         **dict(s._mapping),
         "uses": await related("from_symbol_id", "to_symbol_id"),
         "used_by": await related("to_symbol_id", "from_symbol_id"),
+        "guides": [dict(g._mapping) for g in guides],
     }
 
 
@@ -658,7 +668,7 @@ async def guide_index(
     await _ready_build(db, member, build_id)
     pages = await db.execute(
         text(
-            "SELECT slug, title, ordinal, purpose, status, check_status, provenance FROM guide_pages"
+            "SELECT slug, title, section, ordinal, purpose, status, check_status, provenance FROM guide_pages"
             " WHERE workspace_id = :w AND build_id = :b ORDER BY ordinal"
         ),
         {"w": member.workspace_id, "b": build_id},
@@ -684,7 +694,8 @@ async def guide_page(
     page = (
         await db.execute(
             text(
-                "SELECT id, slug, title, ordinal, purpose, status, check_status, provenance, markdown_key FROM guide_pages"
+                "SELECT id, slug, title, section, ordinal, purpose, status, check_status, provenance, markdown_key"
+                " FROM guide_pages"
                 " WHERE workspace_id = :w AND build_id = :b AND slug = :s"
             ),
             {"w": member.workspace_id, "b": build_id, "s": slug},

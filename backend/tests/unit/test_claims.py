@@ -182,3 +182,29 @@ def test_search_terms_and_queries() -> None:
     assert search.tsquery("a & b | !c ) ( : *") == "a:* & b:* & c:*"  # operators never pass through
     assert search.tsquery("&|!()") is None
     assert search.prose("# T\n\nRuns `main` [[x:1-2]].") == "T Runs main ."
+
+
+TABLE_PAGE = f"""# Options
+
+| Option | Meaning |
+|--------|:-------:|
+| `-i` | The input file. It is read once [[{F1}:3-4]] |
+| `-o` | The output directory [[{F1}:5-6]] |
+| `-v` | Uncited |
+
+After the table [[{F1}:7-8]].
+"""
+
+
+def test_a_table_row_is_one_claim_and_repair_removes_a_flagged_row() -> None:
+    extracted = claims.extract("options", TABLE_PAGE)
+    assert [c.text for c in extracted] == [
+        "`-i`; The input file. It is read once",  # one claim, not split at the full stop
+        "`-o`; The output directory",
+        "After the table .",
+    ]
+    assert extracted[0].raw == f"| `-i` | The input file. It is read once [[{F1}:3-4]] |"
+    rewrite = {"claim_id": extracted[0].key, "action": "rewrite", "text": "Reads input.", "citations": []}
+    repaired = claims.apply_repair(TABLE_PAGE, extracted, {"replacements": [rewrite]})
+    assert "`-i`" not in repaired and "| `-o` | The output directory" in repaired
+    assert "|--------|:-------:|\n| `-o`" in repaired  # the table keeps its shape

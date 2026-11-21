@@ -1,0 +1,23 @@
+/* The reading view: guide pages, code and cards. Design adapted from codehover (MIT; notice at
+   /licenses/codehover.txt; build-package/00 "Reuse decision"). */
+
+.guide-section { display: block; margin: 12px 0 2px; font-size: 12px; font-style: italic; color: var(--text-muted); }
+.guide-section:first-child { margin-top: 0; }
+
+.guide-table { overflow-x: auto; margin: 18px 0 24px; }
+.guide-table table { border-collapse: collapse; min-width: 60%; font-size: 14px; line-height: 1.45; }
+.guide-table th, .guide-table td { text-align: left; vertical-align: top; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--border); }
+.guide-table th { font-weight: 600; border-bottom-color: var(--foreground); }
+
+.guide-link { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+
+figure.diagram { margin: 24px 0 28px; padding: 20px 16px; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+figure.diagram .diagram-image { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+figure.diagram .diagram-source { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+figure.diagram[data-state="drawn"] .diagram-source:not([open]) { margin-top: 12px; }
+figure.diagram .diagram-source pre { margin: 6px 0 0; white-space: pre-wrap; font-family: var(--font-mono); }
+
+.card-guides { font-size: 13px; color: var(--text-muted); }
+.card-guides .card-label { font-weight: 500; color: var(--foreground); }
+.card-guides a { color: var(--primary); text-underline-offset: 2px; }
+.card-guides a:hover { text-decoration: underline; }

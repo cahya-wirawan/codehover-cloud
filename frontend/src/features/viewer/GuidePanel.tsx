@@ -67,7 +67,11 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
   };
   return (
     <div className="max-w-[72ch] text-[15px] leading-[26px]">
-      <GuideMarkdown markdown={page.markdown} text={withCitations} />
+      <GuideMarkdown
+        markdown={page.markdown}
+        text={withCitations}
+        guideHref={(slug) => (codeBase ? `${codeBase}/guide/${encodeURIComponent(slug)}` : null)}
+      />
     </div>
   );
 }
@@ -117,6 +121,9 @@ export function GuidePanel({ source, base }: { source: ViewerSource; base: strin
           <ul className="flex flex-col gap-0.5">
             {guide.data.pages.map((p, index) => (
               <li key={p.slug}>
+                {p.section && p.section !== guide.data.pages[index - 1]?.section ? (
+                  <span className="guide-section">{p.section}</span>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => navigate(`${base}/guide/${encodeURIComponent(p.slug)}`)}

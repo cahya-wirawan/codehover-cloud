@@ -57,6 +57,13 @@ async def test_replay_guide_is_fully_supported_and_publishable(
     assert all(c["status"] == "supported" and c["citations"] for c in page["claims"])
     listing = (await owner.get(f"/api/v1/builds/{build}/quality/checks", params={"limit": 2})).json()
     assert len(listing["items"]) == 2 and listing["next_cursor"]
+    index = (await owner.get(f"/api/v1/builds/{build}/guide")).json()
+    assert index["pages"] and all(p["section"] == "Code walkthrough" for p in index["pages"])
+    symbols = [r[0] for r in ddl("SELECT id FROM symbols WHERE build_id = :b", b=build)]
+    cards = [(await owner.get(f"/api/v1/builds/{build}/symbols/{sid}")).json() for sid in symbols]
+    linked = [c for c in cards if c["guides"]]
+    assert linked, "a definition inside cited lines links back to its guide page"
+    assert all({g["slug"] for g in c["guides"]} <= {p["slug"] for p in index["pages"]} for c in linked)
 
 
 async def test_checker_outage_leaves_claims_unchecked_and_blocks_publication(
@@ -301,7 +308,7 @@ async def test_malformed_citations_are_invalid_and_cannot_be_waived(
     """A14: a citation by path instead of immutable file ID fails deterministic validation; it blocks
     publication and no waiver can lift it. The guide stage now repairs such pages before storing them, so
     this backstop is reached here by skipping that check (as for a page stored before it existed)."""
-    monkeypatch.setattr(generate, "validate_guide", lambda output, evidence: [])
+    monkeypatch.setattr(generate, "validate_guide", lambda output, evidence, pages=frozenset(): [])
     owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = Opinionated(
         guide_suffix="\n\nThe entry point reads arguments [[src/app.py:5-7]].\n", repair=False

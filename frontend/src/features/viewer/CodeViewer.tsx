@@ -181,7 +181,7 @@ function ResizeHandle() {
 
 /** Three panes: tree, source, outline (02 S11). File, line range and pinned symbol live in the URL; the
  * definition card floats at its name (02 "Hover card"). */
-export function CodeViewer({ source }: { source: ViewerSource }) {
+export function CodeViewer({ source, base }: { source: ViewerSource; base?: string | undefined }) {
   const [params, setParams] = useSearchParams();
   const wide = useMediaQuery("(min-width: 1024px)");
   const fileId = params.get("file");
@@ -468,6 +468,7 @@ export function CodeViewer({ source }: { source: ViewerSource }) {
                 onPin={() => pin(shown)}
                 onClose={unpin}
                 onFollow={follow}
+                guideBase={base}
               />
             ) : null}
           </Popover.Content>

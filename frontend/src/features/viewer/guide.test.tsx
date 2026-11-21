@@ -1,7 +1,20 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 
 import { formatUsd, type GuidePage } from "../../lib/api/resources";
 import { GuideText, OverviewText } from "./GuidePanel";
+
+// Mermaid needs a real layout engine; this stand-in returns SVG carrying a script, which must never run or
+// become part of the document.
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async (_id: string, code: string) => {
+      if (code.includes("broken")) throw new Error("parse");
+      return { svg: `<svg><script>window.__pwned=1</script><text>${code}</text></svg>` };
+    }),
+  },
+}));
 
 const FILE = "019a90a0-0000-7000-8000-000000000001";
 
@@ -17,6 +30,7 @@ function guidePage(markdown: string): GuidePage {
   return {
     slug: "flow",
     title: "Flow",
+    section: "Basics",
     ordinal: 1,
     purpose: "",
     status: "written",
@@ -111,4 +125,41 @@ test("the overview renders its Markdown like a guide page", () => {
   expect(container.textContent).toContain("<script>x</script>");
   expect(screen.getByRole("link", { name: "docs" })).toHaveAttribute("href", "https://example.com");
   expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
+});
+
+test("tables render as tables, guide links stay inside the guide, and diagrams are pictures", async () => {
+  const markdown = [
+    "# Options",
+    "",
+    "| Option | Meaning |",
+    "|:--|:-:|",
+    `| \`-i\` | input file [[${FILE}:3-5]] |`,
+    "",
+    "See [the flow](guide:flow) and [missing](guide:Not_A_Slug).",
+    "",
+    "```mermaid",
+    "flowchart TD",
+    "  A --> B",
+    "```",
+  ].join("\n");
+  const { container } = render(
+    <MemoryRouter>
+      <GuideText page={guidePage(markdown)} codeBase="/p/p1/builds/b1" />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole("columnheader", { name: "Meaning" })).toHaveStyle({ textAlign: "center" });
+  expect(screen.getByRole("cell", { name: /input file/ })).toHaveTextContent("[src/app.py:3–5]");
+  expect(screen.getByRole("link", { name: "the flow" })).toHaveAttribute("href", "/p/p1/builds/b1/guide/flow");
+  expect(screen.queryByRole("link", { name: "missing" })).toBeNull();
+  const picture = await screen.findByRole("img", { name: /Diagram/ });
+  expect(picture.getAttribute("src")).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+  expect(container.querySelector("svg:not(.lucide), script")).toBeNull(); // the SVG is an image, not markup
+  expect(container.querySelector("figure pre code")?.textContent).toContain("A --> B"); // its source stays readable
+  expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+});
+
+test("a diagram that cannot be drawn shows its source", async () => {
+  render(<GuideText page={guidePage("# D\n\n```mermaid\nbroken\n```")} />);
+  await waitFor(() => expect(screen.getByText(/could not be drawn/)).toBeInTheDocument());
+  expect(screen.queryByRole("img")).toBeNull();
 });

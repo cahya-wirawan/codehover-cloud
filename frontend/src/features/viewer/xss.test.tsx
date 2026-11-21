@@ -4,7 +4,7 @@
  * in the product viewer, the guide, and the offline export viewer (run here in jsdom).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 
 import { routes } from "../../app/routes";
@@ -41,14 +41,14 @@ function assertInert(root: ParentNode) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-test("guide markdown and forged citations render as text", () => {
+test("guide markdown and forged citations render as text", async () => {
   const { container } = render(
     <MemoryRouter>
       <GuideText
         page={{
           slug: "x",
           title: HOSTILE,
-          markdown: `${HOSTILE} [[not-a-uuid:1-2]] [[00000000-0000-0000-0000-000000000000:1-2]]" onmouseover="x`,
+          markdown: `${HOSTILE} [[not-a-uuid:1-2]] [[00000000-0000-0000-0000-000000000000:1-2]]" onmouseover="x\n\n| ${HOSTILE} |\n|---|\n| [x](guide:x) ${HOSTILE} |\n\n\`\`\`mermaid\nflowchart TD\n  A["${PAYLOADS[1]}"] --> B\n  click A "javascript:window.__pwned=1"\n\`\`\``,
           citations: [],
           claims: [],
         } as never}
@@ -57,6 +57,15 @@ test("guide markdown and forged citations render as text", () => {
     </MemoryRouter>,
   );
   expect(container.textContent).toContain("<script>window.__pwned = 1</script>");
+  assertInert(container);
+  // A drawn diagram is only ever an SVG image (no markup of its own); the real Mermaid, in strict mode.
+  await waitFor(() => expect(container.querySelector("figure")?.getAttribute("data-state")).not.toBe("pending"), {
+    timeout: 5000,
+  });
+  for (const image of Array.from(container.querySelectorAll("img"))) {
+    expect(image.getAttribute("src")).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+    image.remove();
+  }
   assertInert(container);
 });
 
@@ -87,6 +96,7 @@ test("hostile source lines, names and cards stay text in the code viewer", async
       card: { summary: HOSTILE, details: HOSTILE, notes: HOSTILE, params: [{ name: HOSTILE, description: HOSTILE }] },
       uses: [{ id: "s2", name: HOSTILE, kind: "function", path: HOSTILE, resolution: "name", ambiguous: false }],
       used_by: [],
+      guides: [{ slug: "x", title: HOSTILE }],
     },
   };
   vi.stubGlobal(

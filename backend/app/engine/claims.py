@@ -60,9 +60,24 @@ def _normalize(text: str) -> str:
     return " ".join(MARKER.sub("", text).split()).strip()
 
 
+TABLE_ROW = re.compile(r"^\s*\|")
+TABLE_RULE = re.compile(r"^\s*\|?[\s:|-]*-[\s:|-]*$")  # the |---|:--:| line under a table's header
+
+
+def is_table_row(segment: str) -> bool:
+    return TABLE_ROW.match(segment) is not None
+
+
+def _row_text(row: str) -> str:
+    """A table row as claim text: its cells, in order, separated by semicolons."""
+    return "; ".join(cell.strip() for cell in row.strip().strip("|").split("|") if cell.strip())
+
+
 def _segments(markdown: str) -> list[str]:
-    """Sentences and list items outside code fences and headings, in document order."""
+    """Sentences, list items and table rows outside code fences and headings, in document order. A table
+    row is one segment, kept exactly as written (so repair can find it), however many sentences it has."""
     blocks: list[str] = []
+    rows: set[int] = set()  # indexes in `blocks` that are table rows
     paragraph: list[str] = []
     in_fence = False
 
@@ -82,6 +97,12 @@ def _segments(markdown: str) -> list[str]:
         if not stripped or stripped.startswith("#"):
             flush()
             continue
+        if TABLE_ROW.match(line):
+            flush()
+            if not TABLE_RULE.match(line):
+                rows.add(len(blocks))
+                blocks.append(stripped)
+            continue
         if LIST_ITEM.match(line):
             flush()
             blocks.append(LIST_ITEM.sub("", line, count=1).strip())
@@ -89,7 +110,10 @@ def _segments(markdown: str) -> list[str]:
         paragraph.append(stripped)
     flush()
     segments: list[str] = []
-    for block in blocks:
+    for index, block in enumerate(blocks):
+        if index in rows:
+            segments.append(block)
+            continue
         parts = SENTENCE_END.split(block)
         for part in parts:
             # A citation written after the full stop belongs to the sentence before it.
@@ -114,7 +138,7 @@ def extract(slug: str, markdown: str) -> list[Claim]:
         if not markers:
             continue
         ordinal = len(claims) + 1
-        text = _normalize(segment)
+        text = _normalize(_row_text(segment) if is_table_row(segment) else segment)
         citations = []
         for raw in markers:
             parsed = CITATION.fullmatch(raw)
@@ -315,10 +339,19 @@ def validate_repair(output: dict[str, Any], flagged: list[Claim]) -> list[str]:
 
 
 def apply_repair(markdown: str, claims: list[Claim], output: dict[str, Any]) -> str:
+    """A table row cannot take a rewritten sentence without breaking the table's shape, so a flagged row
+    is removed whichever action the repair chose (07 "rewrite or remove")."""
     by_key = {c.key: c for c in claims}
     for item in output["replacements"]:
         claim = by_key.get(item["claim_id"])
         if claim is None or claim.raw not in markdown:
+            continue
+        if is_table_row(claim.raw):
+            lines = markdown.split("\n")
+            at = next((i for i, line in enumerate(lines) if line.strip() == claim.raw), None)
+            if at is not None:
+                del lines[at]
+                markdown = "\n".join(lines)
             continue
         if item["action"] == "remove":
             replacement = ""

@@ -495,13 +495,19 @@ async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
     pages = await _rows(
         rt,
         claimed,
-        "SELECT slug, title, ordinal, purpose, source_ranges FROM guide_pages"
+        "SELECT slug, title, section, ordinal, purpose, source_ranges FROM guide_pages"
         " WHERE workspace_id = :w AND build_id = :base ORDER BY ordinal",
         base=ctx.config.variant_of,
     )
     output = {
         "pages": [
-            {"slug": p.slug, "title": p.title, "purpose": p.purpose, "source_ranges": p.source_ranges}
+            {
+                "slug": p.slug,
+                "title": p.title,
+                "section": p.section,
+                "purpose": p.purpose,
+                "source_ranges": p.source_ranges,
+            }
             for p in pages
         ],
         "variant_of": ctx.config.variant_of,
@@ -511,8 +517,8 @@ async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
         for page in pages:
             await db.execute(
                 text(
-                    "INSERT INTO guide_pages(workspace_id, build_id, slug, title, ordinal, purpose, source_ranges)"
-                    " VALUES (:w, :b, :slug, :title, :o, :purpose, CAST(:ranges AS jsonb))"
+                    "INSERT INTO guide_pages(workspace_id, build_id, slug, title, section, ordinal, purpose, source_ranges)"
+                    " VALUES (:w, :b, :slug, :title, :section, :o, :purpose, CAST(:ranges AS jsonb))"
                     " ON CONFLICT (build_id, slug) DO NOTHING"
                 ),
                 {
@@ -520,6 +526,7 @@ async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
                     "b": claimed.build,
                     "slug": page.slug,
                     "title": page.title,
+                    "section": page.section,
                     "o": page.ordinal,
                     "purpose": page.purpose,
                     "ranges": json.dumps(page.source_ranges),
@@ -567,8 +574,8 @@ async def plan(rt: Any, claimed: Claim) -> Apply | None:
         for ordinal, page in enumerate(output["pages"], start=1):
             await db.execute(
                 text(
-                    "INSERT INTO guide_pages(workspace_id, build_id, slug, title, ordinal, purpose, source_ranges)"
-                    " VALUES (:w, :b, :slug, :title, :o, :purpose, CAST(:ranges AS jsonb))"
+                    "INSERT INTO guide_pages(workspace_id, build_id, slug, title, section, ordinal, purpose, source_ranges)"
+                    " VALUES (:w, :b, :slug, :title, :section, :o, :purpose, CAST(:ranges AS jsonb))"
                     " ON CONFLICT (build_id, slug) DO NOTHING"
                 ),
                 {
@@ -576,6 +583,7 @@ async def plan(rt: Any, claimed: Claim) -> Apply | None:
                     "b": claimed.build,
                     "slug": page["slug"],
                     "title": page["title"],
+                    "section": page.get("section", "")[:60],
                     "o": ordinal,
                     "purpose": page["purpose"],
                     "ranges": json.dumps(page["source_ranges"]),
@@ -599,8 +607,9 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
     pages = await _rows(
         rt,
         claimed,
-        "SELECT id, slug, title, purpose, source_ranges FROM guide_pages WHERE workspace_id = :w AND build_id = :b ORDER BY ordinal",
+        "SELECT id, slug, title, section, purpose, source_ranges FROM guide_pages WHERE workspace_id = :w AND build_id = :b ORDER BY ordinal",
     )
+    slugs = frozenset(p.slug for p in pages)  # pages may link to each other (guide:<slug>)
     texts = {fid: list(f.lines) for fid, f in files.items()}
     shas = {fid: f.sha256 for fid, f in files.items()}
     titles: dict[str, str] = {}
@@ -624,9 +633,9 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
             if not evidence:
                 return page, None, {"generator": "none", "error": "no_evidence"}
             output, _, provenance = await answer(
-                rt, claimed, prepared, lambda o: generate.validate_guide(o, evidence)
+                rt, claimed, prepared, lambda o: generate.validate_guide(o, evidence, slugs)
             )
-            if generate.validate_guide(output, evidence):
+            if generate.validate_guide(output, evidence, slugs):
                 return page, None, {"generator": "none", "error": "no_valid_page"}
             markdown = generate.normalize_citations(output["markdown"])
             key = build_key(claimed.workspace_id, ctx.project_id, claimed.build, f"guide/{page.slug}.md")

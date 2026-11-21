@@ -515,6 +515,7 @@ class GuidePage(Base):
     build_id: Mapped[UUID] = ref()
     slug: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
+    section: Mapped[str] = mapped_column(Text, server_default=text("''"))  # 0031
     ordinal: Mapped[int] = mapped_column(Integer)
     purpose: Mapped[str] = mapped_column(Text, server_default=text("''"))
     source_ranges: Mapped[list[Any]] = jsonb()

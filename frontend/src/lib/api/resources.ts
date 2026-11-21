@@ -207,6 +207,7 @@ export type CheckStatus = "supported" | "partial" | "unsupported" | "unchecked" 
 export interface GuidePageSummary {
   slug: string;
   title: string;
+  section: string;
   ordinal: number;
   purpose: string;
   status: "planned" | "written" | "failed";
@@ -426,6 +427,7 @@ export interface SymbolView {
   card: { summary?: string; details?: string; params?: { name: string; description: string }[]; notes?: string };
   uses: Related[];
   used_by: Related[];
+  guides: { slug: string; title: string }[];
 }
 
 export interface DeletionRequest {

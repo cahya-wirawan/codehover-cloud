@@ -464,17 +464,21 @@ def bounded_evidence(
 
 
 def _markdown_parser() -> MarkdownIt:
-    """CommonMark with HTML recognized (so it can be rejected) and link validation off (so every link
-    target is visible to the allowlist instead of being dropped by this parser but not by another)."""
-    parser = MarkdownIt("commonmark", {"html": True})
+    """CommonMark plus tables (the viewer parses the same way), with HTML recognized (so it can be
+    rejected) and link validation off (so every link target is visible to the allowlist instead of being
+    dropped by this parser but not by another)."""
+    parser = MarkdownIt("commonmark", {"html": True}).enable("table")
     parser.validateLink = lambda url: True  # type: ignore[method-assign]
     return parser
 
 
-def markdown_problems(markdown: str) -> list[str]:
-    """Allowlist over CommonMark tokens (19 P04): no raw HTML, no images, links only to https URLs or
-    in-page anchors, bounded strict Mermaid. Checking tokens rather than regexes avoids parser
-    differentials between this check and a renderer."""
+GUIDE_LINK = "guide:"  # a link to another page of the same guide: [title](guide:slug)
+
+
+def markdown_problems(markdown: str, pages: frozenset[str] = frozenset()) -> list[str]:
+    """Allowlist over CommonMark tokens (19 P04): no raw HTML, no images, links only to https URLs,
+    in-page anchors or `guide:<slug>` for a page in `pages`, bounded strict Mermaid. Checking tokens
+    rather than regexes avoids parser differentials between this check and a renderer."""
     problems: list[str] = []
     tokens = _markdown_parser().parse(markdown)
     if not tokens or tokens[0].type != "heading_open" or tokens[0].tag != "h1":
@@ -488,7 +492,10 @@ def markdown_problems(markdown: str) -> list[str]:
                 problems.append("images are not allowed")
             elif token.type == "link_open":
                 href = str(token.attrGet("href") or "")
-                if not (href.startswith("https://") or href.startswith("#")):
+                if href.startswith(GUIDE_LINK):
+                    if href[len(GUIDE_LINK) :] not in pages:
+                        problems.append(f"link target {href[:80]!r} is not a page of this guide")
+                elif not (href.startswith("https://") or href.startswith("#")):
                     problems.append(f"link target {href[:80]!r} is not an https URL")
             elif token.type == "fence" and token.info.strip().lower().startswith("mermaid"):
                 if MERMAID_FORBIDDEN.search(token.content):
@@ -518,7 +525,9 @@ def normalize_citations(markdown: str) -> str:
     return SINGLE_LINE_CITATION.sub(r"[[\1:\2-\2]]", markdown)
 
 
-def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> list[str]:
+def validate_guide(
+    output: dict[str, Any], evidence: list[dict[str, Any]], pages: frozenset[str] = frozenset()
+) -> list[str]:
     """Allowlisted Markdown (19 P04), checked on the page as it will be stored (`normalize_citations`).
     Citation correctness against the snapshot is the verify stage's job; here every citation marker must
     be well formed and point into the supplied evidence, so a malformed one is repaired, not stored."""
@@ -528,7 +537,7 @@ def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> li
     if problems:
         return problems
     markdown = normalize_citations(output["markdown"])
-    problems.extend(markdown_problems(markdown))
+    problems.extend(markdown_problems(markdown, pages))
     for raw in markers(markdown):
         if CITATION.fullmatch(raw) is None:
             problems.append(

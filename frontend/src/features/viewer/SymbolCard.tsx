@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, Bot, FileCode2, Link2, Pin, X } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { Link } from "react-router";
 
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -60,6 +61,7 @@ export function SymbolCard({
   onPin,
   onClose,
   onFollow,
+  guideBase,
 }: {
   source: ViewerSource;
   symbolId: string;
@@ -67,6 +69,8 @@ export function SymbolCard({
   onPin: () => void;
   onClose: () => void;
   onFollow: (r: Related) => void;
+  /** Where this view's guide lives; without it the card does not link to guide pages. */
+  guideBase?: string | undefined;
 }) {
   const { data } = useQuery({ queryKey: ["symbol", source.key, symbolId], queryFn: () => source.symbol(symbolId) });
   const heading = useRef<HTMLHeadingElement>(null);
@@ -142,6 +146,17 @@ export function SymbolCard({
           <Relations title="Uses" items={data.uses} onFollow={onFollow} />
           <Relations title="Used by" items={data.used_by} onFollow={onFollow} />
         </div>
+        {guideBase && data.guides.length ? (
+          <p className="card-guides">
+            <span className="card-label">In the guide</span>{" "}
+            {data.guides.map((g, i) => (
+              <span key={g.slug}>
+                {i ? ", " : ""}
+                <Link to={`${guideBase}/guide/${encodeURIComponent(g.slug)}`}>{g.title}</Link>
+              </span>
+            ))}
+          </p>
+        ) : null}
       </div>
       {pinned ? null : (
         <p className="flex items-center gap-1 border-t border-border px-4 py-1.5 text-xs text-muted">

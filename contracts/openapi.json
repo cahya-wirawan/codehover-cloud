@@ -2203,6 +2203,10 @@
             "title": "Purpose",
             "type": "string"
           },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -2219,6 +2223,7 @@
         "required": [
           "slug",
           "title",
+          "section",
           "ordinal",
           "purpose",
           "status",
@@ -2250,6 +2255,10 @@
             "title": "Purpose",
             "type": "string"
           },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -2266,6 +2275,7 @@
         "required": [
           "slug",
           "title",
+          "section",
           "ordinal",
           "purpose",
           "status",
@@ -2273,6 +2283,24 @@
           "provenance"
         ],
         "title": "GuidePageSummary",
+        "type": "object"
+      },
+      "GuideRef": {
+        "properties": {
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title"
+        ],
+        "title": "GuideRef",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -4502,6 +4530,13 @@
             "title": "File Id",
             "type": "string"
           },
+          "guides": {
+            "items": {
+              "$ref": "#/components/schemas/GuideRef"
+            },
+            "title": "Guides",
+            "type": "array"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -4571,7 +4606,8 @@
           "file_id",
           "path",
           "uses",
-          "used_by"
+          "used_by",
+          "guides"
         ],
         "title": "SymbolOut",
         "type": "object"

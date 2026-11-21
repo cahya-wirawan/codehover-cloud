@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:codehover-cloud:schema:guide-plan:1.0.0",
-  "title": "codehover-cloud guide plan v1 (19 P01)",
+  "$id": "urn:codehover-cloud:schema:guide-plan:2.0.0",
+  "title": "codehover-cloud guide plan v2 (19 P01)",
   "type": "object",
   "additionalProperties": false,
   "required": ["pages", "reason"],
@@ -12,10 +12,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slug", "title", "purpose", "source_ranges"],
+        "required": ["slug", "title", "section", "purpose", "source_ranges"],
         "properties": {
           "slug": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"},
           "title": {"type": "string", "maxLength": 200},
+          "section": {"type": "string", "maxLength": 60},
           "purpose": {"type": "string", "maxLength": 1000},
           "source_ranges": {
             "type": "array",
