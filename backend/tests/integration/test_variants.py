@@ -221,6 +221,41 @@ async def test_one_estimate_builds_every_language_as_a_family(
     assert [(v["language"], v["base"]) for v in listed] == [("en", True), ("de", False), ("id", False)]
 
 
+async def test_cancelling_the_base_cancels_its_language_variants(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """The variants were started by the same request and need the base's plan: cancelling the base stops
+    them too, before they spend anything more. Cancelling one variant stops only that variant."""
+    owner, app, _estimate, builds = await family(client, idp, github, ["en", "de", "id"], cap=3_000_000)
+    base, german, indonesian = builds
+    rt = runtime_for(app, ScriptedProvider())
+    assert (await drive(app, german, runtime=rt))[-1] == "waiting"
+    alone = await unsafe(owner, "POST", f"/api/v1/builds/{indonesian}/cancel", json={})
+    assert alone.status_code in (200, 202), alone.text
+    assert (await owner.get(f"/api/v1/builds/{indonesian}")).json()["status"] == "cancelled"
+    assert (await owner.get(f"/api/v1/builds/{base}")).json()["status"] in ("queued", "running")
+    assert (await owner.get(f"/api/v1/builds/{german}")).json()["status"] in ("queued", "running")
+
+    cancelled = await unsafe(owner, "POST", f"/api/v1/builds/{base}/cancel", json={"reason": "wrong branch"})
+    assert cancelled.status_code in (200, 202), cancelled.text
+    await drive(app, base, runtime=rt)
+    await resume(app, german, rt)
+    for build in (base, german):
+        assert (await owner.get(f"/api/v1/builds/{build}")).json()["status"] == "cancelled", build
+    requested = ddl(
+        "SELECT payload FROM build_events WHERE build_id = :b AND event_type = 'build.cancel_requested'",
+        b=german,
+    )
+    assert [r[0] for r in requested] == [{"reason": "wrong branch", "with_base": True}]
+    assert (
+        ddl(
+            "SELECT count(*) FROM build_tasks WHERE build_id = ANY(CAST(:ids AS uuid[])) AND state IN ('pending', 'leased', 'retry_wait')",
+            ids=builds,
+        )[0][0]
+        == 0
+    )
+
+
 async def test_a_variant_fails_when_its_base_stops_before_planning(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
@@ -228,10 +263,12 @@ async def test_a_variant_fails_when_its_base_stops_before_planning(
     base, variant_build = builds
     rt = runtime_for(app, ScriptedProvider())
     assert (await drive(app, variant_build, runtime=rt))[-1] == "waiting"
-    cancelled = await unsafe(owner, "POST", f"/api/v1/builds/{base}/cancel", json={})
-    assert cancelled.status_code in (200, 202), cancelled.text
-    await drive(app, base, runtime=rt)
-    assert (await owner.get(f"/api/v1/builds/{base}")).json()["status"] == "cancelled"
+    # The base fails on its own (not cancelled), before it has planned.
+    ddl(
+        "UPDATE build_tasks SET state = 'cancelled' WHERE build_id = :b AND state IN ('pending', 'retry_wait')",
+        b=base,
+    )
+    ddl("UPDATE builds SET status = 'failed', completed_at = now() WHERE id = :b", b=base)
     await resume(app, variant_build, rt)
     status = (await owner.get(f"/api/v1/builds/{variant_build}")).json()
     assert status["status"] == "failed", status

@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-21 · Package version 0.6.6
+Date: 2026-11-21 · Package version 0.6.7
+
+0.6.7 fixes cancelling a several-language build: cancelling the base also cancels its active language variants, which had kept running and calling models until they failed at the plan stage. `test_variants.py` checks that cancelling one variant stops only it, that cancelling the base then cancels the remaining variant with `with_base: true` on its event and leaves no runnable task, and that a base failing before planning still fails its variant with `base_unavailable`. Results: unit 283 passed (8 skipped), integration 257 passed.
 
 0.6.6 adds hosted MCP. `tests/integration/test_mcp.py` checks that a public site answers `initialize`, `tools/list` and every tool anonymously, with citations rendered as paths and no build ID in any answer, that tool failures come back as results and protocol mistakes as JSON-RPC errors, that a foreign `Origin`, an unsupported protocol version and batches are refused, and that a suspended site stops answering. For a private site it checks that no token and a member's cookie session both get 404; that a token is shown once and only its digest is stored, also in the idempotent replay; that a token of another workspace, or of a viewer once the project is restricted, gets 404; and that revoked, expired and removed-member tokens get 401. `test_tenancy.py` checks token isolation and the identifier-only resolver; `test_threats.py` sweeps the token routes for another tenant and anonymous visitors; `access-token.test.tsx` covers the token panel. Results: unit 283 passed (8 skipped), integration 256 passed, frontend 59 passed.
 

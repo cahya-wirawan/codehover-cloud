@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-11-21
+
+### Fixed
+
+- 06: cancelling the base of a several-language build now cancels its active language variants too. Before, a variant kept running (and calling models) until it reached its plan stage and failed with `base_unavailable`. Cancelling one variant still stops only that variant.
+
 ## [0.6.6] - 2026-11-21
 
 ### Added
