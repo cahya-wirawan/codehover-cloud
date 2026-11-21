@@ -89,6 +89,31 @@ async def summary(db: AsyncSession, objects: ObjectStore, member: Member, build_
     }
 
 
+async def gate(db: AsyncSession, workspace_id: UUID, build_id: UUID) -> tuple[list[str], bool]:
+    """(blockers, has partly supported claims) of a ready build, from the database alone: the review gate
+    without the uncited-sentence count, which never blocks. For the variants a site serves (FR-026)."""
+    claims = list(await db.execute(text(PER_CLAIM), {"w": workspace_id, "b": build_id}))
+    pages = (
+        await db.execute(
+            text(
+                "SELECT count(*) FILTER (WHERE g.status = 'failed') AS failed,"
+                " count(*) FILTER (WHERE g.status = 'written' AND NOT EXISTS (SELECT 1 FROM claim_checks c"
+                "   WHERE c.workspace_id = g.workspace_id AND c.guide_page_id = g.id AND c.current)) AS uncited"
+                " FROM guide_pages g WHERE g.workspace_id = :w AND g.build_id = :b"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).one()
+    counts = {status: 0 for status in claim_engine.STATUSES}
+    waived_unsupported = 0
+    for claim in claims:
+        counts[claim.status] += 1
+        if claim.waived and claim.status == "unsupported":
+            waived_unsupported += 1
+    blockers = claim_engine.publication_blockers(counts, waived_unsupported, pages.failed, pages.uncited)
+    return blockers, counts["partial"] > 0
+
+
 async def checks(
     db: AsyncSession, member: Member, build_id: UUID, status: str | None, after: Position | None, limit: int
 ) -> list[dict[str, Any]]:

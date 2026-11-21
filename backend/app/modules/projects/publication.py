@@ -44,7 +44,7 @@ async def current(db: AsyncSession, member: Member, project_id: UUID) -> dict[st
         await db.execute(
             text(
                 "SELECT p.build_id, p.visibility, p.public_slug, p.version, p.acknowledged_partial, p.suspended_at,"
-                " p.suspended_reason, p.updated_at, p.license_spdx, s.commit_sha FROM publications p"
+                " p.suspended_reason, p.updated_at, p.license_spdx, s.commit_sha, p.variant_build_ids FROM publications p"
                 " JOIN builds b ON b.workspace_id = p.workspace_id AND b.id = p.build_id"
                 " JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
                 " WHERE p.workspace_id = :w AND p.project_id = :p"
@@ -154,6 +154,39 @@ async def _public_license(
             f"The license file {found.path} is not part of this build, so the site could not show it.",
         )
     return found
+
+
+async def approved_variants(
+    db: AsyncSession, workspace_id: UUID, project_id: UUID, build_id: UUID, acknowledge_partial: bool
+) -> list[UUID]:
+    """The language variants a publish of `build_id` approves with it (FR-026): ready builds of its family at
+    its reader level, content kept, one per other language (the newest), each passing the review gate on its
+    own, with partly supported claims only when this publish acknowledges them. Recorded on the
+    publication, so a site never serves a variant built or changed after the publish."""
+    rows = await db.execute(
+        text(
+            "WITH published AS (SELECT b.id, COALESCE(CAST(b.config->'generation'->>'variant_of' AS uuid), b.id) AS family,"
+            "   COALESCE(b.config->'generation'->'languages'->>0, 'en') AS language,"
+            "   COALESCE(b.config->'generation'->'levels'->>0, 'standard') AS level"
+            "   FROM builds b WHERE b.workspace_id = :w AND b.id = :b)"
+            " SELECT b.id, COALESCE(b.config->'generation'->'languages'->>0, 'en') AS language"
+            " FROM builds b JOIN published p ON b.id <> p.id"
+            " WHERE b.workspace_id = :w AND b.project_id = :p AND b.status = 'ready' AND b.content_purged_at IS NULL"
+            " AND COALESCE(b.config->'generation'->'levels'->>0, 'standard') = p.level"
+            " AND COALESCE(b.config->'generation'->'languages'->>0, 'en') <> p.language"
+            " AND (b.id = p.family OR b.config->'generation'->>'variant_of' = CAST(p.family AS text))"
+            " ORDER BY b.created_at DESC"
+        ),
+        {"w": workspace_id, "p": project_id, "b": build_id},
+    )
+    approved: dict[str, UUID] = {}
+    for row in list(rows):
+        if row.language in approved:
+            continue
+        blockers, partial = await quality.gate(db, workspace_id, row.id)
+        if not blockers and (acknowledge_partial or not partial):
+            approved[row.language] = row.id
+    return list(approved.values())
 
 
 async def publish(
@@ -275,6 +308,7 @@ async def publish(
     if project.provider != "public" or visibility != "public":
         checked = None  # recorded only for what was checked: public sites of public-source repositories
     slug = public_slug
+    variants = await approved_variants(db, member.workspace_id, project_id, build_id, acknowledge_partial)
     params = {
         "w": member.workspace_id,
         "p": project_id,
@@ -285,14 +319,15 @@ async def publish(
         "u": member.user_id,
         "ls": checked.spdx_id if checked else None,
         "lp": checked.path if checked else None,
+        "vb": variants,
     }
     try:
         if existing is None:
             await db.execute(
                 text(
                     "INSERT INTO publications(workspace_id, project_id, build_id, visibility, public_slug,"
-                    " acknowledged_partial, published_by, license_spdx, license_path)"
-                    " VALUES (:w, :p, :b, :v, :s, :a, :u, :ls, :lp)"
+                    " acknowledged_partial, published_by, license_spdx, license_path, variant_build_ids)"
+                    " VALUES (:w, :p, :b, :v, :s, :a, :u, :ls, :lp, CAST(:vb AS uuid[]))"
                 ),
                 params,
             )
@@ -300,7 +335,8 @@ async def publish(
             await db.execute(
                 text(
                     "UPDATE publications SET build_id = :b, visibility = :v, public_slug = :s, acknowledged_partial = :a,"
-                    " published_by = :u, license_spdx = :ls, license_path = :lp, version = version + 1,"
+                    " published_by = :u, license_spdx = :ls, license_path = :lp, variant_build_ids = CAST(:vb AS uuid[]),"
+                    " version = version + 1,"
                     " suspended_at = NULL, suspended_reason = NULL, updated_at = now()"
                     " WHERE workspace_id = :w AND project_id = :p"
                 ),
@@ -322,6 +358,7 @@ async def publish(
             "previous_build_id": str(existing.build_id) if existing else None,
             "previous_visibility": existing.visibility if existing else None,
             "license": checked.spdx_id if checked else None,
+            "variant_build_ids": [str(v) for v in variants],
         },
     )
     await db.commit()

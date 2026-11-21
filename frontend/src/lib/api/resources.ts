@@ -327,27 +327,43 @@ export interface ViewerSource {
   quality: (() => Promise<Quality>) | null;
 }
 
-function viewerSource(prefix: string, key: string, quality: (() => Promise<Quality>) | null): ViewerSource {
+function viewerSource(
+  prefix: string,
+  key: string,
+  quality: (() => Promise<Quality>) | null,
+  extra: Record<string, string> = {},
+): ViewerSource {
+  /** `path` with the source's own query parameters (a site's language) added. */
+  const at = (path: string, params: Record<string, string> = {}) => {
+    const query = new URLSearchParams({ ...params, ...extra }).toString();
+    return `${prefix}${path}${query ? `?${query}` : ""}`;
+  };
   return {
     key,
-    tree: (path) => apiJson<Page<TreeEntry>>(`${prefix}/tree?path=${encodeURIComponent(path)}`),
-    file: (fid, startLine) => apiJson<FileView>(`${prefix}/files/${fid}?start_line=${startLine}`),
-    symbol: (sid) => apiJson<SymbolView>(`${prefix}/symbols/${sid}`),
-    guide: () => apiJson<GuideIndex>(`${prefix}/guide`),
-    guidePage: (slug) => apiJson<GuidePage>(`${prefix}/guide/${encodeURIComponent(slug)}`),
-    search: (q, kind) => {
-      const params = new URLSearchParams({ q });
-      if (kind) params.set("kind", kind);
-      return apiJson<Page<SearchHit>>(`${prefix}/search?${params.toString()}`);
-    },
+    tree: (path) => apiJson<Page<TreeEntry>>(at("/tree", { path })),
+    file: (fid, startLine) => apiJson<FileView>(at(`/files/${fid}`, { start_line: String(startLine) })),
+    symbol: (sid) => apiJson<SymbolView>(at(`/symbols/${sid}`)),
+    guide: () => apiJson<GuideIndex>(at("/guide")),
+    guidePage: (slug) => apiJson<GuidePage>(at(`/guide/${encodeURIComponent(slug)}`)),
+    search: (q, kind) => apiJson<Page<SearchHit>>(at("/search", kind ? { q, kind } : { q })),
     quality,
   };
 }
 
 export const buildSource = (bid: string): ViewerSource =>
   viewerSource(`/builds/${bid}`, `build:${bid}`, () => apiJson<Quality>(`/builds/${bid}/quality`));
-export const siteSource = (slug: string): ViewerSource =>
-  viewerSource(`/published/${encodeURIComponent(slug)}`, `site:${slug}`, null);
+/** A published site, read in one of its languages (FR-026), or as published when `language` is null. */
+export const siteSource = (slug: string, language: string | null = null): ViewerSource =>
+  viewerSource(
+    `/published/${encodeURIComponent(slug)}`,
+    `site:${slug}:${language ?? ""}`,
+    null,
+    language ? { language } : {},
+  );
+export interface SiteVariant {
+  language: string;
+  published: boolean;
+}
 
 /** Integer USD micro-units to a display string, rounded up to the cent; no float arithmetic on stored amounts. */
 export function formatUsd(micro: number): string {
@@ -663,6 +679,7 @@ export const api = {
   unpublish: async (pid: string, ifMatch: string) =>
     apiSend("DELETE", `/projects/${pid}/publication`, undefined, { "If-Match": ifMatch }),
   site: (slug: string) => apiJson<Site>(`/published/${encodeURIComponent(slug)}`),
+  siteVariants: (slug: string) => apiJson<Page<SiteVariant>>(`/published/${encodeURIComponent(slug)}/variants`),
   freshness: (pid: string) => apiJson<Freshness>(`/projects/${pid}/freshness`),
   audit: (wid: string, action: string | null, cursor: string | null) => {
     const params = new URLSearchParams({ limit: "50" });

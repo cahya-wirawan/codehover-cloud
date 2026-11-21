@@ -1117,6 +1117,9 @@ class PublicationOut(BaseModel):
     updated_at: datetime
     commit_sha: str
     license_spdx: str | None = None  # FR-029: the checked license of a public-source repository's public site
+    variant_build_ids: list[
+        UUID
+    ] = []  # the language variants this publish approved; the site serves them too
 
 
 @router.get("/projects/{project_id}/publication", response_model=PublicationOut)
