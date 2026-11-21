@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 
 from app.engine.acquire import MAX_FILE_BYTES, Entry
@@ -30,6 +30,18 @@ LANGUAGES = {
     ".cts": "typescript",
     ".tsx": "tsx",
     ".rs": "rust",
+    ".c": "c",
+    ".h": "c",  # C++ instead when the snapshot has C++ sources (`scan`)
+    ".cc": "cpp",
+    ".cpp": "cpp",
+    ".cxx": "cpp",
+    ".c++": "cpp",
+    ".hh": "cpp",
+    ".hpp": "cpp",
+    ".hxx": "cpp",
+    ".h++": "cpp",
+    ".ipp": "cpp",
+    ".tpp": "cpp",
 }
 EXCLUDED_DIRS = frozenset(
     {
@@ -144,4 +156,11 @@ def scan(entries: list[Entry]) -> list[ScannedFile]:
             results.append(ScannedFile(entry.path, "excluded", "file_limit", None, entry.size))
         else:
             results.append(classify(entry))
+    # `.h` is C or C++ by convention only: in a snapshot with C++ sources, headers are read as C++, whose
+    # grammar also reads C declarations, so classes and namespaces in them parse.
+    if any(f.language == "cpp" for f in results):
+        results = [
+            replace(f, language="cpp") if f.language == "c" and f.path.lower().endswith(".h") else f
+            for f in results
+        ]
     return results

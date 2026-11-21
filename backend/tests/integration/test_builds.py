@@ -448,6 +448,49 @@ async def test_names_repeated_across_files_index_as_separate_symbols(
     assert sorted((k, n) for k, n in rows) == [("Tool", 2), ("Tool.run", 2), ("main", 2)]
 
 
+async def test_a_c_and_cpp_repository_builds_with_definitions_and_name_matched_uses(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """Parser 0.5.0: C and C++ files are selected and parsed; `.h` reads as C++ beside C++ sources, and
+    uses resolve by name (no C/C++ indexer runs)."""
+    owner, _ws, project = await setup_project(client, idp, github)
+    repository = {
+        "src/util.h": "/// Counts the arguments.\nint count(int argc);\nclass Logger { public: void log(const char *m); };\n",
+        "src/util.c": '#include "util.h"\nint count(int argc) { return argc; }\n',
+        "src/main.cpp": '#include "util.h"\nint main(int argc, char **argv) {\n  Logger l;\n  l.log("x");\n  return count(argc);\n}\n',
+    }
+    for repo_id in list(github.tarballs):
+        github.tarballs[repo_id] = tarball_of(repository)
+    build = (await start(owner, project)).json()["id"]
+    await drive(client.app, build)  # type: ignore[attr-defined]
+    assert (await owner.get(f"/api/v1/builds/{build}")).json()["status"] == "ready"
+    languages = dict(
+        ddl(
+            "SELECT path, language FROM source_files f JOIN builds b ON b.snapshot_id = f.snapshot_id WHERE b.id = :b",
+            b=build,
+        )
+    )
+    assert languages == {"src/util.h": "cpp", "src/util.c": "c", "src/main.cpp": "cpp"}
+    rows = ddl(
+        "SELECT f.path, y.symbol_key, y.kind FROM symbols y JOIN source_files f ON f.id = y.source_file_id"
+        " WHERE y.build_id = :b ORDER BY 1, 2",
+        b=build,
+    )
+    assert {tuple(r) for r in rows} == {
+        ("src/main.cpp", "main", "function"),
+        ("src/util.c", "count", "function"),
+        ("src/util.h", "Logger", "class"),
+        ("src/util.h", "Logger.log", "method"),
+        ("src/util.h", "count", "function"),
+    }
+    uses = ddl(
+        "SELECT t.name, e.resolution FROM reference_edges e JOIN symbols t ON t.id = e.to_symbol_id"
+        " JOIN source_files f ON f.id = e.source_file_id WHERE e.build_id = :b AND f.path = 'src/main.cpp'",
+        b=build,
+    )
+    assert {name for name, _ in uses} >= {"count", "Logger", "log"} and {r for _, r in uses} == {"name"}
+
+
 async def test_a_failing_apply_retries_instead_of_holding_the_lease(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
 ) -> None:

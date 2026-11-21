@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-21
+
+### Added
+
+- 07, 13, 21: C and C++ repositories are parsed (parser 0.5.0, tree-sitter-c 0.24.2, tree-sitter-cpp 0.23.4): functions, macros, types, classes, namespaces and methods, with doc comments and parameters, and `.h` read as C++ beside C++ sources. Uses resolve by name; there is no C/C++ indexer. The viewer highlights both languages.
+
 ## [0.6.1] - 2026-11-21
 
 ### Changed
