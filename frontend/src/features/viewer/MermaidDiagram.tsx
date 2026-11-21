@@ -43,13 +43,19 @@ let queue: Promise<unknown> = Promise.resolve(); // Mermaid renders one diagram 
 export function MermaidDiagram({ code }: { code: string }) {
   const id = `mmd-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const [src, setSrc] = useState<string | null>(null);
+  const [width, setWidth] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
     const job = queue.then(async () => {
       try {
         const { svg } = await (await mermaid()).render(id, code);
-        if (live) setSrc(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+        // An SVG image whose width is "100%" has no size of its own; its viewBox gives the drawn width.
+        const box = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+) [\d.]+"/.exec(svg);
+        if (live) {
+          setWidth(box ? Math.ceil(Number(box[1])) : null);
+          setSrc(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+        }
       } catch {
         if (live) setFailed(true);
       } finally {
@@ -63,7 +69,9 @@ export function MermaidDiagram({ code }: { code: string }) {
   }, [code, id]);
   return (
     <figure className="diagram" data-state={src ? "drawn" : failed ? "failed" : "pending"}>
-      {src ? <img src={src} alt="Diagram; its Mermaid source follows." className="diagram-image" /> : null}
+      {src ? (
+        <img src={src} alt="Diagram; its Mermaid source follows." className="diagram-image" {...(width ? { width } : {})} />
+      ) : null}
       <details className="diagram-source" open={failed || undefined}>
         <summary>{failed ? "This diagram could not be drawn; its source:" : "Diagram source"}</summary>
         <pre>

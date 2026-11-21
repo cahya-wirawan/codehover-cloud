@@ -192,8 +192,9 @@
 
 /* side panes */
 .files-pane, .outline-pane { font: 13.5px/1.55 var(--mono); }
+.outline-pane .notes-count { font: 14px/1.4 var(--serif); color: var(--muted); }
 .outline-pane h2 { margin: 0 0 8px; color: var(--muted); font: 500 15px var(--serif); }
-.outline-pane .o { --kc: var(--k-fn); }
+:where(.outline-pane .o) { --kc: var(--k-fn); } /* zero specificity: a kind class wins */
 .outline-pane .o::before {
   content: ""; display: inline-block; flex: none;
   width: 7px; height: 7px; margin-right: 7px; border-radius: 2px; background: var(--kc);
@@ -237,7 +238,8 @@
 .prose p, .prose ul, .prose ol { max-width: 68ch; }
 .prose h3, .prose h4 { font-family: var(--serif); }
 .prose code { padding: 0.08em 0.32em; border-radius: 4px; background: var(--tint); font-size: 0.8em; }
-.prose a.sym-link { --kc: var(--k-fn); color: inherit; text-decoration: none; }
+:where(.prose a.sym-link) { --kc: var(--k-fn); }
+.prose a.sym-link { color: inherit; text-decoration: none; }
 .prose a.sym-link code { background: color-mix(in srgb, var(--kc) 9%, transparent); color: var(--kc); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--kc) 45%, transparent); }
 .prose a.sym-link:hover code { box-shadow: inset 0 -1px 0 var(--kc); }
 .prose li::marker { color: var(--muted); }
@@ -261,7 +263,7 @@
 a.cite:hover, a.cite:focus-visible { border-color: var(--ink); color: var(--ink); }
 
 figure.diagram { margin: 26px 0 30px; padding: 22px 18px; overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); }
-figure.diagram .diagram-image { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+figure.diagram .diagram-image { display: block; max-width: 100%; height: auto; margin: 0 auto; } /* width: the diagram's own (inline) */
 figure.diagram .diagram-source { margin-top: 12px; color: var(--muted); font-size: 13px; }
 figure.diagram .diagram-source pre { margin: 6px 0 0; white-space: pre-wrap; font: 13px/1.5 var(--mono); }
 
@@ -273,6 +275,8 @@ figure.diagram .diagram-source pre { margin: 6px 0 0; white-space: pre-wrap; fon
 
 /* ---------------------------------------------------------------- landing (overview) */
 .home-overview { max-width: 66ch; font-size: 20px; line-height: 1.56; }
+.home-overview p { margin: 0 0 0.8em; }
+.home-overview code, .concepts code, .steps code { padding: 0.08em 0.32em; border-radius: 4px; background: var(--tint); font-size: 0.8em; }
 .home-h { margin: 44px 0 14px; font: 500 25px/1.2 var(--serif); letter-spacing: -0.01em; }
 .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
 .steps li { position: relative; min-height: 52px; padding: 0 0 16px 60px; counter-increment: step; }

@@ -20,5 +20,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
+    testTimeout: 15_000, // router-driven viewer tests run close to 5 s when every file runs at once
   },
 });

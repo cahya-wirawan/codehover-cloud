@@ -68,14 +68,14 @@ test("guide markdown and forged citations render as text", async () => {
     image.remove();
   }
   assertInert(container);
-});
+}, 30_000);
 
 test("a hostile overview renders as text", () => {
   const { container } = render(<OverviewText overview={`${HOSTILE}\n\n[x](javascript:window.__pwned=1) ![x](javascript:1)`} />);
   expect(container.textContent).toContain("<script>window.__pwned = 1</script>");
   expect(container.querySelector("a")).toBeNull();
   assertInert(container);
-}, 30_000);
+});
 
 test("hostile source lines, names and cards stay text in the code viewer", async () => {
   const replies: Record<string, unknown> = {

@@ -50,7 +50,7 @@ test("guide Markdown renders as elements, with raw HTML as text and citations as
     <GuideText page={guidePage(`# Flow\n\nRuns main [[${FILE}:3-5]]. <img src=x onerror="alert(1)">`)} />,
   );
   expect(screen.getByRole("heading", { level: 3, name: "Flow" })).toBeInTheDocument();
-  expect(screen.getByText("[src/app.py:3–5]")).toBeInTheDocument();
+  expect(document.querySelector(".cite")?.textContent).toBe("src/app.py:3–5");
   expect(container.querySelector("img")).toBeNull(); // model output is never interpreted as HTML
   expect(container.querySelector("p")?.textContent).toContain('<img src=x onerror="alert(1)">');
 });
@@ -81,13 +81,13 @@ test("headings, lists, emphasis and code render; citations work inside them", ()
   expect(container.querySelector("p code")?.textContent).toBe("handle()");
   const ordered = container.querySelectorAll("ol > li");
   expect(ordered).toHaveLength(2);
-  expect(ordered[0]?.textContent).toContain("[src/app.py:3–5]");
+  expect(ordered[0]?.querySelector(".cite")?.textContent).toBe("src/app.py:3–5");
   expect(ordered[1]?.querySelector("em")?.textContent).toBe("validates");
   expect(container.querySelectorAll("ul > li")).toHaveLength(2);
   expect(container.querySelector("blockquote")?.textContent).toContain("Unknown: retries are not shown.");
   expect(container.querySelector("pre code")?.textContent).toBe("def handle(): <b>not html</b>\n");
   expect(container.querySelector("b")).toBeNull();
-  expect(screen.getAllByText("[src/app.py:3–5]")).toHaveLength(2);
+  expect(Array.from(container.querySelectorAll(".cite"), (c) => c.textContent)).toEqual(["src/app.py:3–5", "src/app.py:3–5"]);
 });
 
 test("only https and in-page links become links; images show their alt text", () => {
@@ -151,7 +151,7 @@ test("tables render as tables, guide links stay inside the guide, and diagrams a
     </MemoryRouter>,
   );
   expect(screen.getByRole("columnheader", { name: "Meaning" })).toHaveStyle({ textAlign: "center" });
-  expect(screen.getByRole("cell", { name: /input file/ })).toHaveTextContent("[src/app.py:3–5]");
+  expect(screen.getByRole("cell", { name: /input file/ })).toHaveTextContent("src/app.py:3–5");
   expect(screen.getByRole("link", { name: "the flow" })).toHaveAttribute("href", "/p/p1/builds/b1/guide/flow");
   expect(screen.queryByRole("link", { name: "missing" })).toBeNull();
   const picture = await screen.findByRole("img", { name: /Diagram/ });

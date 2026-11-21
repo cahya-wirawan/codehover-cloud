@@ -8,6 +8,7 @@ import type { CheckStatus, GuideIndex, GuidePage, ViewerSource } from "../../lib
 import { cn } from "../../lib/cn";
 import { kindClass } from "./codeLine";
 import { GuideMarkdown } from "./GuideMarkdown";
+import { InlineText } from "./SymbolCard";
 
 const BADGE: Record<CheckStatus, { label: string; tone: "success" | "warning" | "destructive" | "neutral"; icon: ReactNode }> = {
   supported: { label: "Supported", tone: "success", icon: <CircleCheck aria-hidden="true" /> },
@@ -43,7 +44,11 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
     for (const match of text.matchAll(CITATION)) {
       parts.push(text.slice(last, match.index));
       const [, fileId = "", start = "", end = ""] = match;
-      const label = `${paths.get(fileId) ?? "unknown file"}:${start}–${end}`;
+      const label = (
+        <>
+          {paths.get(fileId) ?? "unknown file"}:<span className="cl">{start === end ? start : `${start}–${end}`}</span>
+        </>
+      );
       const href =
         paths.has(fileId) && codeBase
           ? `${codeBase}/code?file=${encodeURIComponent(fileId)}&line=${start}&end=${end}`
@@ -51,11 +56,11 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
       parts.push(
         href ? (
           <Link key={`${key}.${match.index}`} to={href} className="cite" title="Open these lines">
-            [{label}]
+            {label}
           </Link>
         ) : (
           <span key={`${key}.${match.index}`} className="cite">
-            [{label}]
+            {label}
           </span>
         ),
       );
@@ -112,7 +117,9 @@ function GuideHome({ index, base, open }: { index: GuideIndex; base: string; ope
             {overview.key_concepts.map((c) => (
               <Fragment key={c.term}>
                 <dt>{c.term}</dt>
-                <dd>{c.explanation}</dd>
+                <dd>
+                  <InlineText text={c.explanation} />
+                </dd>
               </Fragment>
             ))}
           </dl>
@@ -127,7 +134,9 @@ function GuideHome({ index, base, open }: { index: GuideIndex; base: string; ope
                 <Link to={`${base}/code?file=${encodeURIComponent(r.file_id)}`} className="font-mono text-[15px] font-semibold">
                   {r.path ?? "Open the file"}
                 </Link>
-                <span className="why">{r.reason}</span>
+                <span className="why">
+                  <InlineText text={r.reason} />
+                </span>
               </li>
             ))}
           </ol>

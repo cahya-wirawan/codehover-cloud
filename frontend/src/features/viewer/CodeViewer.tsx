@@ -75,15 +75,19 @@ function Tree({
   depth,
   onOpen,
   current,
+  currentPath,
 }: {
   source: ViewerSource;
   path: string;
   depth: number;
   onOpen: (entry: TreeEntry) => void;
   current: string | null;
+  currentPath: string | null;
 }) {
   const { data, isPending } = useQuery({ queryKey: ["tree", source.key, path], queryFn: () => source.tree(path) });
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  // Folders holding the open file start open; the reader's own choice wins.
+  const isOpen = (dir: string) => toggled[dir] ?? currentPath?.startsWith(`${dir}/`) ?? false;
   if (isPending) {
     return (
       <div className="flex flex-col gap-2 px-3 py-2">
@@ -100,25 +104,32 @@ function Tree({
           <li key={entry.path}>
             <button
               type="button"
-              aria-expanded={open[entry.path] ?? false}
+              aria-expanded={isOpen(entry.path)}
               style={indent}
               className="flex h-7 w-full items-center gap-1.5 pr-2 text-left text-muted hover:bg-surface-muted"
-              onClick={() => setOpen((o) => ({ ...o, [entry.path]: !o[entry.path] }))}
+              onClick={() => setToggled((o) => ({ ...o, [entry.path]: !isOpen(entry.path) }))}
             >
-              {open[entry.path] ? (
+              {isOpen(entry.path) ? (
                 <ChevronDown aria-hidden="true" className="size-3.5" />
               ) : (
                 <ChevronRight aria-hidden="true" className="size-3.5" />
               )}
-              {open[entry.path] ? (
+              {isOpen(entry.path) ? (
                 <FolderOpen aria-hidden="true" className="size-4" />
               ) : (
                 <Folder aria-hidden="true" className="size-4" />
               )}
               <span className="truncate">{entry.name}</span>
             </button>
-            {open[entry.path] ? (
-              <Tree source={source} path={entry.path} depth={depth + 1} onOpen={onOpen} current={current} />
+            {isOpen(entry.path) ? (
+              <Tree
+                source={source}
+                path={entry.path}
+                depth={depth + 1}
+                onOpen={onOpen}
+                current={current}
+                currentPath={currentPath}
+              />
             ) : null}
           </li>
         ) : (
@@ -278,6 +289,14 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
   };
 
   const last = data ? data.start_line + data.lines.length - 1 : 0;
+  /** The line that names a definition: its first line, or one of the next few when its range starts with
+   * attributes or a doc comment. */
+  const nameLine = (s: { name: string; start_line: number; end_line: number }): number => {
+    for (let n = s.start_line; n <= Math.min(s.end_line, s.start_line + 5); n++) {
+      if (data && nameRange(data.lines[n - data.start_line] ?? "", s.name)) return n;
+    }
+    return s.start_line;
+  };
   const total = data?.line_count ?? last;
 
   // Every control of the window, by key: what its card shows. Computed from the data alone, so the card
@@ -394,7 +413,7 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
                   const number = data.start_line + index;
                   const text = data.lines[index] ?? "";
                   const controls: Control[] = [];
-                  for (const symbol of data.symbols.filter((s) => s.start_line === number)) {
+                  for (const symbol of data.symbols.filter((s) => nameLine(s) === number)) {
                     const range = nameRange(text, symbol.name);
                     if (!range) continue;
                     const key = `def:${symbol.id}`;
@@ -532,6 +551,7 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
         path=""
         depth={0}
         current={fileId}
+        currentPath={data?.path ?? null}
         onOpen={(entry) => {
           setWindowStart(null);
           setPreview(null);
@@ -571,7 +591,7 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
           )}
         </div>
         {notes.length ? (
-          <p className="text-[13px] text-muted">
+          <p className="notes-count">
             {notes.length} line {notes.length === 1 ? "note" : "notes"}, marked in the margin.
           </p>
         ) : null}
@@ -638,7 +658,7 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
             side="bottom"
             align="start"
             sideOffset={6}
-            collisionPadding={12}
+            collisionPadding={{ top: 72, right: 12, bottom: 12, left: 12 }} // clear of the app's top bar
             aria-label={cardLabel}
             onOpenAutoFocus={(event) => event.preventDefault()} // a preview never steals focus
             onCloseAutoFocus={(event) => event.preventDefault()} // unpin() returns focus to the name
