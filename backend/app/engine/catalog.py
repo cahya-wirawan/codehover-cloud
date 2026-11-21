@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 BUILTIN_REVISION = "catalog-2026-11-a"
 MILLION = 1_000_000
 # Providers whose gateway submits batches; a batch price elsewhere would price work that runs unbatched.
-BATCH_PROVIDERS = frozenset({"anthropic"})
+BATCH_PROVIDERS = frozenset({"anthropic", "openai", "gemini"})  # OpenRouter has no batch API
 # Effort levels a provider has no control for (Gemini's thinking levels stop at xhigh).
 UNSUPPORTED_EFFORT = {"gemini": frozenset({"max"})}
 

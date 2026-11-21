@@ -425,3 +425,43 @@ async def test_a_batch_survives_waits_and_falls_back_for_what_it_could_not_answe
     assert sorted(r[0] for r in rows) == sorted(["failed"] + ["succeeded"] * (len(rows) - 1))
     assert provider.calls.count("explain") == sync_before + 1  # only the errored request ran synchronously
     assert 0 < status["usage"]["settled_micro_usd"] <= 5_000_000
+
+
+@dataclass
+class UnsentBatchProvider(BatchingProvider):
+    """The provider never receives the batch (`batch_not_sent`), or may have (`batch_submit_failed`)."""
+
+    submit_error: str = "batch_not_sent"
+
+    async def submit_batch(self, items: list[tuple[str, GenerationRequest]]) -> str:
+        raise ProviderError("transient", self.submit_error)
+
+
+@pytest.mark.parametrize(("code", "released"), [("batch_not_sent", True), ("batch_submit_failed", False)])
+async def test_a_batch_that_never_reached_the_provider_releases_its_holds(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, code: str, released: bool
+) -> None:
+    """A submission that cannot have reached the provider costs nothing, so its holds are released and the
+    stage runs synchronously; one that may have reached it keeps its holds as unknown."""
+    owner, _ws, project, build, app = await ready_build(client, idp, github)
+    with_batch_price(app)
+    snapshot = str(ddl("SELECT snapshot_id FROM builds WHERE id = :b", b=build)[0][0])
+    estimate = (
+        await make_estimate(owner, project, snapshot, preset="balanced-v1", batch=True, guide_pages=3)
+    ).json()
+    started = await start_from(owner, project, estimate["id"], cap=5_000_000)
+    assert started.status_code == 202, started.text
+    built = started.json()["id"]
+    await drive(app, built, runtime=runtime(app, operator=UnsentBatchProvider(submit_error=code)))
+    assert (await owner.get(f"/api/v1/builds/{built}")).json()["status"] == "ready"
+    assert ddl("SELECT state FROM provider_batches WHERE build_id = :b", b=built)[0][0] == "abandoned"
+    rows = ddl(
+        "SELECT state, settled_micro_usd, error_code FROM provider_attempts WHERE build_id = :b"
+        " AND price_snapshot->>'batch' = 'true'",
+        b=built,
+    )
+    assert rows
+    if released:
+        assert all(r == ("failed", 0, "batch_not_sent") for r in rows)
+    else:
+        assert all(r[0] == "unknown" and r[1] is None for r in rows)
