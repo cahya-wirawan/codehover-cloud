@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.38] - 2026-11-21
+
+### Changed
+
+- 02, 13, 16: guide pages in the viewer and on published sites render their Markdown (headings, lists, emphasis, code, block quotes) instead of showing it as plain text. The frontend parses with markdown-it's CommonMark preset, the parser behind the backend's P04 allowlist, with raw HTML off, into a fixed set of React elements; images show their alt text and only https and in-page links are links. The offline export viewer is unchanged.
+
 ## [0.5.37] - 2026-11-21
 
 ### Fixed

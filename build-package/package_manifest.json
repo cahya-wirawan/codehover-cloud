@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.5.37",
+  "package_version": "0.5.38",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -53,7 +53,7 @@
     },
     "02_UX_SCREEN_SPEC.md": {
       "status": "complete specification",
-      "sha256": "df6a65f8459fc090541b2519f6b9a729e64c16ba9250d939376cc8703601fa7e"
+      "sha256": "d25705e2d6f9e219d2925424bf2470ad497872167d62ae8d5121057a3d420c71"
     },
     "03_USER_FLOWS.md": {
       "status": "complete specification",
@@ -97,7 +97,7 @@
     },
     "13_TEST_PLAN.md": {
       "status": "complete specification",
-      "sha256": "48584b61b2022426196089a04908825ee202ea4eebe84c2a0d9ceb9120455392"
+      "sha256": "8479934904d157a08bd00fa4377ea53b3cfa306b457e10c9bcc7c7383d3a5026"
     },
     "14_IMPLEMENTATION_ROADMAP.md": {
       "status": "complete specification",
@@ -109,7 +109,7 @@
     },
     "16_REPO_STRUCTURE.md": {
       "status": "complete specification",
-      "sha256": "75b1b1ad7d9e2a36d4443d03225c777e919fddb542b1e4a20ecb9adb3f4d3dd7"
+      "sha256": "87d09bb01a360b9246cc1efc3986ab1bf31a9647eae776b9e24f41c1e034168f"
     },
     "17_DESIGN_SYSTEM.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "7a245adddc3aa90c4542670cc287f18239d184543896173a1a865aa3ba19ca22"
+      "sha256": "dd31606e296e3803a033f15c711654e108e685866650fc62f1c514940aa6b5d8"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "ff50f6df6ee0f5589db23af5eab49c9798330998d4aea8606007ede4226c8b2b"
+      "sha256": "05048c0391c2c6c67407816ba3322561a84bb11615a6bf4a15d826cb06005815"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "c7b962c17db5937d80913aa6c25b781cb12e8da2362c28478bb2cd1463b0e082"
+      "sha256": "430777143906e737b8d386be72b0d08ea26b97d1e71a2a6fdee46eaefd1abc75"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "ea8f96ff3bfde2ef924f11bc59c62957ed3f283106478d6510320fe5cdcc5153"
+      "sha256": "70f22cfc54858baea1e0e19182f1c2d2588cadd957ac37e98cbc426e7c42680e"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -260,5 +260,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "165ebea7284026d1a52420f2cc1ee1ed4fce806c2bd0df86cf462f4efd0f8da4"
+  "master_spec_sha256": "78b07c9c5c7cc6966295d157b2509e07969e03557d6a190687e9767d914e45cc"
 }
