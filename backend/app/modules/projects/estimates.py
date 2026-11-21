@@ -352,7 +352,15 @@ async def create_estimate(
         engine=ENGINE_VERSION,
         prompts=GENERATION_PROMPT_VERSION,
     )
-    tokens = {**result.tokens, "files": {"selected": len(result.selected), "excluded": result.excluded}}
+    # A family (several languages, FR-026) costs one build per language: the base plans the guide and each
+    # variant copies the plan, so the per-language estimate bounds each of them.
+    languages = len(config.family) if config.variant_of is None else 1
+    tokens = {
+        **result.tokens,
+        "files": {"selected": len(result.selected), "excluded": result.excluded},
+        "per_language": {"low": result.low_micro_usd, "high": result.high_micro_usd},
+        "languages": languages,
+    }
     estimate_id = (
         await db.execute(
             text(
@@ -368,8 +376,8 @@ async def create_estimate(
                 "c": json.dumps(config.canonical()),
                 "d": digest,
                 "v": catalog.revision,
-                "low": result.low_micro_usd,
-                "high": result.high_micro_usd,
+                "low": result.low_micro_usd * languages,
+                "high": result.high_micro_usd * languages,
                 "t": json.dumps(tokens),
                 "ttl": VALIDITY_SECONDS,
                 "u": member.user_id,
@@ -380,6 +388,56 @@ async def create_estimate(
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
     return await get_estimate(db, member, project_id, estimate_id)
+
+
+async def variant_estimate(
+    db: AsyncSession,
+    member: Member,
+    project_id: UUID,
+    approved: Any,
+    config: GenerationConfig,
+    catalog: Catalog,
+) -> tuple[UUID, str]:
+    """The estimate row of one variant build of a several-language estimate (FR-026): the variant's config,
+    the family's per-language cost and validity, so the variant retries and reads like any variant."""
+    family = (
+        await db.execute(
+            text("SELECT token_estimate, expires_at FROM estimates WHERE workspace_id = :w AND id = :e"),
+            {"w": member.workspace_id, "e": approved.id},
+        )
+    ).one()
+    per_language = family.token_estimate.get("per_language") or {"low": 0, "high": approved.high_micro_usd}
+    tokens = {**family.token_estimate, "languages": 1}
+    digest = config_digest(
+        config,
+        commit_sha=approved.commit_sha,
+        revision=catalog.revision,
+        engine=ENGINE_VERSION,
+        prompts=GENERATION_PROMPT_VERSION,
+    )
+    estimate_id = (
+        await db.execute(
+            text(
+                "INSERT INTO estimates(workspace_id, project_id, snapshot_id, config, config_digest, price_version,"
+                " low_micro_usd, high_micro_usd, token_estimate, expires_at, created_by)"
+                " VALUES (:w, :p, :s, CAST(:c AS jsonb), :d, :v, :low, :high, CAST(:t AS jsonb), :x, :u) RETURNING id"
+            ),
+            {
+                "w": member.workspace_id,
+                "p": project_id,
+                "s": approved.snapshot_id,
+                "c": json.dumps(config.canonical()),
+                "d": digest,
+                "v": catalog.revision,
+                "low": per_language["low"],
+                "high": per_language["high"],
+                "t": json.dumps(tokens),
+                "x": family.expires_at,
+                "u": member.user_id,
+            },
+        )
+    ).scalar_one()
+    return estimate_id, digest
 
 
 async def get_estimate(
@@ -412,6 +470,9 @@ async def get_estimate(
         "excluded_files": tokens["files"]["excluded"],
         "estimated_tokens": {"low": tokens["low"], "high": tokens["high"]},
         "cost_micro_usd": {"low": row.low_micro_usd, "high": row.high_micro_usd},
+        "per_language_micro_usd": tokens.get(
+            "per_language", {"low": row.low_micro_usd, "high": row.high_micro_usd}
+        ),
         "created_at": row.created_at,
         "expires_at": row.expires_at,
         "expired": row.expired,

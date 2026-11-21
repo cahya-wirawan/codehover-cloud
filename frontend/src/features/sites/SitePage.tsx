@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router";
+import { useMemo, useState } from "react";
+import { Link, NavLink, Outlet, useOutletContext, useParams, useSearchParams } from "react-router";
 
 import { FolderGit2, Globe, Lock, Scale } from "lucide-react";
 
@@ -7,7 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { PageHeader } from "../../components/ui/section";
 import { ApiError } from "../../lib/api/client";
 import { cn } from "../../lib/cn";
-import { api, siteSource, type ViewerSource } from "../../lib/api/resources";
+import { api, LANGUAGES, siteSource, type ViewerSource } from "../../lib/api/resources";
 import { CodeViewer } from "../viewer/CodeViewer";
 import { GuidePanel } from "../viewer/GuidePanel";
 import { SearchPanel } from "../viewer/SearchPanel";
@@ -23,7 +24,23 @@ const useSite = () => useOutletContext<SiteContext>();
  * resolver. A withdrawn or private site the reader may not see is simply not found. */
 export function SitePage() {
   const { site = "" } = useParams();
-  const source = siteSource(site);
+  // The site's languages (FR-026): the published build and its ready variants. The reader's choice stays
+  // while they move around the site and is kept in the address (?lang=) for sharing.
+  const [params, setParams] = useSearchParams();
+  const [language, setLanguage] = useState<string | null>(params.get("lang"));
+  const variants = useQuery({ queryKey: ["site-variants", site], queryFn: () => api.siteVariants(site), retry: false });
+  const languages = variants.data?.items ?? [];
+  const chosen = languages.find((v) => v.language === language && !v.published) ? language : null;
+  const source = useMemo(() => siteSource(site, chosen), [site, chosen]);
+  const switchTo = (next: string) => {
+    const published = languages.find((v) => v.published)?.language;
+    setLanguage(next === published ? null : next);
+    const merged = new URLSearchParams(params);
+    if (next === published) merged.delete("lang");
+    else merged.set("lang", next);
+    merged.delete("symbol"); // definitions are per language; files, lines and pages carry over
+    setParams(merged, { replace: true });
+  };
   const base = `/sites/${encodeURIComponent(site)}`;
   const info = useQuery({ queryKey: ["site", site], queryFn: () => api.site(site), retry: false });
   const tab = ({ isActive }: { isActive: boolean }) =>
@@ -79,6 +96,22 @@ export function SitePage() {
               <span className="text-[13px]">
                 {info.data.generated ? "AI-generated explanations; check the cited source" : "Explanations derived from source only"}
               </span>
+              {languages.length > 1 ? (
+                <label className="flex items-center gap-2 text-[14px]">
+                  Language
+                  <select
+                    className="field h-8 py-0"
+                    value={chosen ?? languages.find((v) => v.published)?.language ?? ""}
+                    onChange={(e) => switchTo(e.target.value)}
+                  >
+                    {languages.map((v) => (
+                      <option key={v.language} value={v.language} lang={v.language}>
+                        {LANGUAGES[v.language] ?? v.language}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
             </>
           ) : null
         }
@@ -88,7 +121,7 @@ export function SitePage() {
         <NavLink to={`${base}/code`} className={tab}>Code</NavLink>
         <NavLink to={`${base}/search`} className={tab}>Search</NavLink>
       </nav>
-      {info.data ? <Outlet context={{ source, base } satisfies SiteContext} /> : null}
+      {info.data ? <Outlet key={source.key} context={{ source, base } satisfies SiteContext} /> : null}
     </section>
   );
 }

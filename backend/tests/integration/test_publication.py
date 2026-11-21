@@ -393,3 +393,65 @@ async def test_a_concurrent_revoke_cannot_slip_past_the_access_check(
     refused = await asyncio.wait_for(attempt, 10)
     assert refused.status_code == 409 and refused.json()["error"]["code"] == "CONNECTION_INACTIVE"
     assert ddl("SELECT count(*) FROM publications WHERE project_id = :p", p=project)[0][0] == 0
+
+
+async def test_a_site_serves_the_ready_language_variants_of_its_build(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """FR-026: a publish approves the ready language variants of the build's family, each through the review
+    gate, and records them; the site serves exactly those, through `language`. A variant built after the
+    publish waits for the next one; a variant that fails the gate, and a language the site lacks, are 404."""
+    from tests.integration.test_budgets import make_estimate, start_from
+
+    owner, _ws, project, base, app = await ready_build(client, idp, github)
+    snapshot = str(ddl("SELECT snapshot_id FROM builds WHERE id = :b", b=base)[0][0])
+    variants: dict[str, str] = {}
+
+    async def build_variant(language: str) -> None:
+        estimate = await make_estimate(
+            owner, project, snapshot, preset="replay-v2", languages=[language], variant_of=base
+        )
+        started = await start_from(owner, project, estimate.json()["id"])
+        assert started.status_code == 202, started.text
+        variants[language] = started.json()["id"]
+        await drive(app, variants[language], runtime=runtime_for(app))
+
+    await build_variant("de")
+    slug = f"langs-{secrets.token_hex(3)}"
+    published = await publish(owner, project, build_id=base, visibility="private", public_slug=slug)
+    assert published.status_code == 200, published.text
+    assert published.json()["variant_build_ids"] == [variants["de"]]
+    await build_variant("id")  # built after the publish: not on the site yet
+    assert [
+        v["language"] for v in (await owner.get(f"/api/v1/published/{slug}/variants")).json()["items"]
+    ] == [
+        "en",
+        "de",
+    ]
+    assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "id"})).status_code == 404
+    etag = (await owner.get(f"/api/v1/projects/{project}/publication")).headers["etag"]
+    republished = await publish(owner, project, etag, build_id=base, visibility="private", public_slug=slug)
+    assert republished.status_code == 200, republished.text
+    assert sorted(republished.json()["variant_build_ids"]) == sorted([variants["de"], variants["id"]])
+
+    listed = (await owner.get(f"/api/v1/published/{slug}/variants")).json()["items"]
+    assert [(v["language"], v["published"]) for v in listed] == [("en", True), ("de", False), ("id", False)]
+    assert all(set(v) == {"language", "published"} for v in listed)  # no build IDs on a site
+    page = ddl("SELECT slug FROM guide_pages WHERE build_id = :b ORDER BY ordinal LIMIT 1", b=base)[0][0]
+    english = (await owner.get(f"/api/v1/published/{slug}/guide/{page}")).json()
+    german = (await owner.get(f"/api/v1/published/{slug}/guide/{page}", params={"language": "de"})).json()
+    expected = ddl(
+        "SELECT title FROM guide_pages WHERE build_id = :b AND slug = :s", b=variants["de"], s=page
+    )[0][0]
+    assert german["title"] == expected and german["slug"] == english["slug"]  # the same anchor, in German
+    assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "id"})).status_code == 200
+
+    # A variant that no longer passes the review gate leaves the site; unknown languages are not served.
+    ddl(
+        "UPDATE claim_checks SET status = 'invalid', deterministic = 'invalid' WHERE build_id = :b",
+        b=variants["id"],
+    )
+    listed = (await owner.get(f"/api/v1/published/{slug}/variants")).json()["items"]
+    assert [v["language"] for v in listed] == ["en", "de"]
+    assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "id"})).status_code == 404
+    assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "fr"})).status_code == 422

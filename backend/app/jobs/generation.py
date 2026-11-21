@@ -489,9 +489,32 @@ async def overview(rt: Any, claimed: Claim) -> Apply | None:
     return _artifact(claimed, "overview", stored)
 
 
+BASE_PLAN_POLL_SECONDS = 30
+
+
+async def _await_base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> None:
+    """A variant started with its base (a several-language build) copies the base's plan once the base has
+    planned: until then the stage waits without using up an attempt; a base that stopped before planning
+    fails the variant (`base_unavailable`)."""
+    rows = await _rows(
+        rt,
+        claimed,
+        "SELECT b.status, EXISTS (SELECT 1 FROM artifacts a WHERE a.workspace_id = b.workspace_id"
+        " AND a.build_id = b.id AND a.kind = 'guide_plan') AS planned FROM builds b"
+        " WHERE b.workspace_id = :w AND b.id = CAST(:base AS uuid)",
+        base=ctx.config.variant_of,
+    )
+    if rows and rows[0].planned:
+        return
+    if not rows or rows[0].status not in ("queued", "running"):
+        raise StageStop("base_unavailable")
+    raise batching.StageWait(BASE_PLAN_POLL_SECONDS)
+
+
 async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
     """A variant reuses its base build's guide plan: the same slugs, order, purposes and source ranges,
     so page anchors are identical across variants (FR-026). Titles are rewritten with each page."""
+    await _await_base_plan(rt, claimed, ctx)
     pages = await _rows(
         rt,
         claimed,

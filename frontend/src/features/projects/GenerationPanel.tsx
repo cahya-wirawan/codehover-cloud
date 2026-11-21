@@ -42,6 +42,9 @@ export function GenerationPanel({
   const variantSnapshot = search.get("snapshot");
   const [language, setLanguage] = useState(variantOf ? "de" : "en");
   const [level, setLevel] = useState("standard");
+  // Several languages (FR-026): the base language plus these, each a variant build started beside the base.
+  const [extra, setExtra] = useState<string[]>([]);
+  const others = variantOf ? [] : extra.filter((code) => code !== language);
   const presets = useQuery({ queryKey: ["presets", workspaceId], queryFn: () => api.presets(workspaceId) });
   const [batch, setBatch] = useState(false);
   const [ownKey, setOwnKey] = useState(false);
@@ -66,7 +69,7 @@ export function GenerationPanel({
         exclude: lines(exclude),
         max_files: maxFiles,
         guide_pages: pages,
-        languages: [language],
+        languages: [language, ...others],
         levels: [level],
         ...(variantOf ? { variant_of: variantOf } : {}),
         ...(batch && chosen?.batch ? { batch: true } : {}),
@@ -154,6 +157,33 @@ export function GenerationPanel({
                 ))}
               </select>
             </label>
+            {variantOf ? null : (
+              <fieldset className="flex flex-col gap-1">
+                <legend>Also write in</legend>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {Object.entries(LANGUAGES)
+                    .filter(([code]) => code !== language)
+                    .map(([code, name]) => (
+                      <label key={code} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={extra.includes(code)}
+                          onChange={(e) =>
+                            setExtra((current) =>
+                              e.target.checked ? [...current, code] : current.filter((c) => c !== code),
+                            )
+                          }
+                        />
+                        {name}
+                      </label>
+                    ))}
+                </div>
+                <span className="text-sm text-muted">
+                  Each further language is its own build, started beside the first: the same files and guide pages,
+                  written in that language.
+                </span>
+              </fieldset>
+            )}
             <label className="flex flex-col gap-1">
               Reader level
               <select value={level} onChange={(e) => setLevel(e.target.value)} className="field">
@@ -229,6 +259,16 @@ export function GenerationPanel({
               </dd>
               <dt className="text-muted">Cost range</dt>
               <dd>{formatUsd(estimate.cost_micro_usd.low)} – {formatUsd(estimate.cost_micro_usd.high)}</dd>
+              {estimate.config.languages.length > 1 && !estimate.config.variant_of ? (
+                <>
+                  <dt className="text-muted">Languages</dt>
+                  <dd>
+                    {estimate.config.languages.map((code) => LANGUAGES[code] ?? code).join(", ")}:{" "}
+                    {formatUsd(estimate.per_language_micro_usd.low)} – {formatUsd(estimate.per_language_micro_usd.high)} each.
+                    The cap is shared equally among them.
+                  </dd>
+                </>
+              ) : null}
               <dt className="text-muted">Prices</dt>
               <dd className="font-mono">{estimate.price_version}</dd>
               <dt className="text-muted">Valid until</dt>

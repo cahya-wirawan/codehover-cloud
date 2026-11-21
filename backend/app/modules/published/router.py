@@ -23,7 +23,7 @@ from app.core import ratelimit
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Db, OptionalPrincipal
-from app.modules.projects import service
+from app.modules.projects import quality, service
 from app.modules.projects.router import (
     FileOut,
     GuideIndexOut,
@@ -82,6 +82,57 @@ async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: Opti
 
 
 SiteDep = Annotated[Site, Depends(resolve_site)]
+LanguageQuery = Annotated[str | None, Query(pattern=r"^(en|de|id)$")]
+
+
+async def site_variants(db: Any, found: Site) -> list[dict[str, Any]]:
+    """The published build and the language variants its publish approved (FR-026, recorded on the
+    publication), while each is still ready, keeps its content and passes the review gate."""
+    rows = list(
+        await db.execute(
+            text(
+                "SELECT b.id, b.created_at, COALESCE(b.config->'generation'->'languages'->>0, 'en') AS language,"
+                " b.id = pub.build_id AS published FROM publications pub JOIN builds b"
+                " ON b.workspace_id = pub.workspace_id AND (b.id = pub.build_id OR b.id = ANY(pub.variant_build_ids))"
+                " WHERE pub.workspace_id = :w AND pub.project_id = :p AND pub.build_id = :b"
+                " AND b.status = 'ready' AND b.content_purged_at IS NULL"
+            ),
+            {"w": found.reader.workspace_id, "p": found.project_id, "b": found.build_id},
+        )
+    )
+    served: dict[str, dict[str, Any]] = {}
+    for row in sorted(rows, key=lambda r: (not r.published, r.created_at)):
+        if row.language in served:
+            continue
+        if not row.published:
+            blockers, _partial = await quality.gate(db, found.reader.workspace_id, row.id)
+            if blockers:  # partly supported claims were acknowledged by the publish that approved it
+                continue
+        served[row.language] = {"id": row.id, "language": row.language, "published": row.published}
+    return list(served.values())
+
+
+async def site_build(db: Db, found: SiteDep, language: LanguageQuery = None) -> UUID:
+    """The build a site request reads: the published one, or its variant in `language` when the site
+    serves one (404 otherwise, like any page the site does not have)."""
+    if language is None:
+        return found.build_id
+    for variant in await site_variants(db, found):
+        if variant["language"] == language:
+            return UUID(str(variant["id"]))
+    raise ApiError(404, "NOT_FOUND", "This site has no such language.")
+
+
+SiteBuild = Annotated[UUID, Depends(site_build)]
+
+
+class SiteVariant(BaseModel):
+    language: str
+    published: bool  # the published build itself; the others are its language variants
+
+
+class SiteVariantsOut(BaseModel):
+    items: list[SiteVariant]
 
 
 class SiteLicense(BaseModel):
@@ -138,9 +189,18 @@ async def site(slug: SlugPath, db: Db, found: SiteDep) -> SiteOut:
 
 @router.get("/published/{slug}/tree", response_model=TreeOut)
 async def tree(
-    slug: SlugPath, db: Db, found: SiteDep, path: Annotated[str, Query(max_length=1024)] = ""
+    slug: SlugPath,
+    db: Db,
+    found: SiteDep,
+    build: SiteBuild,
+    path: Annotated[str, Query(max_length=1024)] = "",
 ) -> TreeOut:
-    return TreeOut(items=[TreeEntry(**e) for e in await service.tree(db, found.reader, found.build_id, path)])
+    return TreeOut(items=[TreeEntry(**e) for e in await service.tree(db, found.reader, build, path)])
+
+
+@router.get("/published/{slug}/variants", response_model=SiteVariantsOut)
+async def variants(slug: SlugPath, db: Db, found: SiteDep) -> SiteVariantsOut:
+    return SiteVariantsOut(items=[SiteVariant(**v) for v in await site_variants(db, found)])
 
 
 @router.get("/published/{slug}/files/{file_id}", response_model=FileOut)
@@ -150,24 +210,25 @@ async def file_view(
     request: Request,
     db: Db,
     found: SiteDep,
+    build: SiteBuild,
     start_line: Annotated[int, Query(ge=1)] = 1,
     end_line: Annotated[int | None, Query(ge=1)] = None,
 ) -> FileOut:
     return FileOut(
-        **await service.file_view(
-            db, _objects(request), found.reader, found.build_id, file_id, start_line, end_line
-        )
+        **await service.file_view(db, _objects(request), found.reader, build, file_id, start_line, end_line)
     )
 
 
 @router.get("/published/{slug}/symbols/{symbol_id}", response_model=SymbolOut)
-async def symbol_view(slug: SlugPath, symbol_id: UUID, db: Db, found: SiteDep) -> SymbolOut:
-    return SymbolOut(**await service.symbol_view(db, found.reader, found.build_id, symbol_id))
+async def symbol_view(slug: SlugPath, symbol_id: UUID, db: Db, found: SiteDep, build: SiteBuild) -> SymbolOut:
+    return SymbolOut(**await service.symbol_view(db, found.reader, build, symbol_id))
 
 
 @router.get("/published/{slug}/guide", response_model=GuideIndexOut)
-async def guide_index(slug: SlugPath, request: Request, db: Db, found: SiteDep) -> GuideIndexOut:
-    return GuideIndexOut(**await service.guide_index(db, _objects(request), found.reader, found.build_id))
+async def guide_index(
+    slug: SlugPath, request: Request, db: Db, found: SiteDep, build: SiteBuild
+) -> GuideIndexOut:
+    return GuideIndexOut(**await service.guide_index(db, _objects(request), found.reader, build))
 
 
 @router.get("/published/{slug}/guide/{page}", response_model=GuidePageOut)
@@ -176,9 +237,10 @@ async def guide_page(
     request: Request,
     db: Db,
     found: SiteDep,
+    build: SiteBuild,
     page: Annotated[str, Path(pattern=r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$")],
 ) -> GuidePageOut:
-    return GuidePageOut(**await service.guide_page(db, _objects(request), found.reader, found.build_id, page))
+    return GuidePageOut(**await service.guide_page(db, _objects(request), found.reader, build, page))
 
 
 @router.get("/published/{slug}/search", response_model=SearchOut)
@@ -186,9 +248,10 @@ async def search(
     slug: SlugPath,
     db: Db,
     found: SiteDep,
+    build: SiteBuild,
     q: Annotated[str, Query(min_length=1, max_length=200)],
     kind: Annotated[str | None, Query(pattern=r"^(symbol|file|guide)$")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> SearchOut:
-    hits = await service.search_build(db, found.reader, found.build_id, q, kind, limit)
+    hits = await service.search_build(db, found.reader, build, q, kind, limit)
     return SearchOut(items=[SearchHit(**h) for h in hits])
