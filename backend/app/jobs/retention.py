@@ -5,6 +5,8 @@ workspace's context (app_runtime); identity and audit rows through `app_private.
 row-level security bounds to rows past their window (0016). Every step is idempotent.
 
 Per workspace:
+- provider attempts whose outcome stayed unknown for a day (or that are still `started` a day later)
+  settle at their maximum and become `reconciled`, so their holds stop counting against the allowance;
 - ready exports past their 24 hours lose their object and become `expired` (downloads stay 410);
 - build events after 30 days, generation cache entries when they expire, unused estimates after 30 days;
 - build content (rows and objects) of failed, cancelled or budget-exhausted builds after 7 days, and of
@@ -30,6 +32,8 @@ from app.adapters.storage import ObjectStore
 from app.core import metrics
 from app.core.tenancy import set_context
 from app.engine.keys import build_prefix, snapshot_prefix
+from app.jobs.store import event
+from app.modules.usage import ledger
 
 logger = logging.getLogger("app.retention")
 
@@ -109,10 +113,39 @@ async def _purge_build(
     return True
 
 
+async def _settle_stale_holds(sessions: async_sessionmaker[AsyncSession], workspace_id: UUID) -> int:
+    async with sessions() as db:
+        await set_context(db, workspace_id=workspace_id)
+        stale = (
+            await db.execute(
+                text(
+                    "SELECT id, build_id FROM provider_attempts WHERE workspace_id = :w"
+                    " AND state IN ('started', 'unknown') AND created_at < now() - make_interval(hours => :h)"
+                    " ORDER BY created_at LIMIT 200"
+                ),
+                {"w": workspace_id, "h": ledger.STALE_HOLD_HOURS},
+            )
+        ).all()
+        await db.commit()
+    settled = 0
+    for attempt in stale:  # one short transaction per attempt
+        async with sessions() as db:
+            await set_context(db, workspace_id=workspace_id)
+            charged = await ledger.settle_stale_hold(db, workspace_id, attempt.build_id, attempt.id)
+            if charged:
+                await event(
+                    db, workspace_id, attempt.build_id, "usage.updated", {"settled_micro_usd": charged}
+                )
+            await db.commit()
+        settled += 1 if charged else 0
+    return settled
+
+
 async def sweep_workspace(
     sessions: async_sessionmaker[AsyncSession], store: ObjectStore, workspace_id: UUID
 ) -> dict[str, int]:
     counts = {"exports": 0, "events": 0, "cache": 0, "estimates": 0, "builds": 0, "snapshots": 0}
+    counts["stale_holds"] = await _settle_stale_holds(sessions, workspace_id)
     async with sessions() as db:
         await set_context(db, workspace_id=workspace_id)
         expired = (

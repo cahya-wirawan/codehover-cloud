@@ -33,11 +33,17 @@ async def _heartbeat(rt: Runtime, claimed: store.Claim, lost: asyncio.Event) -> 
 
 async def _until_lost[T](work: Awaitable[T], lost: asyncio.Event) -> T:
     """Run the stage until it finishes or its lease is lost. A lost lease (expired, cancelled, or fenced
-    by a deletion) stops the stage at once, so it neither stores more objects nor calls providers (A22)."""
+    by a deletion) stops the stage at once, so it neither stores more objects nor calls providers (A22).
+    Cancelling this (a worker shutting down) cancels the stage as well; the task is claimed again later."""
     task = asyncio.ensure_future(work)
     watch = asyncio.ensure_future(lost.wait())
     try:
         await asyncio.wait({task, watch}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:  # the worker is shutting down: stop the stage too, not just the wait
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+        raise
     finally:
         watch.cancel()
     if not task.done():

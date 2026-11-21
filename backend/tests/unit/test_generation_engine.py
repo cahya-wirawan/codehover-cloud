@@ -387,6 +387,30 @@ async def test_anthropic_timeout_is_an_unknown_outcome() -> None:
     assert raised.value.kind == "unknown"  # the spend may have happened: keep the hold (07)
 
 
+@pytest.mark.parametrize(
+    ("error", "kind", "code"),
+    [
+        # Nothing was sent (refused, a failed TLS handshake as seen live from Docker, a connect timeout):
+        # not billed, so the hold is released and the call retried.
+        (httpx2.ConnectError("handshake closed"), "transient", "provider_connection"),
+        (httpx2.ConnectTimeout("no route"), "transient", "provider_connection"),
+        # The request may have reached the provider: the hold is kept.
+        (httpx2.RemoteProtocolError("dropped"), "unknown", "provider_connection"),
+        (httpx2.WriteTimeout("stalled"), "unknown", "provider_timeout"),
+    ],
+)
+async def test_anthropic_connections_that_never_opened_are_transient(
+    error: Exception, kind: str, code: str
+) -> None:
+    def fail(request: httpx2.Request) -> httpx2.Response:
+        raise error
+
+    gw, _ = gateway(fail)
+    with pytest.raises(ProviderError) as raised:
+        await gw.generate(priced_request())
+    assert (raised.value.kind, raised.value.code) == (kind, code)
+
+
 # ---------------------------------------------------------------- variants (M6, FR-026)
 def test_the_audience_is_added_only_for_variants_and_only_from_the_prompt_set() -> None:
     from app.engine import prompts
