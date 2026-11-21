@@ -1,0 +1,1 @@
+Assume the reader is new to this codebase and to the language's idioms: define each technical term the first time it is used, prefer short sentences and concrete examples from the cited code, and say why a step matters before how it works.

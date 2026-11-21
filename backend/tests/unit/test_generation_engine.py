@@ -562,3 +562,61 @@ async def test_anthropic_batches_submit_poll_and_map_results_by_custom_id() -> N
         and items["a2"].error is not None
         and items["a2"].error.code == "batch_errored"
     )
+
+
+def test_guide_pages_get_the_guide_plan_and_definitions_from_prompt_set_0_5_0() -> None:
+    from types import SimpleNamespace
+
+    evidence = [
+        {
+            "file_id": FILE_ID,
+            "path": "src/app.py",
+            "start_line": 1,
+            "end_line": 20,
+            "sha256": "a" * 64,
+            "lines": ["x"],
+        }
+    ]
+    rows = [
+        SimpleNamespace(
+            source_file_id=FILE_ID, name="main", kind="function", start_line=5, end_line=9, summary="Entry."
+        ),
+        SimpleNamespace(
+            source_file_id=FILE_ID, name="later", kind="function", start_line=40, end_line=44, summary=None
+        ),
+        SimpleNamespace(
+            source_file_id="other", name="elsewhere", kind="class", start_line=1, end_line=3, summary=None
+        ),
+    ]
+    definitions = generate.evidence_definitions(evidence, rows)
+    assert definitions == [
+        {"name": "main", "kind": "function", "path": "src/app.py", "lines": "5-9", "summary": "Entry."}
+    ]
+    toc = [
+        {"slug": "flow", "title": "Flow", "purpose": "p"},
+        {"slug": "parts", "title": "Parts", "purpose": "q"},
+    ]
+    page = {"slug": "flow", "title": "Flow", "purpose": "p"}
+
+    def request(version: str, **extra: Any) -> generate.Prepared:
+        return generate.guide_request(
+            workspace_id="w",
+            preset=PRESET.name,
+            model=MODEL,
+            role=PRESET.writer,
+            prompt_version=version,
+            page=page,
+            evidence=evidence,
+            **extra,
+        )
+
+    new = request("0.5.0", guide_plan=toc, definitions=definitions)
+    assert (
+        "guide:slug" in new.request.user
+        and '"slug": "parts"' in new.request.user
+        and '"name": "main"' in new.request.user
+    )
+    assert new.cache_key != request("0.5.0", guide_plan=toc, definitions=[]).cache_key  # both are inputs
+    old = request("0.4.0", guide_plan=toc, definitions=definitions)
+    assert '"slug": "parts"' not in old.request.user  # 0.4.0 does not read them...
+    assert old.cache_key == request("0.4.0").cache_key  # ...so its cached pages stay valid

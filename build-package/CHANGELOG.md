@@ -4,6 +4,8 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-21
+
 ### Added
 
 - 02, 05, 06, 19, `contracts/guide-plan.schema.json` 2.0.0: guide plans name a `section` for each page (required, so the contract MAJOR changes; migration 0031 stores it, '' for older pages), shown as headings in the page list. Guide pages may contain tables and link to each other with `guide:<slug>`; Mermaid diagrams are drawn in strict mode as SVG images. Symbol views list the guide pages that cite the definition (`guides`).
@@ -12,6 +14,7 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ### Changed
 
+- 19: prompt set 0.5.0 is the default for generation builds: codehover's guidance for denser line notes, overview, planning by concept with sections, and guide pages with tables, diagrams, linked definitions and links between pages; the page prompt gets the guide plan and the definitions in its evidence.
 - 00, README: the product owner decided to reuse codehover's viewer design and prompt writing guidance under its MIT licence, with the notice shipped at `/licenses/codehover.txt`; everything else stays independently implemented.
 
 ## [0.5.40] - 2026-11-21

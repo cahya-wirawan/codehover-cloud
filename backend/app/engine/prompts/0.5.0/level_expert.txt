@@ -1,0 +1,1 @@
+Assume an experienced developer of this language: be concise, skip basic definitions, and focus on design decisions, invariants, edge cases and trade-offs visible in the cited code.

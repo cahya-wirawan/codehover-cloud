@@ -610,6 +610,13 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
         "SELECT id, slug, title, section, purpose, source_ranges FROM guide_pages WHERE workspace_id = :w AND build_id = :b ORDER BY ordinal",
     )
     slugs = frozenset(p.slug for p in pages)  # pages may link to each other (guide:<slug>)
+    toc = [{"slug": p.slug, "title": p.title, "purpose": p.purpose} for p in pages]
+    symbols = await _rows(
+        rt,
+        claimed,
+        "SELECT source_file_id, name, kind, start_line, end_line, card->>'summary' AS summary FROM symbols"
+        " WHERE workspace_id = :w AND build_id = :b",
+    )
     texts = {fid: list(f.lines) for fid, f in files.items()}
     shas = {fid: f.sha256 for fid, f in files.items()}
     titles: dict[str, str] = {}
@@ -622,6 +629,8 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
             workspace_id=str(claimed.workspace_id),
             page=plan_entry,
             evidence=evidence,
+            guide_plan=toc,
+            definitions=generate.evidence_definitions(evidence, symbols),
             **_writer_request(ctx),
         )
 

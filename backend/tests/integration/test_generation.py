@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.adapters.models.replay import ReplayGateway
 from app.core.db import session_factory
+from app.engine import GENERATION_PROMPT_VERSION
 from app.engine.gateway import GenerationRequest, GenerationResult, ProviderError, Usage
 from app.jobs import runner
 from app.jobs.envelope import TaskEnvelope
@@ -138,7 +139,7 @@ async def test_replay_preset_runs_the_whole_generation_pipeline(
     status = (await owner.get(f"/api/v1/builds/{build}")).json()
     assert status["status"] == "ready"
     assert [s["stage"] for s in status["stages"]] == GENERATION_STAGES
-    assert status["prompt_version"] == "0.4.0"
+    assert status["prompt_version"] == GENERATION_PROMPT_VERSION == "0.5.0"
 
     cards = {r[0]: r[1] for r in ddl("SELECT symbol_key, card FROM symbols WHERE build_id = :b", b=build)}
     assert cards["main"]["summary"] == "Entry point."

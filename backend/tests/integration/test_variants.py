@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 import pytest
 
+from app.engine import GENERATION_PROMPT_VERSION
 from app.engine.gateway import GenerationRequest, GenerationResult
 from tests.integration.auth_support import FakeIdP, ddl
 from tests.integration.conftest import needs_db
@@ -94,7 +95,7 @@ async def test_a_variant_keeps_page_and_source_anchors_and_valid_citations(
         "beginner",
         base,
     )
-    assert status["prompt_version"] == "0.4.0"
+    assert status["prompt_version"] == GENERATION_PROMPT_VERSION == "0.5.0"
 
     assert pages(built) == pages(base) and pages(base)  # same slugs, order and source ranges
     base_files = {

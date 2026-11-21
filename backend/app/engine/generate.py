@@ -405,17 +405,26 @@ def guide_request(
     audience: str = prompts.DEFAULT_VARIANT,
     page: dict[str, Any],
     evidence: list[dict[str, Any]],
+    guide_plan: list[dict[str, Any]] | None = None,
+    definitions: list[dict[str, Any]] | None = None,
 ) -> Prepared:
-    """evidence: [{file_id, path, start_line, end_line, sha256, lines}] in plan order, already bounded."""
+    """evidence: [{file_id, path, start_line, end_line, sha256, lines}] in plan order, already bounded.
+    guide_plan: every page of the guide ({slug, title, purpose}), so a page can link the others;
+    definitions: the definitions inside the evidence ({name, kind, path, lines, summary}), so the page
+    names them exactly. Sets from 0.5.0 read both; older sets ignore them."""
     blocks = "\n\n".join(
         f"file_id: {e['file_id']}\npath: {e['path']}\n{prompts.numbered(e['lines'], e['start_line'])}"
         for e in evidence
     )
     plan = {"slug": page["slug"], "title": page["title"], "purpose": page["purpose"]}
+    toc = [{k: p[k] for k in ("slug", "title", "purpose")} for p in guide_plan or []]
+    names = (definitions or [])[:MAX_GUIDE_DEFINITIONS]
     user = prompts.render(
         prompt_version,
         "guide",
         PAGE_PLAN=prompts.json_block("PAGE_PLAN", plan),
+        GUIDE_PLAN=prompts.json_block("GUIDE_PLAN", toc),
+        DEFINITIONS=prompts.json_block("DEFINITIONS", names),
         SOURCE_EVIDENCE=prompts.data_block("SOURCE_EVIDENCE", blocks),
     )
     request = GenerationRequest(
@@ -428,12 +437,41 @@ def guide_request(
         schema=schema("guide-page"),
         evidence={"page": plan, "evidence": evidence},
     )
-    inputs = {
+    inputs: dict[str, Any] = {
         "page": plan,
         "evidence": [[e["file_id"], e["sha256"], e["start_line"], e["end_line"]] for e in evidence],
         "schema": schema("guide-page")["$id"],
     }
+    if prompts.uses(prompt_version, "guide", "GUIDE_PLAN"):
+        inputs["guide"] = toc
+    if prompts.uses(prompt_version, "guide", "DEFINITIONS"):
+        inputs["definitions"] = names
     return Prepared(request, _cache_key(workspace_id, "guide", preset, prompt_version, inputs, audience))
+
+
+MAX_GUIDE_DEFINITIONS = 60
+
+
+def evidence_definitions(evidence: list[dict[str, Any]], symbols: list[Any]) -> list[dict[str, Any]]:
+    """The definitions that start inside a page's evidence ranges, in source order: what the page can name
+    in backticks. `symbols` rows carry source_file_id, name, kind, start_line, end_line and summary."""
+    ranges = [(e["file_id"], e["start_line"], e["end_line"], e["path"]) for e in evidence]
+    found = []
+    for s in sorted(symbols, key=lambda s: (str(s.source_file_id), s.start_line)):
+        where = next(
+            (r for r in ranges if r[0] == str(s.source_file_id) and r[1] <= s.start_line <= r[2]), None
+        )
+        if where:
+            found.append(
+                {
+                    "name": s.name,
+                    "kind": s.kind,
+                    "path": where[3],
+                    "lines": f"{s.start_line}-{s.end_line}",
+                    "summary": (s.summary or "")[:200],
+                }
+            )
+    return found[:MAX_GUIDE_DEFINITIONS]
 
 
 def bounded_evidence(
