@@ -46,7 +46,7 @@ The reference was inspected through authenticated GitHub access at commit `a3f66
 - Jobs: RabbitMQ with aio-pika consumers, transactional outbox, persistent task state in PostgreSQL. No Redis required for MVP.
 - Frontend: React + TypeScript + Vite, Tailwind CSS + shadcn/ui, TanStack Query, React Router, React Hook Form + Zod, Lucide icons, CodeMirror 6 read-only code viewer.
 - Authentication: Google OIDC and GitHub OAuth, server-side opaque sessions. Separate read-only GitHub App for repository ingestion.
-- Engine: independently implemented versioned pipeline, informed by codehover's behavior and contracts. Reuse of any reference code is a separate explicit engineering decision with license review.
+- Engine: independently implemented versioned pipeline, informed by codehover's behavior and contracts. Reuse of any reference code is a separate explicit engineering decision with license review; the viewer design and the prompt writing guidance are reused under MIT with attribution (00, "Reuse decision").
 - Infrastructure: Dockerfiles, local Docker Compose, nginx same-origin routing; managed PostgreSQL/RabbitMQ/object storage recommended for production.
 
 ## Reading order
@@ -106,6 +106,8 @@ Strengths: close connection between explanation and exact source; explicit ambig
 ## Adaptation boundaries
 
 codehover-cloud is the user-requested product name. Preserve functional concepts while creating a new web interaction design and service architecture. This package does not copy reference code, prompts, assets or branding. The inspected pyproject declares MIT; any later reuse must verify LICENSE and third-party obligations, retain required notices and assess SaaS suitability. A local CLI that may launch indexers must not be exposed directly to untrusted tenants without new isolation.
+
+**Reuse decision (2026-11-21, product owner).** codehover's LICENSE is MIT (copyright "codehover contributors") and its stylesheet bundles no third-party assets, so two parts are reused with attribution: the viewer's visual design (palette, typography, layout and component styling of the code view, hover card and guide, adapted into the React viewer) and the writing guidance of its explanation and guide prompts (adapted into prompt set 0.5.0). The notice ships with the frontend at `/licenses/codehover.txt`. The engine, pipeline, API and every other part stay independently implemented; any further reuse is a new decision. The fonts it uses (Newsreader, Red Hat Mono) are self-hosted under the SIL Open Font License, and Mermaid (MIT) renders diagrams.
 
 
 ---

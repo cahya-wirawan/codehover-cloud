@@ -4,6 +4,10 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+### Changed
+
+- 00, README: the product owner decided to reuse codehover's viewer design and prompt writing guidance under its MIT licence, with the notice shipped at `/licenses/codehover.txt`; everything else stays independently implemented.
+
 ## [0.5.40] - 2026-11-21
 
 ### Fixed

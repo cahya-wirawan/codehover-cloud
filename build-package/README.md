@@ -13,7 +13,7 @@ The reference was inspected through authenticated GitHub access at commit `a3f66
 - Jobs: RabbitMQ with aio-pika consumers, transactional outbox, persistent task state in PostgreSQL. No Redis required for MVP.
 - Frontend: React + TypeScript + Vite, Tailwind CSS + shadcn/ui, TanStack Query, React Router, React Hook Form + Zod, Lucide icons, CodeMirror 6 read-only code viewer.
 - Authentication: Google OIDC and GitHub OAuth, server-side opaque sessions. Separate read-only GitHub App for repository ingestion.
-- Engine: independently implemented versioned pipeline, informed by codehover's behavior and contracts. Reuse of any reference code is a separate explicit engineering decision with license review.
+- Engine: independently implemented versioned pipeline, informed by codehover's behavior and contracts. Reuse of any reference code is a separate explicit engineering decision with license review; the viewer design and the prompt writing guidance are reused under MIT with attribution (00, "Reuse decision").
 - Infrastructure: Dockerfiles, local Docker Compose, nginx same-origin routing; managed PostgreSQL/RabbitMQ/object storage recommended for production.
 
 ## Reading order
