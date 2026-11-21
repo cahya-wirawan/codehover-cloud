@@ -154,7 +154,8 @@ def test_estimate_range_and_prices(tmp_path: Path) -> None:
     preset = priced.preset("balanced-v1")
     assert preset is not None
     result = estimate(scanned, config, priced, preset)
-    assert result.tokens["chunks"]["count"] == 4 and result.tokens["pages"]["count"] == 2  # pages <= files
+    # Two files may still get three pages: the plan writes 1-2 pages for tiny scopes, up to guide_pages.
+    assert result.tokens["chunks"]["count"] == 4 and result.tokens["pages"]["count"] == 3
     assert 0 < result.low_micro_usd < result.high_micro_usd
     assert estimate(scanned, config, priced, preset) == result  # deterministic
     replay = catalog.builtin()
@@ -162,6 +163,42 @@ def test_estimate_range_and_prices(tmp_path: Path) -> None:
     assert replay_preset is not None
     free = estimate(scanned, config.model_copy(update={"model_preset": "replay-v2"}), replay, replay_preset)
     assert (free.low_micro_usd, free.high_micro_usd) == (0, 0)
+
+
+def test_the_high_bound_counts_the_most_pages_and_reasoning_at_its_maximum(tmp_path: Path) -> None:
+    """A one-file build may still get five pages, and a role with an effort may bill its whole
+    max_output_tokens as reasoning on every call; the high bound counts both (07 "estimate")."""
+    effort = json.loads(json.dumps(PRICED))
+    effort["presets"].append(
+        {
+            "name": "reasoning-v1",
+            "description": "Test preset with an effort.",
+            "writer": {"model": "test/writer", "max_output_tokens": 4096, "effort": "medium"},
+            "checker": {"model": "test/writer", "max_output_tokens": 2048, "effort": "medium"},
+        }
+    )
+    priced: Catalog = catalog.load(write_catalog(tmp_path, effort))
+    one = files(("src/a.py", 100))
+    config = GenerationConfig(model_preset="balanced-v1", guide_pages=5)
+    plain = estimate(one, config, priced, priced.preset("balanced-v1"))  # type: ignore[arg-type]
+    reasoning = estimate(
+        one,
+        config.model_copy(update={"model_preset": "reasoning-v1"}),
+        priced,
+        priced.preset("reasoning-v1"),  # type: ignore[arg-type]
+    )
+    assert plain.tokens["pages"]["count"] == reasoning.tokens["pages"]["count"] == 5
+    pages, writer_max, checker_max = 5, 4096, 2048
+    # explain 1 chunk + overview + plan + 5 guide pages + 5 repairs, every call at the writer's maximum,
+    # and an initial check plus a recheck per page at the checker's maximum.
+    assert reasoning.tokens["high"]["output"] == (3 + 2 * pages) * writer_max + 2 * pages * checker_max
+    # Without an effort only the guide pages and checks are counted at their maximum.
+    assert (
+        plain.tokens["high"]["output"]
+        == 2500 + 1500 + 1000 + pages * (writer_max + 1000) + 2 * pages * checker_max
+    )
+    assert plain.low_micro_usd == reasoning.low_micro_usd < plain.high_micro_usd < reasoning.high_micro_usd
+    assert plain.tokens["low"]["output"] == 300 + 1500 + 1000 + 1 * 1500 + 1 * 800  # the fewest pages: one
 
 
 GLOB_PATHS = [

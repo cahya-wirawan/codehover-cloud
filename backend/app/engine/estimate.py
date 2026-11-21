@@ -5,6 +5,11 @@ explain, so an approved estimate fixes the scope. The estimate runs before parsi
 deterministic file-level order (non-test files first, shallower paths first, then path); ranking later
 orders work inside that scope. Token counts are bounded heuristics from byte and line counts, reported
 as a low/high range, never as a quote; the build cap and per-call reservations are what bound spend.
+
+The high bound counts the most guide pages the plan may write (`generate.page_bounds`), and the low
+bound the fewest. Reasoning or thinking tokens bill as output (07), so a role with an `effort` may spend
+its whole `max_output_tokens` on any call: the high bound then counts every call of that role at its
+maximum, which is what each call earmarks, instead of the typical answer sizes below.
 """
 
 from __future__ import annotations
@@ -18,7 +23,8 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.engine.catalog import Catalog, Preset, cost_micro_usd
+from app.engine.catalog import Catalog, Preset, Role, cost_micro_usd
+from app.engine.generate import page_bounds
 from app.engine.globs import Budget
 from app.engine.globs import match as globs_match
 from app.engine.prompts import LANGUAGES, LEVELS
@@ -28,6 +34,8 @@ CHUNK_LINES = 450  # target 400-500 lines per explanation chunk (07)
 PROMPT_OVERHEAD_TOKENS = 1500  # system text, schema, repo map excerpt per call
 BYTES_PER_TOKEN_LOW, BYTES_PER_TOKEN_HIGH = 4, 3
 EXPLAIN_OUTPUT_LOW, EXPLAIN_OUTPUT_HIGH = 300, 2500
+OVERVIEW_OUTPUT, PLAN_OUTPUT, REPAIR_OUTPUT = 1500, 1000, 1000
+GUIDE_OUTPUT_LOW, CHECK_OUTPUT_LOW = 1500, 800
 SUMMARY_TOKENS = 150
 GUIDE_EVIDENCE_TOKENS = 6000
 VALIDITY_SECONDS = 30 * 60
@@ -155,25 +163,36 @@ def estimate(
     selected, excluded = select_files(files, config)
     chunks = sum(max(1, -(-f.line_count // CHUNK_LINES)) for f in selected)
     source_bytes = sum(f.byte_count for f in selected)
-    pages = min(config.guide_pages, max(1, len(selected)))
+    fewest, most = page_bounds(len(selected), config.guide_pages)
 
-    def bound(bytes_per_token: int, explain_out: int, with_repair: bool) -> dict[str, dict[str, int]]:
+    def high_output(role: Role, typical: int) -> int:
+        """What one call of `role` may bill as output in the high bound (module docstring)."""
+        return role.max_output_tokens if role.effort is not None else min(typical, role.max_output_tokens)
+
+    def bound(bytes_per_token: int, high: bool) -> dict[str, dict[str, int]]:
+        writer, checker = preset.writer, preset.checker
+        pages = most if high else fewest
         explain_in = -(-source_bytes // bytes_per_token) + chunks * PROMPT_OVERHEAD_TOKENS
         summaries = len(selected) * SUMMARY_TOKENS + PROMPT_OVERHEAD_TOKENS
         writer_in = explain_in + 2 * summaries + pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS)
-        writer_out = (
-            chunks * explain_out
-            + 1500
-            + 1000
-            + pages * (preset.writer.max_output_tokens if with_repair else 1500)
-        )
-        checker_in = pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS) * (2 if with_repair else 1)
-        checker_out = (
-            pages * (preset.checker.max_output_tokens if with_repair else 800) * (2 if with_repair else 1)
-        )
-        if with_repair:  # one repair cycle per page (19 P06)
+        checker_in = pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS)
+        if not high:
+            writer_out = (
+                chunks * EXPLAIN_OUTPUT_LOW + OVERVIEW_OUTPUT + PLAN_OUTPUT + pages * GUIDE_OUTPUT_LOW
+            )
+            checker_out = pages * CHECK_OUTPUT_LOW
+        else:
+            writer_out = (
+                chunks * high_output(writer, EXPLAIN_OUTPUT_HIGH)
+                + high_output(writer, OVERVIEW_OUTPUT)
+                + high_output(writer, PLAN_OUTPUT)
+                + pages * writer.max_output_tokens
+            )
+            # One repair cycle per page (19 P06): the writer's repair, then the changed claims checked again.
             writer_in += pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS)
-            writer_out += pages * 1000
+            writer_out += pages * high_output(writer, REPAIR_OUTPUT)
+            checker_in *= 2
+            checker_out = pages * checker.max_output_tokens * 2
         return {
             "writer": {"input": writer_in, "output": writer_out},
             "checker": {"input": checker_in, "output": checker_out},
@@ -202,10 +221,8 @@ def estimate(
         )
         return max(0, standard - batched)
 
-    low = bound(BYTES_PER_TOKEN_LOW, EXPLAIN_OUTPUT_LOW, with_repair=False)
-    high = bound(
-        BYTES_PER_TOKEN_HIGH, min(EXPLAIN_OUTPUT_HIGH, preset.writer.max_output_tokens), with_repair=True
-    )
+    low = bound(BYTES_PER_TOKEN_LOW, high=False)
+    high = bound(BYTES_PER_TOKEN_HIGH, high=True)
     return Estimate(
         selected=selected,
         excluded=excluded,
@@ -219,7 +236,7 @@ def estimate(
                 "output": high["writer"]["output"] + high["checker"]["output"],
             },
             "chunks": {"count": chunks},
-            "pages": {"count": pages},
+            "pages": {"count": most},  # the most the plan may write
         },
         low_micro_usd=max(0, priced(low) - batch_saving(BYTES_PER_TOKEN_LOW, EXPLAIN_OUTPUT_LOW)),
         high_micro_usd=priced(high),

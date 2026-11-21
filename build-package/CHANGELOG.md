@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.36] - 2026-11-21
+
+### Fixed
+
+- 07: the estimate's high bound held too little for reasoning models, so a build whose cap was left at the high bound could end as `budget_exhausted`. It now counts the most guide pages the plan may write (a one-file scope was counted as one page, but the plan may write up to `guide_pages`), and for a role with an `effort` every call at the role's `max_output_tokens`, since reasoning tokens bill as output. Seen live with Qwen4 Max at medium effort, whose explanation of one chunk used 9,370 output tokens against an assumed 2,500. High bounds of reasoning presets rise several-fold; the low bound now counts the fewest pages.
+
 ## [0.5.35] - 2026-11-20
 
 ### Fixed

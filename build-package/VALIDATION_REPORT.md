@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-20 · Package version 0.5.35
+Date: 2026-11-21 · Package version 0.5.36
+
+0.5.36 raises the estimate's high bound for reasoning models. A live OpenRouter build (Qwen4 Max, medium effort) with its cap left at the high bound ($0.29) passed every stage through verify and then ended as `budget_exhausted` in the check stage with $0.21 spent and nothing in flight: one explanation used 9,370 output tokens against an assumed 2,500, and the one-file scope was estimated at one guide page while the plan wrote two. With the same catalog, the high bound for that scope is now $1.83, and the same build with a $0.50 cap finished. `tests/unit/test_catalog_estimate.py` checks that a one-file scope counts five pages (`guide_pages`), that a role with an effort counts every call at its `max_output_tokens`, that a role without one keeps the typical sizes, and that the low bound counts the fewest pages. Results: integration 233 passed, unit 250 passed (8 skipped).
 
 0.5.35 fixes budget holds, as seen in live builds from the local stack. An Anthropic build was refused at the TLS handshake and then ended as `budget_exhausted` after spending nothing. An OpenRouter build ended the same way with $0.05 spent of a $0.29 cap, because 4 concurrent worst-case holds did not fit.
 - `tests/integration/test_generation.py`:
