@@ -7,6 +7,8 @@ provider is called.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -14,6 +16,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
+from app.engine import generate
 from app.engine.gateway import GenerationRequest, GenerationResult, ProviderError, Usage
 from tests.integration.auth_support import FakeIdP, ddl, unsafe
 from tests.integration.conftest import needs_db
@@ -185,11 +188,120 @@ async def test_unsupported_claims_block_until_waived_and_waivers_are_audited(
     assert audit and sorted(audit[0][0]["claim_keys"]) == sorted(unsupported)
 
 
-async def test_malformed_citations_are_invalid_and_cannot_be_waived(
+@dataclass
+class Rewriting(ScriptedProvider):
+    """Rewrites every guide page the writer returns (not its repairs)."""
+
+    rewrite: Callable[[str], str] = lambda markdown: markdown
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        result = await super().generate(request)
+        if request.purpose != "guide":
+            return result
+        output = {"markdown": self.rewrite(result.output["markdown"])}
+        return GenerationResult(output, result.usage, result.provider_request_id, result.model_id)
+
+
+async def guide_markdown(owner: httpx.AsyncClient, build: str) -> list[str]:
+    slugs = [r[0] for r in ddl("SELECT slug FROM guide_pages WHERE build_id = :b ORDER BY ordinal", b=build)]
+    return [(await owner.get(f"/api/v1/builds/{build}/guide/{slug}")).json()["markdown"] for slug in slugs]
+
+
+async def test_single_line_citations_are_stored_as_ranges_and_stay_valid(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
+    """Models write `[[file_id:N]]` for one line; the page is stored with `[[file_id:N-N]]`, without a
+    repair call, and its claims are deterministically valid."""
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Rewriting(rewrite=lambda md: re.sub(r"\[\[([0-9a-f-]{36}):(\d+)-\d+\]\]", r"[[\1:\2]]", md))
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    assert "repair" not in provider.calls
+    pages = await guide_markdown(owner, build)
+    assert pages and all(re.search(r"\[\[[0-9a-f-]{36}:(\d+)-\1\]\]", md) for md in pages)
+    assert not any(re.search(r"\[\[[0-9a-f-]{36}:\d+\]\]", md) for md in pages)
+    rows = current_claims(build)
+    assert rows and all(r[3] == "valid" for r in rows)
+
+
+async def test_a_malformed_citation_is_repaired_before_the_page_is_stored(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Rewriting(rewrite=lambda md: md + "\n\nThe entry point reads arguments [[src/app.py:5-7]].\n")
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    assert "repair" in provider.calls
+    assert any(
+        "[[src/app.py:5-7]]" in prompt and "is not [[file_id:start-end]]" in prompt
+        for prompt in provider.prompts
+    )
+    assert not any("src/app.py:5-7" in md for md in await guide_markdown(owner, build))
+    assert not [r for r in current_claims(build) if r[2] == "invalid"]
+
+
+def more_claims(markdown: str) -> str:
+    """Eight more cited sentences, citing the page's first range."""
+    first = re.search(r"\[\[[0-9a-f-]{36}:\d+-\d+\]\]", markdown)
+    assert first
+    return markdown + "".join(f"\n\nStep {i} happens in these lines {first.group(0)}." for i in range(8))
+
+
+@dataclass
+class Truncating(Rewriting):
+    """The checker's answer is cut off at its output limit when a call has more than `fits` claims."""
+
+    fits: int = 2
+    sizes: list[int] = field(default_factory=list)
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        if request.purpose == "check":
+            self.sizes.append(len(request.evidence["claims"]))
+            if len(request.evidence["claims"]) > self.fits:
+                self.calls.append("check")
+                raise ProviderError("invalid", "output_truncated", usage=Usage(1000, 4096))
+        return await super().generate(request)
+
+
+async def test_a_cut_off_check_is_split_instead_of_repaired(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """A truncated checker answer is not repaired (that asks the same task under the same limit); the
+    batch is checked in halves, at most twice, and every claim gets the checker's answer."""
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Truncating(fits=2)
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    assert max(provider.sizes) > 2 and max(provider.sizes) <= 8, (
+        provider.sizes
+    )  # the replay pages fit 2 splits
+    repairs = ddl(
+        "SELECT count(*) FROM provider_attempts WHERE build_id = :b AND purpose = 'repair' AND role = 'checker'",
+        b=build,
+    )[0][0]
+    assert repairs == 0
+    rows = current_claims(build)
+    assert rows and all(r[2] == "supported" for r in rows), rows
+    assert (await quality(owner, build))["blockers"] == []
+
+
+async def test_splitting_a_cut_off_check_stops_after_two_levels(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    _owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    provider = Truncating(fits=0, rewrite=more_claims)  # every answer is cut off; pages have 8+ claims
+    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    pages = ddl("SELECT count(DISTINCT guide_page_id) FROM claim_checks WHERE build_id = :b", b=build)[0][0]
+    assert len(provider.sizes) == 7 * pages  # per page: the batch, its halves and their halves
+    assert min(provider.sizes) >= 2  # quarters of 8+ claims are not split again
+    rows = current_claims(build)
+    assert rows and all(r[2] == "unchecked" and r[4] == "checker unavailable: output_truncated" for r in rows)
+
+
+async def test_malformed_citations_are_invalid_and_cannot_be_waived(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A14: a citation by path instead of immutable file ID fails deterministic validation; it blocks
-    publication and no waiver can lift it."""
+    publication and no waiver can lift it. The guide stage now repairs such pages before storing them, so
+    this backstop is reached here by skipping that check (as for a page stored before it existed)."""
+    monkeypatch.setattr(generate, "validate_guide", lambda output, evidence: [])
     owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = Opinionated(
         guide_suffix="\n\nThe entry point reads arguments [[src/app.py:5-7]].\n", repair=False

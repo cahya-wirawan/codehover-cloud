@@ -11,7 +11,7 @@ import { routes } from "../../app/routes";
 // The offline export's own files, from the backend that ships them in every ZIP.
 import exportPage from "../../../../backend/app/engine/export_assets/index.html?raw";
 import viewerScript from "../../../../backend/app/engine/export_assets/viewer.js?raw";
-import { GuideText } from "./GuidePanel";
+import { GuideText, OverviewText } from "./GuidePanel";
 
 const PAYLOADS = [
   "<script>window.__pwned = 1</script>",
@@ -57,6 +57,13 @@ test("guide markdown and forged citations render as text", () => {
     </MemoryRouter>,
   );
   expect(container.textContent).toContain("<script>window.__pwned = 1</script>");
+  assertInert(container);
+});
+
+test("a hostile overview renders as text", () => {
+  const { container } = render(<OverviewText overview={`${HOSTILE}\n\n[x](javascript:window.__pwned=1) ![x](javascript:1)`} />);
+  expect(container.textContent).toContain("<script>window.__pwned = 1</script>");
+  expect(container.querySelector("a")).toBeNull();
   assertInert(container);
 });
 

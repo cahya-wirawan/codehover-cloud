@@ -4,6 +4,20 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.40] - 2026-11-21
+
+### Fixed
+
+- 19: guide pages that cite one line as `[[file_id:N]]` are stored as `[[file_id:N-N]]`, and any other malformed citation marker is sent back for repair before the page is stored. Both writers (Claude Sonnet 5.5 and Gemini 3.8 Flash) wrote single-line citations, which became invalid claims that blocked publication.
+- 07: a checker answer cut off at its output limit is no longer repaired (the repair asked the same task under the same limit and was cut off too); its batch is checked in halves, at most twice. A Claude Haiku 5.5 check of 25 claims within 4096 output tokens left all 25 `unchecked`.
+- 04, 07: a provider call waits up to 300 s for its answer (was 90 s), and 15 s to connect. A Gemini 3.8 Flash checker call was cut off at 90 s, leaving 14 claims unchecked and the build unpublishable.
+
+## [0.5.39] - 2026-11-21
+
+### Changed
+
+- 02, 13: the repository overview in the guide view renders its Markdown the same way as guide pages, instead of showing it as plain text. The offline export viewer is unchanged.
+
 ## [0.5.38] - 2026-11-21
 
 ### Changed

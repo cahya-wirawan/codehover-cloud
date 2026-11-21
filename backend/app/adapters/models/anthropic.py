@@ -3,7 +3,7 @@
 - Structured output: `output_config.format` with the provider projection of the stage schema; the
   answer is the first text block and is parsed and validated by the caller.
 - No SDK retries (`max_retries=0`): retries are persisted, budgeted attempts (04), never hidden ones.
-- Bounded call time (90 s, 04).
+- Bounded call time: up to 300 s for the answer, 15 s to connect (04; `_http.CALL_TIMEOUT_SECONDS`).
 - The endpoint is always passed explicitly: the official API, or the operator's `ANTHROPIC_BASE_URL`
   setting for calls with the operator's key. The SDK's own fallbacks (the `ANTHROPIC_BASE_URL`
   environment variable, a credentials profile) never apply, and a workspace's own key always goes to
@@ -26,9 +26,9 @@ from anthropic.types import OutputConfigParam, UserMessageParam
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.messages.batch_create_params import Request
 
+from app.adapters.models._http import CALL_TIMEOUT_SECONDS, CONNECT_TIMEOUT_SECONDS
 from app.engine.gateway import BatchItem, GenerationRequest, GenerationResult, ProviderError, Usage
 
-CALL_TIMEOUT_SECONDS = 90.0
 OFFICIAL_BASE_URL = "https://api.anthropic.com"
 
 
@@ -64,7 +64,10 @@ class AnthropicGateway:
         client: anthropic.AsyncAnthropic | None = None,
     ) -> None:
         self.client = client or anthropic.AsyncAnthropic(
-            api_key=api_key, base_url=base_url, max_retries=0, timeout=CALL_TIMEOUT_SECONDS
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=0,
+            timeout=httpx2.Timeout(CALL_TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT_SECONDS),
         )
 
     async def generate(self, request: GenerationRequest) -> GenerationResult:

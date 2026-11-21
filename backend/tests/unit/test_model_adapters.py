@@ -17,6 +17,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from app.adapters.models import gemini, openai, openrouter
+from app.adapters.models.anthropic import AnthropicGateway
 from app.engine import catalog
 from app.engine.catalog import Model, Price, Role
 from app.engine.gateway import GenerationRequest, ProviderError, Usage
@@ -458,3 +459,18 @@ def test_openrouter_refuses_management_keys() -> None:
 def test_every_key_provider_has_a_gateway_and_a_check() -> None:
     assert keys.PROVIDERS == ("anthropic", "openai", "gemini", "openrouter")
     assert set(keys.PROVIDERS) | {"replay"} == set(Model.model_fields["provider"].annotation.__args__)  # type: ignore[union-attr]
+
+
+def test_calls_wait_five_minutes_for_an_answer_and_fifteen_seconds_to_connect() -> None:
+    """A reasoning model's large check can take over 90 s; a call cut off by its bound has no answer and
+    keeps its hold, so the bound is 300 s. A connection that does not open fails fast (04)."""
+    seen: list[dict[str, float]] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req.extensions["timeout"])
+        return httpx.Response(200, json=openai_ok())
+
+    run(openai_gw, handler, "openai")
+    assert seen == [{"connect": 15.0, "read": 300.0, "write": 300.0, "pool": 300.0}]
+    timeout = AnthropicGateway("sk-ant-test").client.timeout
+    assert (timeout.connect, timeout.read) == (15.0, 300.0)  # type: ignore[union-attr]

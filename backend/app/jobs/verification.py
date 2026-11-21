@@ -5,7 +5,8 @@ immutable snapshot and records one `claim_checks` row per claim and citation.
 
 check sends each page's deterministically valid claims, with only their exact cited lines, to the
 checker role. When the checker cannot answer (exhausted retries, refusal, invalid answer after repair)
-the claims stay `unchecked`; the checker is never replaced by the replay heuristic for a provider
+the claims stay `unchecked`. An answer cut off at the output limit is not repaired; its batch is checked
+in halves, at most twice (`MAX_CHECK_SPLITS`). The checker is never replaced by the replay heuristic for a provider
 preset, and its labels are never invented. One repair cycle may rewrite or remove unsupported and
 partial claims; changed claims are validated and checked again, the original rows and page text are
 kept (current = false / original_markdown_key), and the quality report counts every current claim.
@@ -150,6 +151,9 @@ def _claim_status(rows: list[dict[str, Any]]) -> str:
     return "invalid" if any(r["deterministic"] == "invalid" for r in rows) else rows[0]["status"]
 
 
+MAX_CHECK_SPLITS = 2  # a cut-off batch of 25 becomes at most 4 calls of 6-7 claims (7 calls in all)
+
+
 async def _run_checker(
     rt: Any,
     claimed: Claim,
@@ -167,15 +171,8 @@ async def _run_checker(
     ]
     if gateway is None:
         raise StageStop("provider_unconfigured")
-    for prepared, batch in claim_engine.check_requests(
-        workspace_id=str(claimed.workspace_id),
-        preset=ctx.preset.name,
-        model=model,
-        role=role,
-        prompt_version=ctx.prompt_version,
-        claims=valid,
-        files=files,
-    ):
+
+    async def run(prepared: Any, batch: list[claim_engine.Claim], splits: int) -> None:
         try:
             outcome = await calls.run(
                 rt.sessions,
@@ -184,15 +181,22 @@ async def _run_checker(
                 prepared,
                 functools.partial(_validate_checks, batch=batch),
                 retry_delays=rt.retry_delays,
+                repair_truncated=False,
             )
         except calls.BudgetExhausted as error:
             raise StageStop("budget_exhausted") from error
         except calls.BuildStopped as error:
             raise StageStop("cancelled") from error
         except calls.CallFailed as error:
+            if error.code == calls.TRUNCATED and splits < MAX_CHECK_SPLITS and len(batch) > 1:
+                # The answer for this many claims does not fit the checker's output limit: check halves.
+                half = (len(batch) + 1) // 2
+                for part in (batch[:half], batch[half:]):
+                    await run(request_for(part), part, splits + 1)
+                return
             for claim in batch:
                 results[claim.key] = ("unchecked", f"checker unavailable: {error.code}", [], None)
-            continue
+            return
         for check in outcome.output["checks"]:
             results[check["claim_id"]] = (
                 check["status"],
@@ -202,6 +206,28 @@ async def _run_checker(
             )
         for claim in batch:
             results.setdefault(claim.key, ("unchecked", "checker gave no answer", [], outcome.model_id))
+
+    def request_for(batch: list[claim_engine.Claim]) -> Any:
+        return claim_engine.check_request(
+            workspace_id=str(claimed.workspace_id),
+            preset=ctx.preset.name,
+            model=model,
+            role=role,
+            prompt_version=ctx.prompt_version,
+            batch=batch,
+            files=files,
+        )
+
+    for prepared, batch in claim_engine.check_requests(
+        workspace_id=str(claimed.workspace_id),
+        preset=ctx.preset.name,
+        model=model,
+        role=role,
+        prompt_version=ctx.prompt_version,
+        claims=valid,
+        files=files,
+    ):
+        await run(prepared, batch, 0)
     return results
 
 
