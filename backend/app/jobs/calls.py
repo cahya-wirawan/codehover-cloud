@@ -14,8 +14,11 @@ the provider request.
   reserved to settled (append-only ledger entry keyed by attempt), and write the validated answer to the
   tenant cache, which is the checkpoint a retried task resumes from. A worker that lost its lease writes
   nothing; its attempt stays `started` and becomes `unknown` when the task is claimed again.
-- Outcomes: unknown provider outcomes keep their hold; transient errors retry at most three times with
-  backoff; an invalid answer gets one repair call; every retry and repair is its own budgeted attempt.
+- Outcomes: transient errors retry at most three times with backoff; an invalid answer gets one repair
+  call; every retry and repair is its own budgeted attempt. An unknown outcome keeps its hold and is not
+  retried here: the provider may have billed it, and retrying at once would add a worst-case hold per
+  try. The call fails (`CallFailed("unknown")`), the stage stops, and the task retries later from its
+  checkpoints.
   A call cancelled while its request is out (a worker shutting down) may still be billed: its attempt
   becomes `unknown` and keeps its hold. Unknown holds settle at their maximum after a day
   (`settle_stale_holds`).
@@ -337,7 +340,7 @@ async def run(
                     provider_request_id=error.provider_request_id,
                     error_code=error.code,
                 )
-            if error.kind in ("transient", "unknown") and transient < MAX_TRANSIENT_RETRIES:
+            if error.kind == "transient" and transient < MAX_TRANSIENT_RETRIES:
                 delay = retry_delays[min(transient, len(retry_delays) - 1)]
                 if error.retry_after_seconds is not None:
                     delay = min(max(delay, error.retry_after_seconds), 60.0)

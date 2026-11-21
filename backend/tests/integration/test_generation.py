@@ -112,6 +112,22 @@ def attempts(build: str) -> list[Any]:
     )
 
 
+async def drive_with_retries(app: Any, build: str, rt: Runtime) -> list[str]:
+    """drive(), and run tasks waiting to retry at once instead of after their backoff, as the reconciler
+    would once `next_attempt_at` passes."""
+    outcomes = await drive(app, build, runtime=rt)
+    while outcomes and outcomes[-1] == "retry_wait":
+        [(task, payload)] = ddl(
+            "SELECT t.id, o.payload FROM build_tasks t JOIN outbox o ON o.aggregate_id = t.id"
+            " WHERE t.build_id = :b AND t.state = 'retry_wait' ORDER BY o.created_at DESC LIMIT 1",
+            b=build,
+        )
+        ddl("UPDATE build_tasks SET next_attempt_at = now() WHERE id = :t", t=task)
+        outcomes.append(await runner.process(rt, TaskEnvelope.model_validate(payload)))
+        outcomes += await drive(app, build, runtime=rt)
+    return outcomes
+
+
 # ---------------------------------------------------------------- free replay preset, full pipeline
 async def test_replay_preset_runs_the_whole_generation_pipeline(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
@@ -272,7 +288,9 @@ async def test_unknown_provider_outcome_keeps_its_hold_after_the_build_ends(
 ) -> None:
     owner, ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = ScriptedProvider(faults={"overview": [ProviderError("unknown", "provider_timeout")]})
-    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    outcomes = await drive_with_retries(app, build, runtime_for(app, provider))
+    # Not retried within the call, which would add a hold per try: the stage stops and its task retries.
+    assert outcomes.count("retry_wait") == 1 and outcomes.count("completed") == 8
     unknown = [a for a in attempts(build) if a[1] == "unknown"]
     assert len(unknown) == 1 and unknown[0][2] is None
     hold = unknown[0][3]
@@ -282,6 +300,29 @@ async def test_unknown_provider_outcome_keeps_its_hold_after_the_build_ends(
     assert done["usage"]["reserved_micro_usd"] == hold  # conservative hold until reconciliation (07)
     assert account_counters(ws) == (50_000_000, hold, settled)
     assert ledger_balance(ws)["release"] == 5_000_000 - settled - hold
+
+
+async def test_a_provider_that_never_answers_fails_the_build_instead_of_falling_back(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """Dropped connections (unknown outcomes) on every call: each task attempt makes one call per unit,
+    the stage stops instead of finishing on source-only text, and the build fails after the task's
+    retries, holding one maximum per attempt made."""
+    from app.jobs import store
+
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    outage = [ProviderError("unknown", "provider_connection") for _ in range(200)]
+    provider = ScriptedProvider(faults={"explain": outage})
+    outcomes = await drive_with_retries(app, build, runtime_for(app, provider))
+    assert outcomes[-1] == "failed" and outcomes.count("retry_wait") == store.MAX_ATTEMPTS - 1
+    done = (await owner.get(f"/api/v1/builds/{build}")).json()
+    assert done["status"] == "failed"
+    assert not ddl("SELECT 1 FROM file_explanations WHERE build_id = :b", b=build)  # no fallback text
+    recorded = attempts(build)
+    assert {a[0] for a in recorded} == {"explain"} and all(a[1] == "unknown" for a in recorded)
+    chunks = len(recorded) // store.MAX_ATTEMPTS
+    assert len(recorded) == chunks * store.MAX_ATTEMPTS  # one call per chunk per task attempt
+    assert done["usage"]["reserved_micro_usd"] == sum(a[3] for a in recorded)
 
 
 @dataclass
@@ -361,7 +402,7 @@ async def test_unknown_holds_settle_at_their_maximum_after_a_day(
 
     owner, ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = ScriptedProvider(faults={"overview": [ProviderError("unknown", "provider_timeout")]})
-    assert await drive(app, build, runtime=runtime_for(app, provider)) == ["completed"] * 8
+    assert (await drive_with_retries(app, build, runtime_for(app, provider))).count("completed") == 8
     [hold] = [a[3] for a in attempts(build) if a[1] == "unknown"]
     settled = sum(a[2] or 0 for a in attempts(build))
     rt = runtime_for(app)
