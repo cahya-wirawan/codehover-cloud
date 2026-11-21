@@ -212,7 +212,8 @@ class EstimateOut(BaseModel):
     selected_files: int
     excluded_files: int
     estimated_tokens: dict[str, TokenRange]
-    cost_micro_usd: CostRange
+    cost_micro_usd: CostRange  # every language of the config together
+    per_language_micro_usd: CostRange  # one build: the base, or each variant of a several-language config
     created_at: datetime
     expires_at: datetime
     expired: bool

@@ -123,7 +123,9 @@ def test_scope_selection_is_deterministic_and_prefers_source_over_tests() -> Non
         {"include": ["/abs/**"]},
         {"languages": ["fr"]},  # FR-026 offers en, de and id
         {"levels": ["casual"]},
-        {"languages": ["de", "id"]},  # one variant per build
+        {"languages": ["de", "de"]},  # each language once (several are a family, FR-026)
+        {"languages": ["en", "de", "id", "en"]},
+        {"languages": ["de", "id"], "variant_of": "019a90a0-0000-7000-8000-000000000001"},  # a variant: one
         {"variant_of": "not-a-build-id"},
         {"max_files": 0},
         {"guide_pages": 9},

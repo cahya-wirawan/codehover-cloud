@@ -1547,6 +1547,9 @@
             "title": "Id",
             "type": "string"
           },
+          "per_language_micro_usd": {
+            "$ref": "#/components/schemas/CostRange"
+          },
           "price_version": {
             "title": "Price Version",
             "type": "string"
@@ -1578,6 +1581,7 @@
           "excluded_files",
           "estimated_tokens",
           "cost_micro_usd",
+          "per_language_micro_usd",
           "created_at",
           "expires_at",
           "expired",
@@ -2141,7 +2145,7 @@
             "items": {
               "type": "string"
             },
-            "maxItems": 1,
+            "maxItems": 3,
             "minItems": 1,
             "title": "Languages",
             "type": "array"

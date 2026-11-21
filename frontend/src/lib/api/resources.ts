@@ -100,7 +100,9 @@ export interface Estimate {
   selected_files: number;
   excluded_files: number;
   estimated_tokens: { low: { input: number; output: number }; high: { input: number; output: number } };
-  cost_micro_usd: { low: number; high: number };
+  cost_micro_usd: { low: number; high: number }; // every language together
+  per_language_micro_usd: { low: number; high: number }; // one build
+  config: { languages: string[]; levels: string[]; variant_of?: string | null };
   expires_at: string;
   expired: boolean;
   disclaimer: string;

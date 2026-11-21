@@ -24,6 +24,7 @@ from app.core.settings import Settings
 from app.core.tenancy import set_context
 from app.engine import ENGINE_VERSION, GENERATION_PROMPT_VERSION, PROMPT_VERSION, search
 from app.engine.catalog import Catalog
+from app.engine.estimate import GenerationConfig
 from app.engine.generate import CITATION
 from app.jobs import store as jobs
 from app.modules.billing import service as billing
@@ -298,22 +299,83 @@ async def start_generation_build(
         raise ApiError(
             422, "CAP_TOO_LOW", "Set a spending cap above zero; a zero cap pays for no model call."
         )
-    config: dict[str, Any] = {
-        "generation": approved.config,
+    generation = GenerationConfig.model_validate(approved.config)
+    # Several languages (FR-026): this build writes the first; each further one is a variant build of it,
+    # started now beside it with an equal share of the cap, so the whole family is reserved at once.
+    others = generation.family[1:] if generation.variant_of is None else []
+    share = requested_cap // (1 + len(others))
+    build_id = await _start_one(
+        db,
+        member,
+        project_id,
+        approved,
+        config=approved.config,
+        digest=approved.config_digest,
+        estimate_id=estimate_id,
+        cap=requested_cap - share * len(others),
+        catalog=catalog,
+        account=account,
+        funding=funding,
+        retry_of=retry_of,
+    )
+    for language in others:
+        variant = generation.for_language(language, str(build_id))
+        variant_estimate, variant_digest = await estimates.variant_estimate(
+            db, member, project_id, approved, variant, catalog
+        )
+        await _start_one(
+            db,
+            member,
+            project_id,
+            approved,
+            config=variant.canonical(),
+            digest=variant_digest,
+            estimate_id=variant_estimate,
+            cap=share,
+            catalog=catalog,
+            account=account,
+            funding=funding,
+            family=build_id,
+        )
+    return await get_build(db, member, build_id)
+
+
+async def _start_one(
+    db: AsyncSession,
+    member: Member,
+    project_id: UUID,
+    approved: Any,
+    *,
+    config: dict[str, Any],
+    digest: str,
+    estimate_id: UUID,
+    cap: int,
+    catalog: Catalog,
+    account: ledger.Account,
+    funding: str,
+    retry_of: UUID | None = None,
+    family: UUID | None = None,
+) -> UUID:
+    """One generation build of an approved estimate: insert, reserve its cap, schedule its first task.
+    `family` (server-set, never from a request) marks a variant started together with its base."""
+    build_config: dict[str, Any] = {
+        "generation": config,
         "catalog": catalog.revision,
         "estimate_id": str(estimate_id),
     }
     if funding == "own_key":
-        config["funding"] = "own_key"
+        build_config["funding"] = "own_key"
+    if family is not None:
+        build_config["family"] = str(family)
     build_id = await _insert_build(
         db,
         member,
         project_id,
         approved.snapshot_id,
-        config=config,
-        digest=approved.config_digest,
+        config=build_config,
+        digest=digest,
         prompt_version=GENERATION_PROMPT_VERSION,
-        cap=requested_cap,
+        cap=cap,
         estimate_id=estimate_id,
         account_id=None if funding == "own_key" else account.id,
         retry_of=retry_of,
@@ -321,12 +383,12 @@ async def start_generation_build(
     if funding == "own_key":  # the envelope lives on the build only (no allowance account)
         await db.execute(
             text("UPDATE builds SET reserved_micro_usd = :n WHERE workspace_id = :w AND id = :b"),
-            {"n": requested_cap, "w": member.workspace_id, "b": build_id},
+            {"n": cap, "w": member.workspace_id, "b": build_id},
         )
     else:
-        await ledger.reserve_build(db, member.workspace_id, account, build_id, requested_cap)
+        await ledger.reserve_build(db, member.workspace_id, account, build_id, cap)
     await _schedule(db, member, build_id, scanned=True, commit_sha=approved.commit_sha)
-    return await get_build(db, member, build_id)
+    return build_id
 
 
 async def _admit(
@@ -351,7 +413,13 @@ async def _admit(
     )
     active = (
         await db.execute(
-            text("SELECT count(*) FROM builds WHERE workspace_id = :w AND status IN ('queued', 'running')"),
+            # A family (a several-language build: its base and the variants started with it, FR-026) is one
+            # active build here. Only the server sets `family`, on the variants it starts with their base;
+            # a variant started on its own counts by itself.
+            text(
+                "SELECT count(DISTINCT COALESCE(config->>'family', CAST(id AS text))) FROM builds"
+                " WHERE workspace_id = :w AND status IN ('queued', 'running')"
+            ),
             {"w": member.workspace_id},
         )
     ).scalar_one()

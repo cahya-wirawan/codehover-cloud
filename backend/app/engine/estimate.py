@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.engine.catalog import Catalog, Preset, Role, cost_micro_usd
 from app.engine.generate import page_bounds
@@ -56,7 +56,8 @@ class GenerationConfig(BaseModel):
 
     include: Annotated[list[Glob], Field(max_length=20)] = ["**"]
     exclude: Annotated[list[Glob], Field(max_length=20)] = []
-    languages: Annotated[list[str], Field(min_length=1, max_length=1)] = ["en"]
+    # One build writes languages[0]; further languages (a family, FR-026) become variant builds of it.
+    languages: Annotated[list[str], Field(min_length=1, max_length=3)] = ["en"]
     levels: Annotated[list[str], Field(min_length=1, max_length=1)] = ["standard"]
     max_files: Annotated[int, Field(ge=1, le=500)] = 100
     guide_pages: Annotated[int, Field(ge=1, le=8)] = 5
@@ -85,7 +86,24 @@ class GenerationConfig(BaseModel):
     def _languages(cls, values: list[str]) -> list[str]:
         if any(v not in LANGUAGES for v in values):
             raise ValueError(f"languages are {', '.join(LANGUAGES)}")
+        if len(set(values)) != len(values):
+            raise ValueError("each language may be named once")
         return values
+
+    @model_validator(mode="after")
+    def _one_language_per_variant(self) -> GenerationConfig:
+        if self.variant_of is not None and len(self.languages) != 1:
+            raise ValueError("a variant build writes one language")
+        return self
+
+    @property
+    def family(self) -> list[str]:
+        """The languages this config builds: its own first, then one variant build per further language."""
+        return list(self.languages)
+
+    def for_language(self, language: str, base_id: str) -> GenerationConfig:
+        """The config of the variant build that writes `language` for the base build `base_id`."""
+        return self.model_copy(update={"languages": [language], "variant_of": base_id})
 
     @field_validator("levels")
     @classmethod
