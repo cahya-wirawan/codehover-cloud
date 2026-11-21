@@ -895,7 +895,9 @@ async def request_cancel(
     db: AsyncSession, member: Member, build_id: UUID, reason: str | None
 ) -> dict[str, Any]:
     """Idempotent (06). No new provider call starts after this; an in-flight call may still finish and
-    is settled; the unspent envelope is released when the build stops (A10)."""
+    is settled; the unspent envelope is released when the build stops (A10). Cancelling the base of a
+    several-language build cancels its language variants too (FR-026): they were started by the same
+    request and cannot finish without the base's plan. Cancelling one variant stops only that one."""
     build = (
         await db.execute(
             text(
@@ -906,31 +908,48 @@ async def request_cancel(
     ).one_or_none()
     if build is None:
         raise ApiError(404, "NOT_FOUND", "Build not found.")
+    note = (reason or "")[:200]
     if build.status in ("queued", "running") and build.cancel_requested_at is None:
-        await db.execute(
-            text(
-                "UPDATE builds SET cancel_requested_at = now(), updated_at = now() WHERE workspace_id = :w AND id = :b"
-            ),
-            {"w": member.workspace_id, "b": build_id},
-        )
-        await jobs.event(
-            db, member.workspace_id, build_id, "build.cancel_requested", {"reason": (reason or "")[:200]}
-        )
-        working = (
+        await _cancel_one(db, member.workspace_id, build_id, {"reason": note})
+        await audit(db, member, "build.cancel_requested", "build", build_id, {"reason": note})
+    # Rows are locked base first, then variants by ID: the base's ID is the family's and the smallest.
+    variants = list(
+        (
             await db.execute(
                 text(
-                    "SELECT count(*) FROM build_tasks WHERE workspace_id = :w AND build_id = :b"
-                    " AND state = 'leased' AND lease_until > now()"
+                    "SELECT id FROM builds WHERE workspace_id = :w AND config->>'family' = :f"
+                    " AND status IN ('queued', 'running') AND cancel_requested_at IS NULL ORDER BY id FOR UPDATE"
                 ),
-                {"w": member.workspace_id, "b": build_id},
+                {"w": member.workspace_id, "f": str(build_id)},
             )
-        ).scalar_one()
-        if not working:  # nothing is running: stop now; otherwise the worker stops at its next step
-            await jobs.cancel_build(db, member.workspace_id, build_id)
-        await audit(db, member, "build.cancel_requested", "build", build_id, {"reason": (reason or "")[:200]})
+        ).scalars()
+    )
+    for variant in variants:
+        await _cancel_one(db, member.workspace_id, variant, {"reason": note, "with_base": True})
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
     return await get_build(db, member, build_id)
+
+
+async def _cancel_one(db: AsyncSession, workspace_id: UUID, build_id: UUID, payload: dict[str, Any]) -> None:
+    await db.execute(
+        text(
+            "UPDATE builds SET cancel_requested_at = now(), updated_at = now() WHERE workspace_id = :w AND id = :b"
+        ),
+        {"w": workspace_id, "b": build_id},
+    )
+    await jobs.event(db, workspace_id, build_id, "build.cancel_requested", payload)
+    working = (
+        await db.execute(
+            text(
+                "SELECT count(*) FROM build_tasks WHERE workspace_id = :w AND build_id = :b"
+                " AND state = 'leased' AND lease_until > now()"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).scalar_one()
+    if not working:  # nothing is running: stop now; otherwise the worker stops at its next step
+        await jobs.cancel_build(db, workspace_id, build_id)
 
 
 async def retry_build(
