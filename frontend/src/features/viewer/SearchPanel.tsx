@@ -46,7 +46,7 @@ export function SearchPanel({ source, base }: { source: ViewerSource; base: stri
   }, []);
 
   return (
-    <section aria-labelledby="search-title" className="mt-4">
+    <section aria-labelledby="search-title" className="reading mt-4 rounded-[var(--radius-overlay)] bg-background p-4">
       <h2 id="search-title" className="sr-only">Search this build</h2>
       <form
         role="search"

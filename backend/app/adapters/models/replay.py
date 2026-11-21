@@ -115,6 +115,7 @@ class ReplayGateway:
                 {
                     "slug": slug,
                     "title": f"How `{name}` works"[:200],
+                    "section": "Code walkthrough",
                     "purpose": f"Walk through the definitions in `{name}`."[:1000],
                     "source_ranges": [
                         {

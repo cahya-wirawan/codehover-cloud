@@ -153,10 +153,13 @@ def test_plan_validation() -> None:
     page = {
         "slug": "flow",
         "title": "Flow",
+        "section": "Basics",
         "purpose": "p",
         "source_ranges": [{"file_id": FILE_ID, "path": "src/app.py", "start_line": 1, "end_line": 50}],
     }
     assert generate.validate_plan({"pages": [page], "reason": ""}, files, (1, 3)) == []
+    unsectioned = {k: v for k, v in page.items() if k != "section"}  # guide-plan 2.0.0 requires a section
+    assert generate.validate_plan({"pages": [unsectioned], "reason": ""}, files, (1, 3))
     assert generate.validate_plan({"pages": [page, page], "reason": ""}, files, (1, 3))  # duplicate slug
     wrong = {**page, "source_ranges": [{**page["source_ranges"][0], "end_line": 101}]}
     assert generate.validate_plan({"pages": [wrong], "reason": ""}, files, (1, 3))
@@ -228,6 +231,17 @@ def test_guide_markdown_allowlist(markdown: str, problem: str | None) -> None:
         assert problems == []
     else:
         assert any(problem in p for p in problems), problems
+
+
+def test_guide_pages_may_have_tables_and_link_to_other_pages_of_the_guide() -> None:
+    table = f"# T\n\n| Option | Meaning |\n|---|---|\n| `-i` | input [[{FILE_ID}:1-3]] |\n"
+    assert generate.validate_guide({"markdown": table}, EVIDENCE) == []
+    linked = f"# T\n\nSee [the flow](guide:flow) for more [[{FILE_ID}:1-3]]."
+    assert generate.validate_guide({"markdown": linked}, EVIDENCE, frozenset({"flow"})) == []
+    problems = generate.validate_guide({"markdown": linked}, EVIDENCE, frozenset({"other"}))
+    assert any("is not a page of this guide" in p for p in problems), problems
+    tags = f"# T\n\n| a |\n|---|\n| <img src=x> [[{FILE_ID}:1-3]] |\n"
+    assert any("raw HTML" in p for p in generate.validate_guide({"markdown": tags}, EVIDENCE))
 
 
 def test_single_line_citations_are_stored_as_ranges() -> None:
@@ -548,3 +562,61 @@ async def test_anthropic_batches_submit_poll_and_map_results_by_custom_id() -> N
         and items["a2"].error is not None
         and items["a2"].error.code == "batch_errored"
     )
+
+
+def test_guide_pages_get_the_guide_plan_and_definitions_from_prompt_set_0_5_0() -> None:
+    from types import SimpleNamespace
+
+    evidence = [
+        {
+            "file_id": FILE_ID,
+            "path": "src/app.py",
+            "start_line": 1,
+            "end_line": 20,
+            "sha256": "a" * 64,
+            "lines": ["x"],
+        }
+    ]
+    rows = [
+        SimpleNamespace(
+            source_file_id=FILE_ID, name="main", kind="function", start_line=5, end_line=9, summary="Entry."
+        ),
+        SimpleNamespace(
+            source_file_id=FILE_ID, name="later", kind="function", start_line=40, end_line=44, summary=None
+        ),
+        SimpleNamespace(
+            source_file_id="other", name="elsewhere", kind="class", start_line=1, end_line=3, summary=None
+        ),
+    ]
+    definitions = generate.evidence_definitions(evidence, rows)
+    assert definitions == [
+        {"name": "main", "kind": "function", "path": "src/app.py", "lines": "5-9", "summary": "Entry."}
+    ]
+    toc = [
+        {"slug": "flow", "title": "Flow", "purpose": "p"},
+        {"slug": "parts", "title": "Parts", "purpose": "q"},
+    ]
+    page = {"slug": "flow", "title": "Flow", "purpose": "p"}
+
+    def request(version: str, **extra: Any) -> generate.Prepared:
+        return generate.guide_request(
+            workspace_id="w",
+            preset=PRESET.name,
+            model=MODEL,
+            role=PRESET.writer,
+            prompt_version=version,
+            page=page,
+            evidence=evidence,
+            **extra,
+        )
+
+    new = request("0.5.0", guide_plan=toc, definitions=definitions)
+    assert (
+        "guide:slug" in new.request.user
+        and '"slug": "parts"' in new.request.user
+        and '"name": "main"' in new.request.user
+    )
+    assert new.cache_key != request("0.5.0", guide_plan=toc, definitions=[]).cache_key  # both are inputs
+    old = request("0.4.0", guide_plan=toc, definitions=definitions)
+    assert '"slug": "parts"' not in old.request.user  # 0.4.0 does not read them...
+    assert old.cache_key == request("0.4.0").cache_key  # ...so its cached pages stay valid

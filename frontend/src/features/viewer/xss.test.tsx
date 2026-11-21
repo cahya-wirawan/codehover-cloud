@@ -4,7 +4,7 @@
  * in the product viewer, the guide, and the offline export viewer (run here in jsdom).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 
 import { routes } from "../../app/routes";
@@ -41,16 +41,17 @@ function assertInert(root: ParentNode) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-test("guide markdown and forged citations render as text", () => {
+test("guide markdown and forged citations render as text", async () => {
   const { container } = render(
     <MemoryRouter>
       <GuideText
         page={{
           slug: "x",
           title: HOSTILE,
-          markdown: `${HOSTILE} [[not-a-uuid:1-2]] [[00000000-0000-0000-0000-000000000000:1-2]]" onmouseover="x`,
+          markdown: `\`x\` ${HOSTILE} [[not-a-uuid:1-2]] [[00000000-0000-0000-0000-000000000000:1-2]]" onmouseover="x\n\n| ${HOSTILE} |\n|---|\n| [x](guide:x) ${HOSTILE} |\n\n\`\`\`mermaid\nflowchart TD\n  A["${PAYLOADS[1]}"] --> B\n  click A "javascript:window.__pwned=1"\n\`\`\``,
           citations: [],
           claims: [],
+          symbols: [{ mention: "x", id: "s1", name: HOSTILE, kind: HOSTILE, file_id: "f1", start_line: 1 }],
         } as never}
         codeBase="/p/p1/builds/b1"
       />
@@ -58,7 +59,16 @@ test("guide markdown and forged citations render as text", () => {
   );
   expect(container.textContent).toContain("<script>window.__pwned = 1</script>");
   assertInert(container);
-});
+  // A drawn diagram is only ever an SVG image (no markup of its own); the real Mermaid, in strict mode.
+  await waitFor(() => expect(container.querySelector("figure")?.getAttribute("data-state")).not.toBe("pending"), {
+    timeout: 20_000, // the real Mermaid loads on first use; slow when every test file runs at once
+  });
+  for (const image of Array.from(container.querySelectorAll("img"))) {
+    expect(image.getAttribute("src")).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+    image.remove();
+  }
+  assertInert(container);
+}, 30_000);
 
 test("a hostile overview renders as text", () => {
   const { container } = render(<OverviewText overview={`${HOSTILE}\n\n[x](javascript:window.__pwned=1) ![x](javascript:1)`} />);
@@ -79,14 +89,16 @@ test("hostile source lines, names and cards stay text in the code viewer", async
     },
     "/api/v1/builds/b1/files/f1?start_line=1": {
       id: "f1", path: HOSTILE, start_line: 1, lines: [`def main(): # ${HOSTILE}`, ...PAYLOADS],
-      symbols: [{ id: "s1", name: "main", kind: "function", start_line: 1, end_line: 2, summary: HOSTILE }],
-      explanation: { status: "generated", summary: HOSTILE },
+      symbols: [{ id: "s1", name: "main", kind: "function", start_line: 1, end_line: 2, summary: HOSTILE, params: ["main"] }],
+      references: [{ line: 1, column: 4, targets: [{ id: "s1", name: HOSTILE, kind: HOSTILE }, { id: "s2", name: HOSTILE, kind: "function" }], resolution: "name", ambiguous: true }],
+      explanation: { status: "generated", summary: HOSTILE, chunks: [{ start_line: 1, end_line: 2, summary: HOSTILE, status: "generated", notes: [{ start_line: 1, end_line: 2, text: HOSTILE }] }] },
     },
     "/api/v1/builds/b1/symbols/s1": {
       id: "s1", name: "main", kind: "function", signature: HOSTILE, path: HOSTILE, start_line: 1,
       card: { summary: HOSTILE, details: HOSTILE, notes: HOSTILE, params: [{ name: HOSTILE, description: HOSTILE }] },
       uses: [{ id: "s2", name: HOSTILE, kind: "function", path: HOSTILE, resolution: "name", ambiguous: false }],
       used_by: [],
+      guides: [{ slug: "x", title: HOSTILE }],
     },
   };
   vi.stubGlobal(

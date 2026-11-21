@@ -207,6 +207,7 @@ export type CheckStatus = "supported" | "partial" | "unsupported" | "unchecked" 
 export interface GuidePageSummary {
   slug: string;
   title: string;
+  section: string;
   ordinal: number;
   purpose: string;
   status: "planned" | "written" | "failed";
@@ -218,7 +219,7 @@ export interface GuideIndex {
     overview: string;
     status: string;
     key_concepts: { term: string; explanation: string }[];
-    reading_order: { file_id: string; reason: string }[];
+    reading_order: { file_id: string; reason: string; path?: string | null }[];
   } | null;
   pages: GuidePageSummary[];
 }
@@ -233,6 +234,7 @@ export interface GuidePage extends GuidePageSummary {
   markdown: string;
   citations: { file_id: string; path: string | null; start_line: number; end_line: number }[];
   claims: PageClaim[];
+  symbols: { mention: string; id: string; name: string; kind: string; file_id: string; start_line: number }[];
 }
 export interface Quality {
   claims: number;
@@ -366,6 +368,14 @@ export interface FileSymbol {
   start_line: number;
   end_line: number;
   summary: string | null;
+  params: string[];
+}
+export interface FileReference {
+  line: number;
+  column: number; // 0-based, in Unicode scalar values
+  targets: { id: string; name: string; kind: string }[];
+  resolution: string;
+  ambiguous: boolean;
 }
 export interface FileView {
   id: string;
@@ -375,6 +385,7 @@ export interface FileView {
   line_count?: number | null;
   lines: string[];
   symbols: FileSymbol[];
+  references: FileReference[];
   explanation?: {
     status: string;
     summary: string;
@@ -422,10 +433,13 @@ export interface SymbolView {
   kind: string;
   signature: string | null;
   path: string;
+  file_id: string;
   start_line: number;
+  end_line: number;
   card: { summary?: string; details?: string; params?: { name: string; description: string }[]; notes?: string };
   uses: Related[];
   used_by: Related[];
+  guides: { slug: string; title: string }[];
 }
 
 export interface DeletionRequest {

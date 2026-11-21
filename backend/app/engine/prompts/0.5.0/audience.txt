@@ -1,0 +1,3 @@
+Audience: write every prose field and every Markdown sentence in $LANGUAGE for $LEVEL readers. $LEVEL_GUIDANCE
+
+Keep these exactly as they appear in the data, untranslated: code, identifiers, file paths, file_ids, line numbers, citation markers `[[file_id:start-end]]`, JSON keys, enum values and slugs. Translate only prose. Write natural $LANGUAGE, not word-for-word English.

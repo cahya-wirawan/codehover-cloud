@@ -1,0 +1,1 @@
+Assume a working developer who is new to this codebase.

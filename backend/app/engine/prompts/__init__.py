@@ -58,6 +58,12 @@ def system(version: str, audience: str = DEFAULT_VARIANT) -> str:
     return f"{base}\n\n{instruction.strip()}"
 
 
+def uses(version: str, name: str, placeholder: str) -> bool:
+    """Whether a template of the set reads `$placeholder`; inputs it does not read stay out of cache keys,
+    so a newer engine does not invalidate an older set's cached outputs."""
+    return f"${placeholder}" in _load(version)[name]
+
+
 def render(version: str, name: str, **sections: str) -> str:
     """Fill a template; every value must already be a `data_block` or a plain value we produced."""
     return string.Template(_load(version)[name]).substitute(sections).strip()

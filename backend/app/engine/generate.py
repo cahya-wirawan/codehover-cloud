@@ -405,17 +405,26 @@ def guide_request(
     audience: str = prompts.DEFAULT_VARIANT,
     page: dict[str, Any],
     evidence: list[dict[str, Any]],
+    guide_plan: list[dict[str, Any]] | None = None,
+    definitions: list[dict[str, Any]] | None = None,
 ) -> Prepared:
-    """evidence: [{file_id, path, start_line, end_line, sha256, lines}] in plan order, already bounded."""
+    """evidence: [{file_id, path, start_line, end_line, sha256, lines}] in plan order, already bounded.
+    guide_plan: every page of the guide ({slug, title, purpose}), so a page can link the others;
+    definitions: the definitions inside the evidence ({name, kind, path, lines, summary}), so the page
+    names them exactly. Sets from 0.5.0 read both; older sets ignore them."""
     blocks = "\n\n".join(
         f"file_id: {e['file_id']}\npath: {e['path']}\n{prompts.numbered(e['lines'], e['start_line'])}"
         for e in evidence
     )
     plan = {"slug": page["slug"], "title": page["title"], "purpose": page["purpose"]}
+    toc = [{k: p[k] for k in ("slug", "title", "purpose")} for p in guide_plan or []]
+    names = (definitions or [])[:MAX_GUIDE_DEFINITIONS]
     user = prompts.render(
         prompt_version,
         "guide",
         PAGE_PLAN=prompts.json_block("PAGE_PLAN", plan),
+        GUIDE_PLAN=prompts.json_block("GUIDE_PLAN", toc),
+        DEFINITIONS=prompts.json_block("DEFINITIONS", names),
         SOURCE_EVIDENCE=prompts.data_block("SOURCE_EVIDENCE", blocks),
     )
     request = GenerationRequest(
@@ -428,12 +437,41 @@ def guide_request(
         schema=schema("guide-page"),
         evidence={"page": plan, "evidence": evidence},
     )
-    inputs = {
+    inputs: dict[str, Any] = {
         "page": plan,
         "evidence": [[e["file_id"], e["sha256"], e["start_line"], e["end_line"]] for e in evidence],
         "schema": schema("guide-page")["$id"],
     }
+    if prompts.uses(prompt_version, "guide", "GUIDE_PLAN"):
+        inputs["guide"] = toc
+    if prompts.uses(prompt_version, "guide", "DEFINITIONS"):
+        inputs["definitions"] = names
     return Prepared(request, _cache_key(workspace_id, "guide", preset, prompt_version, inputs, audience))
+
+
+MAX_GUIDE_DEFINITIONS = 60
+
+
+def evidence_definitions(evidence: list[dict[str, Any]], symbols: list[Any]) -> list[dict[str, Any]]:
+    """The definitions that start inside a page's evidence ranges, in source order: what the page can name
+    in backticks. `symbols` rows carry source_file_id, name, kind, start_line, end_line and summary."""
+    ranges = [(e["file_id"], e["start_line"], e["end_line"], e["path"]) for e in evidence]
+    found = []
+    for s in sorted(symbols, key=lambda s: (str(s.source_file_id), s.start_line)):
+        where = next(
+            (r for r in ranges if r[0] == str(s.source_file_id) and r[1] <= s.start_line <= r[2]), None
+        )
+        if where:
+            found.append(
+                {
+                    "name": s.name,
+                    "kind": s.kind,
+                    "path": where[3],
+                    "lines": f"{s.start_line}-{s.end_line}",
+                    "summary": (s.summary or "")[:200],
+                }
+            )
+    return found[:MAX_GUIDE_DEFINITIONS]
 
 
 def bounded_evidence(
@@ -464,17 +502,21 @@ def bounded_evidence(
 
 
 def _markdown_parser() -> MarkdownIt:
-    """CommonMark with HTML recognized (so it can be rejected) and link validation off (so every link
-    target is visible to the allowlist instead of being dropped by this parser but not by another)."""
-    parser = MarkdownIt("commonmark", {"html": True})
+    """CommonMark plus tables (the viewer parses the same way), with HTML recognized (so it can be
+    rejected) and link validation off (so every link target is visible to the allowlist instead of being
+    dropped by this parser but not by another)."""
+    parser = MarkdownIt("commonmark", {"html": True}).enable("table")
     parser.validateLink = lambda url: True  # type: ignore[method-assign]
     return parser
 
 
-def markdown_problems(markdown: str) -> list[str]:
-    """Allowlist over CommonMark tokens (19 P04): no raw HTML, no images, links only to https URLs or
-    in-page anchors, bounded strict Mermaid. Checking tokens rather than regexes avoids parser
-    differentials between this check and a renderer."""
+GUIDE_LINK = "guide:"  # a link to another page of the same guide: [title](guide:slug)
+
+
+def markdown_problems(markdown: str, pages: frozenset[str] = frozenset()) -> list[str]:
+    """Allowlist over CommonMark tokens (19 P04): no raw HTML, no images, links only to https URLs,
+    in-page anchors or `guide:<slug>` for a page in `pages`, bounded strict Mermaid. Checking tokens
+    rather than regexes avoids parser differentials between this check and a renderer."""
     problems: list[str] = []
     tokens = _markdown_parser().parse(markdown)
     if not tokens or tokens[0].type != "heading_open" or tokens[0].tag != "h1":
@@ -488,7 +530,10 @@ def markdown_problems(markdown: str) -> list[str]:
                 problems.append("images are not allowed")
             elif token.type == "link_open":
                 href = str(token.attrGet("href") or "")
-                if not (href.startswith("https://") or href.startswith("#")):
+                if href.startswith(GUIDE_LINK):
+                    if href[len(GUIDE_LINK) :] not in pages:
+                        problems.append(f"link target {href[:80]!r} is not a page of this guide")
+                elif not (href.startswith("https://") or href.startswith("#")):
                     problems.append(f"link target {href[:80]!r} is not an https URL")
             elif token.type == "fence" and token.info.strip().lower().startswith("mermaid"):
                 if MERMAID_FORBIDDEN.search(token.content):
@@ -518,7 +563,9 @@ def normalize_citations(markdown: str) -> str:
     return SINGLE_LINE_CITATION.sub(r"[[\1:\2-\2]]", markdown)
 
 
-def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> list[str]:
+def validate_guide(
+    output: dict[str, Any], evidence: list[dict[str, Any]], pages: frozenset[str] = frozenset()
+) -> list[str]:
     """Allowlisted Markdown (19 P04), checked on the page as it will be stored (`normalize_citations`).
     Citation correctness against the snapshot is the verify stage's job; here every citation marker must
     be well formed and point into the supplied evidence, so a malformed one is repaired, not stored."""
@@ -528,7 +575,7 @@ def validate_guide(output: dict[str, Any], evidence: list[dict[str, Any]]) -> li
     if problems:
         return problems
     markdown = normalize_citations(output["markdown"])
-    problems.extend(markdown_problems(markdown))
+    problems.extend(markdown_problems(markdown, pages))
     for raw in markers(markdown):
         if CITATION.fullmatch(raw) is None:
             problems.append(

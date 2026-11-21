@@ -1843,6 +1843,13 @@
             "title": "Path",
             "type": "string"
           },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/FileReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
           "sha256": {
             "anyOf": [
               {
@@ -1875,9 +1882,47 @@
           "start_line",
           "end_line",
           "lines",
-          "symbols"
+          "symbols",
+          "references"
         ],
         "title": "FileOut",
+        "type": "object"
+      },
+      "FileReference": {
+        "description": "A use of a definition in this file: the identifier starting at (line, column), 0-based Unicode\nscalar column, and the definition(s) it may refer to (several when ambiguous).",
+        "properties": {
+          "ambiguous": {
+            "title": "Ambiguous",
+            "type": "boolean"
+          },
+          "column": {
+            "title": "Column",
+            "type": "integer"
+          },
+          "line": {
+            "title": "Line",
+            "type": "integer"
+          },
+          "resolution": {
+            "title": "Resolution",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceTarget"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "line",
+          "column",
+          "targets",
+          "resolution",
+          "ambiguous"
+        ],
+        "title": "FileReference",
         "type": "object"
       },
       "FileSymbol": {
@@ -1902,6 +1947,13 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "params": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "array"
           },
           "start_column": {
             "title": "Start Column",
@@ -1936,7 +1988,8 @@
           "end_line",
           "start_column",
           "end_column",
-          "summary"
+          "summary",
+          "params"
         ],
         "title": "FileSymbol",
         "type": "object"
@@ -2203,6 +2256,10 @@
             "title": "Purpose",
             "type": "string"
           },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -2210,6 +2267,13 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "$ref": "#/components/schemas/MentionedSymbol"
+            },
+            "title": "Symbols",
+            "type": "array"
           },
           "title": {
             "title": "Title",
@@ -2219,6 +2283,7 @@
         "required": [
           "slug",
           "title",
+          "section",
           "ordinal",
           "purpose",
           "status",
@@ -2226,7 +2291,8 @@
           "provenance",
           "markdown",
           "citations",
-          "claims"
+          "claims",
+          "symbols"
         ],
         "title": "GuidePageOut",
         "type": "object"
@@ -2250,6 +2316,10 @@
             "title": "Purpose",
             "type": "string"
           },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -2266,6 +2336,7 @@
         "required": [
           "slug",
           "title",
+          "section",
           "ordinal",
           "purpose",
           "status",
@@ -2273,6 +2344,24 @@
           "provenance"
         ],
         "title": "GuidePageSummary",
+        "type": "object"
+      },
+      "GuideRef": {
+        "properties": {
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title"
+        ],
+        "title": "GuideRef",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2683,6 +2772,46 @@
           "created_at"
         ],
         "title": "MemberOut",
+        "type": "object"
+      },
+      "MentionedSymbol": {
+        "properties": {
+          "file_id": {
+            "format": "uuid",
+            "title": "File Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "mention": {
+            "title": "Mention",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mention",
+          "id",
+          "name",
+          "kind",
+          "file_id",
+          "start_line"
+        ],
+        "title": "MentionedSymbol",
         "type": "object"
       },
       "MetaOut": {
@@ -3688,6 +3817,30 @@
         "title": "RefOut",
         "type": "object"
       },
+      "ReferenceTarget": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind"
+        ],
+        "title": "ReferenceTarget",
+        "type": "object"
+      },
       "Related": {
         "properties": {
           "ambiguous": {
@@ -4502,6 +4655,13 @@
             "title": "File Id",
             "type": "string"
           },
+          "guides": {
+            "items": {
+              "$ref": "#/components/schemas/GuideRef"
+            },
+            "title": "Guides",
+            "type": "array"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -4571,7 +4731,8 @@
           "file_id",
           "path",
           "uses",
-          "used_by"
+          "used_by",
+          "guides"
         ],
         "title": "SymbolOut",
         "type": "object"

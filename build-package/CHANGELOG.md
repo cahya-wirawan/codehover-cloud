@@ -4,6 +4,19 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-21
+
+### Added
+
+- 02, 05, 06, 19, `contracts/guide-plan.schema.json` 2.0.0: guide plans name a `section` for each page (required, so the contract MAJOR changes; migration 0031 stores it, '' for older pages), shown as headings in the page list. Guide pages may contain tables and link to each other with `guide:<slug>`; Mermaid diagrams are drawn in strict mode as SVG images. Symbol views list the guide pages that cite the definition (`guides`).
+- 02, 17: the reading view (code, cards, guide, search and published sites) takes codehover's design: its palette and kind colours, Newsreader and Red Hat Mono, notes marked in the gutter and shown on hover or inline, cards at every use of a definition and documented parameter, a guide landing view with key ideas and reading order, linked definitions and a pager. 06: the guide index adds each reading-order file's path.
+- 06: file views return `references` (each use of a definition: position, targets, resolution, ambiguity) and each definition's parameter names; guide pages return the definitions they name in backticks (`symbols`), matched by name only when exactly one definition fits.
+
+### Changed
+
+- 19: prompt set 0.5.0 is the default for generation builds: codehover's guidance for denser line notes, overview, planning by concept with sections, and guide pages with tables, diagrams, linked definitions and links between pages; the page prompt gets the guide plan and the definitions in its evidence.
+- 00, README: the product owner decided to reuse codehover's viewer design and prompt writing guidance under its MIT licence, with the notice shipped at `/licenses/codehover.txt`; everything else stays independently implemented.
+
 ## [0.5.40] - 2026-11-21
 
 ### Fixed

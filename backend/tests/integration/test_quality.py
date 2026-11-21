@@ -57,6 +57,28 @@ async def test_replay_guide_is_fully_supported_and_publishable(
     assert all(c["status"] == "supported" and c["citations"] for c in page["claims"])
     listing = (await owner.get(f"/api/v1/builds/{build}/quality/checks", params={"limit": 2})).json()
     assert len(listing["items"]) == 2 and listing["next_cursor"]
+    index = (await owner.get(f"/api/v1/builds/{build}/guide")).json()
+    assert index["pages"] and all(p["section"] == "Code walkthrough" for p in index["pages"])
+    order = index["overview"]["reading_order"]
+    assert order and all(item["path"] for item in order)  # the reading order names files by path too
+    symbols = [r[0] for r in ddl("SELECT id FROM symbols WHERE build_id = :b", b=build)]
+    cards = [(await owner.get(f"/api/v1/builds/{build}/symbols/{sid}")).json() for sid in symbols]
+    linked = [c for c in cards if c["guides"]]
+    assert linked, "a definition inside cited lines links back to its guide page"
+    assert all({g["slug"] for g in c["guides"]} <= {p["slug"] for p in index["pages"]} for c in linked)
+    # Uses of definitions are hoverable: each reference names its definition(s), at a 0-based column.
+    files = ddl("SELECT DISTINCT source_file_id FROM reference_edges WHERE build_id = :b", b=build)
+    assert files
+    view = (await owner.get(f"/api/v1/builds/{build}/files/{files[0][0]}", params={"start_line": 1})).json()
+    assert view["references"] and all(r["targets"] for r in view["references"])
+    for r in view["references"]:
+        word = view["lines"][r["line"] - 1][r["column"] :]
+        assert any(word.startswith(t["name"].split(".")[-1]) for t in r["targets"]), (r, word)
+    assert all(isinstance(sym["params"], list) for sym in view["symbols"])
+    named = [sym for sym in view["symbols"] if sym["params"]]
+    if named:
+        card = (await owner.get(f"/api/v1/builds/{build}/symbols/{named[0]['id']}")).json()
+        assert named[0]["params"] == [p["name"] for p in card["card"]["params"]]
 
 
 async def test_checker_outage_leaves_claims_unchecked_and_blocks_publication(
@@ -223,6 +245,24 @@ async def test_single_line_citations_are_stored_as_ranges_and_stay_valid(
     assert rows and all(r[3] == "valid" for r in rows)
 
 
+def mentions(markdown: str) -> str:
+    return markdown + "\n\nSee also `helper()`, `Greeter.greet` and `nowhere`."  # uncited: not a claim
+
+
+async def test_definitions_named_in_backticks_are_linked_when_unambiguous(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
+    assert await drive(app, build, runtime=runtime_for(app, Rewriting(rewrite=mentions))) == ["completed"] * 8
+    slug = ddl("SELECT slug FROM guide_pages WHERE build_id = :b ORDER BY ordinal LIMIT 1", b=build)[0][0]
+    page = (await owner.get(f"/api/v1/builds/{build}/guide/{slug}")).json()
+    found = {m["mention"]: m for m in page["symbols"]}
+    assert set(found) >= {"helper", "Greeter.greet"} and "nowhere" not in found
+    assert found["helper"]["name"] == "helper" and found["Greeter.greet"]["name"] == "greet"
+    helper = (await owner.get(f"/api/v1/builds/{build}/symbols/{found['helper']['id']}")).json()
+    assert helper["path"] == "src/util.py" and helper["start_line"] == found["helper"]["start_line"]
+
+
 async def test_a_malformed_citation_is_repaired_before_the_page_is_stored(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
@@ -301,7 +341,7 @@ async def test_malformed_citations_are_invalid_and_cannot_be_waived(
     """A14: a citation by path instead of immutable file ID fails deterministic validation; it blocks
     publication and no waiver can lift it. The guide stage now repairs such pages before storing them, so
     this backstop is reached here by skipping that check (as for a page stored before it existed)."""
-    monkeypatch.setattr(generate, "validate_guide", lambda output, evidence: [])
+    monkeypatch.setattr(generate, "validate_guide", lambda output, evidence, pages=frozenset(): [])
     owner, _ws, build, app = await generation_build(client, idp, github, preset="balanced-v1", cap=5_000_000)
     provider = Opinionated(
         guide_suffix="\n\nThe entry point reads arguments [[src/app.py:5-7]].\n", repair=False

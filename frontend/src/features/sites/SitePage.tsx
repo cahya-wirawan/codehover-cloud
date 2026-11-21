@@ -45,7 +45,7 @@ export function SitePage() {
     );
   }
   return (
-    <section aria-labelledby="site-title">
+    <section aria-labelledby="site-title" className="reading rounded-[var(--radius-overlay)] bg-background px-4 pb-8 sm:px-6">
       <PageHeader
         title={<span id="site-title">{info.data?.project ?? "Loading…"}</span>}
         meta={
@@ -99,8 +99,8 @@ export function SiteGuide() {
 }
 
 export function SiteCode() {
-  const { source } = useSite();
-  return <CodeViewer source={source} />;
+  const { source, base } = useSite();
+  return <CodeViewer source={source} base={base} />;
 }
 
 export function SiteSearch() {

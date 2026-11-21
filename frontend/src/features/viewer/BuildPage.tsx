@@ -229,8 +229,8 @@ export function BuildOverview() {
 }
 
 export function BuildCode() {
-  const { build } = useBuild();
-  return <CodeViewer source={buildSource(build.id)} />;
+  const { build, base } = useBuild();
+  return <CodeViewer source={buildSource(build.id)} base={base} />;
 }
 
 export function BuildGuide() {

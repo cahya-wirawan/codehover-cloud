@@ -1,17 +1,26 @@
 import MarkdownIt, { type Token } from "markdown-it";
 import type { ReactNode } from "react";
+import { Link } from "react-router";
+
+import { MermaidDiagram } from "./MermaidDiagram";
 
 /**
- * Guide Markdown as React elements (19 P04). The parser is markdown-it's CommonMark preset, the one the
- * backend's allowlist checks pages with, so both see the same tokens. Raw HTML is off, so tags in model
- * output arrive as text; nothing here sets HTML. Tokens map onto a fixed set of elements; images render
- * as their alt text, and only https and in-page links become links. Anything else is shown as text.
+ * Guide Markdown as React elements (19 P04). The parser is markdown-it's CommonMark preset with tables,
+ * the configuration the backend's allowlist checks pages with, so both see the same tokens. Raw HTML is
+ * off, so tags in model output arrive as text; nothing here sets HTML. Tokens map onto a fixed set of
+ * elements; images render as their alt text, and only https, in-page and `guide:<slug>` links become
+ * links. Mermaid blocks are drawn as pictures (MermaidDiagram). Anything else is shown as text.
  */
-const parser = new MarkdownIt("commonmark", { html: false });
+const parser = new MarkdownIt("commonmark", { html: false }).enable("table");
 
 type Text = (text: string, key: string) => ReactNode;
+/** Where a `guide:<slug>` link goes, or null when this view has no guide to link to. */
+type GuideHref = (slug: string) => string | null;
+/** Inline code, which the guide turns into a link when it names a definition. */
+type InlineCode = (code: string, key: string) => ReactNode;
 
 const SAFE_HREF = /^(https:\/\/|#)/i;
+const GUIDE_HREF = /^guide:([a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)$/;
 
 function attr(token: Token, name: string): string | null {
   const value = token.attrGet(name);
@@ -28,7 +37,14 @@ function closing(tokens: Token[], start: number): number {
   return tokens.length - 1;
 }
 
-function inline(tokens: Token[], text: Text, prefix: string): ReactNode[] {
+interface Hooks {
+  text: Text;
+  guideHref: GuideHref;
+  code: InlineCode;
+}
+
+function inline(tokens: Token[], hooks: Hooks, prefix: string): ReactNode[] {
+  const { text, guideHref } = hooks;
   const out: ReactNode[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
@@ -36,14 +52,20 @@ function inline(tokens: Token[], text: Text, prefix: string): ReactNode[] {
     const key = `${prefix}.${i}`;
     if (token.nesting === 1) {
       const end = closing(tokens, i);
-      const children = inline(tokens.slice(i + 1, end), text, key);
+      const children = inline(tokens.slice(i + 1, end), hooks, key);
       i = end;
       if (token.type === "strong_open") out.push(<strong key={key} className="font-semibold">{children}</strong>);
       else if (token.type === "em_open") out.push(<em key={key}>{children}</em>);
       else if (token.type === "link_open") {
         const href = attr(token, "href") ?? "";
+        const page = GUIDE_HREF.exec(href)?.[1];
+        const internal = page ? guideHref(page) : null;
         out.push(
-          SAFE_HREF.test(href) ? (
+          internal ? (
+            <Link key={key} to={internal} className="guide-link">
+              {children}
+            </Link>
+          ) : SAFE_HREF.test(href) ? (
             <a
               key={key}
               href={href}
@@ -60,12 +82,7 @@ function inline(tokens: Token[], text: Text, prefix: string): ReactNode[] {
       continue;
     }
     if (token.type === "text") out.push(text(token.content, key));
-    else if (token.type === "code_inline")
-      out.push(
-        <code key={key} className="rounded-[4px] bg-surface-muted px-1 py-0.5 font-mono text-[13px]">
-          {token.content}
-        </code>,
-      );
+    else if (token.type === "code_inline") out.push(hooks.code(token.content, key));
     else if (token.type === "softbreak") out.push("\n");
     else if (token.type === "hardbreak") out.push(<br key={key} />);
     else if (token.type === "image") out.push(text(token.content, key)); // alt text only: no images (19 P04)
@@ -77,22 +94,30 @@ function inline(tokens: Token[], text: Text, prefix: string): ReactNode[] {
 const HEADING_OFFSET = 2;
 
 const HEADING: Record<string, string> = {
-  h1: "text-[24px] leading-8 font-semibold tracking-[-0.01em]",
-  h2: "mt-8 text-[19px] leading-7 font-semibold",
-  h3: "mt-6 text-[16px] leading-6 font-semibold",
-  h4: "mt-5 text-[15px] leading-6 font-semibold",
-  h5: "mt-4 text-[15px] leading-6 font-medium",
-  h6: "mt-4 text-[15px] leading-6 font-medium text-muted",
+  h1: "page-title",
+  h2: "mt-11 mb-3 text-[26px] leading-[1.2] font-medium tracking-[-0.01em]",
+  h3: "mt-8 mb-2 text-[20px] leading-[1.3] font-semibold",
+  h4: "mt-6 mb-2 text-[18px] leading-[1.35] font-semibold",
+  h5: "mt-5 text-[17px] font-semibold",
+  h6: "mt-5 text-[17px] font-medium text-muted",
 };
 
-function blocks(tokens: Token[], text: Text, prefix: string, tight = false): ReactNode[] {
+const ALIGN: Record<string, string> = { "text-align:left": "left", "text-align:center": "center", "text-align:right": "right" };
+
+function blocks(tokens: Token[], hooks: Hooks, prefix: string, tight = false): ReactNode[] {
+  const { text } = hooks;
+  const nested = (inner: Token[], key: string, isTight = false) => blocks(inner, hooks, key, isTight);
   const out: ReactNode[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (!token) continue;
     const key = `${prefix}.${i}`;
     if (token.type === "inline") {
-      out.push(...inline(token.children ?? [], text, key));
+      out.push(...inline(token.children ?? [], hooks, key));
+      continue;
+    }
+    if (token.type === "fence" && /^mermaid$/i.test(token.info.trim().split(/\s+/)[0] ?? "")) {
+      out.push(<MermaidDiagram key={key} code={token.content} />);
       continue;
     }
     if (token.type === "fence" || token.type === "code_block") {
@@ -127,7 +152,7 @@ function blocks(tokens: Token[], text: Text, prefix: string, tight = false): Rea
         const Tag = `h${Math.min(6, level + HEADING_OFFSET)}` as "h3" | "h4" | "h5" | "h6";
         out.push(
           <Tag key={key} className={HEADING[`h${Math.min(6, level)}`]}>
-            {blocks(inner, text, key)}
+            {nested(inner, key)}
           </Tag>,
         );
         break;
@@ -136,10 +161,10 @@ function blocks(tokens: Token[], text: Text, prefix: string, tight = false): Rea
         // Tight list items hide their paragraphs, as CommonMark renders them.
         out.push(
           tight ? (
-            <span key={key}>{blocks(inner, text, key)}</span>
+            <span key={key}>{nested(inner, key)}</span>
           ) : (
             <p key={key} className="mt-4">
-              {blocks(inner, text, key)}
+              {nested(inner, key)}
             </p>
           ),
         );
@@ -147,7 +172,7 @@ function blocks(tokens: Token[], text: Text, prefix: string, tight = false): Rea
       case "bullet_list_open":
       case "ordered_list_open": {
         const isTight = inner.some((t) => t.type === "paragraph_open" && t.hidden);
-        const items = blocks(inner, text, key, isTight);
+        const items = nested(inner, key, isTight);
         const start = Number(attr(token, "start") ?? "1");
         out.push(
           token.type === "bullet_list_open" ? (
@@ -165,25 +190,68 @@ function blocks(tokens: Token[], text: Text, prefix: string, tight = false): Rea
       case "list_item_open":
         out.push(
           <li key={key} className="pl-1 [&>*:first-child]:mt-0">
-            {blocks(inner, text, key, tight)}
+            {nested(inner, key, tight)}
           </li>,
         );
         break;
       case "blockquote_open":
         out.push(
           <blockquote key={key} className="mt-4 border-l-2 border-border pl-4 text-muted [&>*:first-child]:mt-0">
-            {blocks(inner, text, key)}
+            {nested(inner, key)}
           </blockquote>,
         );
         break;
+      case "table_open":
+        out.push(
+          <div key={key} className="guide-table">
+            <table>{nested(inner, key)}</table>
+          </div>,
+        );
+        break;
+      case "thead_open":
+        out.push(<thead key={key}>{nested(inner, key)}</thead>);
+        break;
+      case "tbody_open":
+        out.push(<tbody key={key}>{nested(inner, key)}</tbody>);
+        break;
+      case "tr_open":
+        out.push(<tr key={key}>{nested(inner, key)}</tr>);
+        break;
+      case "th_open":
+      case "td_open": {
+        const Cell = token.type === "th_open" ? "th" : "td";
+        const align = ALIGN[attr(token, "style") ?? ""];
+        out.push(
+          <Cell key={key} {...(align ? { style: { textAlign: align as "left" | "center" | "right" } } : {})}>
+            {nested(inner, key)}
+          </Cell>,
+        );
+        break;
+      }
       default:
-        out.push(<div key={key}>{blocks(inner, text, key)}</div>);
+        out.push(<div key={key}>{nested(inner, key)}</div>);
     }
   }
   return out;
 }
 
-/** Renders `markdown`; `text` turns each run of plain text into nodes (the guide uses it for citations). */
-export function GuideMarkdown({ markdown, text }: { markdown: string; text: Text }) {
-  return <div className="[&>*:first-child]:mt-0">{blocks(parser.parse(markdown, {}), text, "md")}</div>;
+const NO_GUIDE: GuideHref = () => null;
+const PLAIN_CODE: InlineCode = (code, key) => <code key={key}>{code}</code>;
+
+/** Renders `markdown`; `text` turns each run of plain text into nodes (the guide uses it for citations),
+ * `guideHref` places links to other guide pages and `code` renders inline code. */
+export function GuideMarkdown({
+  markdown,
+  text,
+  guideHref = NO_GUIDE,
+  code = PLAIN_CODE,
+}: {
+  markdown: string;
+  text: Text;
+  guideHref?: GuideHref;
+  code?: InlineCode;
+}) {
+  return (
+    <div className="[&>*:first-child]:mt-0">{blocks(parser.parse(markdown, {}), { text, guideHref, code }, "md")}</div>
+  );
 }

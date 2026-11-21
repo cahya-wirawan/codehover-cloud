@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.5.40",
+  "package_version": "0.6.0",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -45,7 +45,7 @@
   "documents": {
     "00_REFERENCE_ANALYSIS.md": {
       "status": "complete specification",
-      "sha256": "be2fbadf7c664ebdcf7feb6329d97d18c52209c59d9f30a275c1806edade1a64"
+      "sha256": "dc3706c83e96477535be48232d17998e339d8f6ee90d02cc8abdc3137fd8a39a"
     },
     "01_PRD.md": {
       "status": "complete specification",
@@ -53,7 +53,7 @@
     },
     "02_UX_SCREEN_SPEC.md": {
       "status": "complete specification",
-      "sha256": "6cdd5c2bfee8199ce60f32d55540b5254b01c1df2939ef7b392db31c869e10f1"
+      "sha256": "617bbc25e094da7d6fdf6c41274d30aa2538f543647e66b52dc4968bd133f540"
     },
     "03_USER_FLOWS.md": {
       "status": "complete specification",
@@ -65,11 +65,11 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "343015fe9c63f01694cce2be5a2abb77cc95bb7923e6a309bc942437f244fddd"
+      "sha256": "08a61ce6418fc57742762ae52e316207179cf9ab83f151457b6df8d0a4218c31"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "9268c52220b22dd784e627d94005d2949d188f897a28427c8ba33e13920e8891"
+      "sha256": "24506b4c2fe558ff92dd019490315103a7b66c33eb495eaeaf3a6fa0a52b19b0"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
@@ -97,7 +97,7 @@
     },
     "13_TEST_PLAN.md": {
       "status": "complete specification",
-      "sha256": "f271090b13f45ff43c9d95d30c7ff08aeeae078d8637052b3a28a9c29f365317"
+      "sha256": "c70e37f385e70f421c643f1284a2e73accb28124734978938527a14dd98ce961"
     },
     "14_IMPLEMENTATION_ROADMAP.md": {
       "status": "complete specification",
@@ -109,11 +109,11 @@
     },
     "16_REPO_STRUCTURE.md": {
       "status": "complete specification",
-      "sha256": "87d09bb01a360b9246cc1efc3986ab1bf31a9647eae776b9e24f41c1e034168f"
+      "sha256": "9e2ccc2476c8ee15b71dd0b70aa32a39e90ca1347db599b490d87e4f457640c2"
     },
     "17_DESIGN_SYSTEM.md": {
       "status": "complete specification",
-      "sha256": "c57ccc12f3e961d0414432166c35950d5c51a47be5d68414a449863a830452b4"
+      "sha256": "da47f88edde101fb4f0e3f8e1d577357aa48e74bc1e71f7d3f8072ca39431d63"
     },
     "18_RELEASE_CHECKLIST.md": {
       "status": "complete specification",
@@ -121,7 +121,7 @@
     },
     "19_PROMPT_LIBRARY.md": {
       "status": "complete specification",
-      "sha256": "8e5331b4ecafcccc95f66b395c3578135e735892053809fbc96f730d4b9aeaff"
+      "sha256": "b8b473217a484c5900ea75637e9cfbbe954131a481dbe8c9ac2473ba08bd63ec"
     },
     "20_ACCEPTANCE_CRITERIA.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "f338c3052a9a06b9d64514a53a02f321aec3e48f00cdb46549a4fb1ebd491150"
+      "sha256": "ce6913ab877bd442289d4f45f63d0e90bc7188e774ecc6d65db7bbead499831e"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "cb635c2c0cae80ed38a6bd91027138b717e05d8ad1c92293cc34341baa3a521f"
+      "sha256": "25bab0d45722ce9dfd5d5488aeac26614233dbba09468bfa390bb745307edfa7"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "8615cf4f4df6e1673525b2447d6c869f817a1e7496a80b8d3bbe9b3a97e541ef"
+      "sha256": "4f4fb18b65de27f1794bc033080ea858772d4ef6bec06ad350bc4cff890f7c33"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "ecbf2f9d782aa197ca6567dc900587698ece3bc73cb62b03f68dade5418c149b"
+      "sha256": "97a5d6e540a6120d09c39ddb667e0e8e2bac7fcc2ffef813b82e08fd60365bce"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -185,7 +185,7 @@
     },
     "contracts/guide-plan.schema.json": {
       "status": "reference template/schema",
-      "sha256": "705332773dbb0f0fd96f94464540b224278b166edccb70a8a4d09f275092423c"
+      "sha256": "e62cd46e8069be7ef19c9e0d7e7e00de1a916d43a5957ee0a2be47067be68265"
     },
     "contracts/kb-export.schema.json": {
       "status": "reference template/schema",
@@ -260,5 +260,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "e6f135ddecafa39a8993b2ade31681b14199fcb8c5c5738e596e706a24c4ec3d"
+  "master_spec_sha256": "41997786b2f6132de784f9ffcf7d9d0ed4e5d4b1ed443571687aaa64605e3d59"
 }
