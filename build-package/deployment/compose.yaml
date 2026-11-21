@@ -115,6 +115,19 @@ services:
     volumes: ["objects:/data"]
     ports: ["127.0.0.1:${S3_HOST_PORT:-8333}:8333"]
     networks: [services]
+  mail:
+    # Local mail catcher (Mailpit): it accepts every message on port 1025 and delivers none. Its inbox is
+    # at http://127.0.0.1:8025; the SMTP port is reachable only on the services network.
+    image: ${MAILPIT_IMAGE:-axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231}
+    environment:
+      MP_MAX_MESSAGES: "500"
+    ports: ["127.0.0.1:${MAIL_HOST_PORT:-8025}:8025"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [services]
+    restart: unless-stopped
   migrate:
     <<: *backend
     environment:
@@ -150,6 +163,17 @@ services:
   worker:
     <<: *backend
     command: [python, -m, app.workers.main]
+    environment:
+      <<: *app-env
+      # Owner notices (11): only the worker sends email. Defaults point at the local Mailpit below, so
+      # nothing leaves the machine; production names its relay (starttls or tls, with credentials).
+      # `SMTP_HOST=` in .env turns email off (notices are recorded as skipped).
+      SMTP_HOST: ${SMTP_HOST-mail}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_TLS: ${SMTP_TLS:-none}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-codehover <notices@codehover.localhost>}
     volumes: ["${MODEL_CATALOG_HOST_DIR:-./catalog}:/etc/codehover/catalog:ro"]  # MODEL_CATALOG_FILE (07)
     depends_on:
       migrate: {condition: service_completed_successfully}

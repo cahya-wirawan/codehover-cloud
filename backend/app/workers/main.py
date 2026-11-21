@@ -1,7 +1,8 @@
 """`python -m app.workers.main`: task consumer (04). Refuses to start without network isolation on Linux.
 
 Beside the consumer, a maintenance loop purges due deletions (app.jobs.purge), processes Stripe webhook
-receipts and applies the billing hosting rules (app.modules.billing.sync), hourly sweeps retention
+receipts and applies the billing hosting rules (app.modules.billing.sync), sends owner notices
+(app.modules.notices.delivery), hourly sweeps retention
 (app.jobs.retention) and daily reconciles billing with the provider, with the same runtime role, object
 store and tenant context rules as every stage."""
 
@@ -18,6 +19,8 @@ import aio_pika
 from pydantic import ValidationError
 
 from app.adapters.billing import billing_provider
+from app.adapters.email import Mailer
+from app.adapters.email.smtp import SmtpMailer
 from app.core import metrics
 from app.core.settings import Settings, get_settings
 from app.engine import indexers, sandbox
@@ -29,6 +32,7 @@ from app.jobs.runner import process
 from app.jobs.runtime import build_runtime
 from app.jobs.stages import Runtime
 from app.modules.billing import sync as billing_sync
+from app.modules.notices import delivery as notices
 from app.modules.projects import pushes
 from app.workers._shell import run
 
@@ -47,11 +51,26 @@ def _not_dumpable() -> None:
             raise OSError(ctypes.get_errno(), "PR_SET_DUMPABLE failed")
 
 
+def mailer(settings: Settings) -> Mailer | None:
+    """The SMTP relay for owner notices; None when SMTP_HOST is unset (notices are recorded, not sent)."""
+    if settings.smtp_host is None or settings.smtp_from is None:
+        return None
+    return SmtpMailer(
+        settings.smtp_host,
+        settings.smtp_port,
+        settings.smtp_from,
+        tls=settings.smtp_tls,
+        username=settings.smtp_username,
+        password=settings.smtp_password.get_secret_value() if settings.smtp_password else None,
+    )
+
+
 async def maintenance(
     runtime: Runtime,
     stop: asyncio.Event,
     settings: Settings | None = None,
     provider: billing_sync.Provider | None = None,
+    mail: Mailer | None = None,
 ) -> None:
     last_sweep = 0.0
     last_reconcile = time.monotonic()  # the first reconciliation runs a day after start
@@ -74,6 +93,10 @@ async def maintenance(
                         extra=await billing_sync.reconcile(runtime.sessions, provider, settings),
                     )
                     last_reconcile = time.monotonic()
+            if settings is not None:
+                counts = await notices.deliver_due(runtime.sessions, mail, settings)
+                if counts:
+                    logger.info("owner notices processed", extra=counts)
             if time.monotonic() - last_sweep >= RETENTION_SECONDS:
                 counts = await retention.sweep(runtime.sessions, runtime.store)
                 counts["billing_hosting"] = await billing_sync.sweep_hosting(
@@ -117,7 +140,7 @@ async def body(stop: asyncio.Event) -> None:
 
         tag = await queue.consume(on_message)
         housekeeping = asyncio.create_task(
-            maintenance(runtime, stop, settings, billing_provider(settings, http))
+            maintenance(runtime, stop, settings, billing_provider(settings, http), mailer(settings))
         )
         logger.info("process ready", extra={"role": "worker"})
         await stop.wait()

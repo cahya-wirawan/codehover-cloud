@@ -795,3 +795,20 @@ class ProjectMember(Base):
     role: Mapped[str] = mapped_column(Text)
     granted_by: Mapped[UUID] = ref("users.id")
     created_at: Mapped[datetime] = ts(default_now=True)
+
+
+# ---------------------------------------------------------------- owner notices (0034)
+class OwnerNotice(Base):
+    __tablename__ = "owner_notices"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    kind: Mapped[str] = mapped_column(Text)
+    dedupe_key: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict[str, Any]] = jsonb(default="'{}'::jsonb")
+    state: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = ts(default_now=True)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    recipients: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    sent_at: Mapped[datetime | None] = ts(nullable=True)

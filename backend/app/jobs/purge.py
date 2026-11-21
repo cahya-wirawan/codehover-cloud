@@ -108,6 +108,7 @@ async def _purge_workspace(
         for statement in (
             "DELETE FROM generation_cache WHERE workspace_id = :w",
             "DELETE FROM invitations WHERE workspace_id = :w",
+            "DELETE FROM owner_notices WHERE workspace_id = :w",
             # The workspace is `deleting`, so the owner invariant no longer applies (0003).
             "DELETE FROM memberships WHERE workspace_id = :w",
             "UPDATE repository_connections SET status = 'revoked', updated_at = now()"

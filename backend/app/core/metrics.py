@@ -84,6 +84,8 @@ PROVIDER_TOKENS = Counter(
 )
 CACHE = Counter("codehover_generation_cache_total", "Generation cache lookups", ["result"], registry=REGISTRY)
 PURGES = Counter("codehover_purges_total", "Deletion purges", ["scope", "outcome"], registry=REGISTRY)
+# Owner notice emails by outcome: sent, skipped, failed, or the error code of a failed or retried send.
+NOTICES = Counter("codehover_owner_notices_total", "Owner notice deliveries", ["outcome"], registry=REGISTRY)
 # T23: SCIP indexer runs; a "failed" outcome means that language family fell back to name matching.
 INDEXER_RUNS = Counter(
     "codehover_reference_indexer_runs_total",

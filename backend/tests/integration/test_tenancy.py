@@ -664,3 +664,41 @@ def test_every_tenant_table_forces_rls_with_a_runtime_tenant_policy(
         # Tenant rows are scoped by the workspace context; idempotency keys by their user (05).
         assert any("app.workspace_id" in q or "app.user_id" in q for (q,) in policies), table
         assert runtime.one(f"SELECT count(*) FROM {table}") == 0, table  # noqa: S608 - names from the catalog
+
+
+def test_owner_notices_are_tenant_scoped_and_found_by_the_resolver(world: World, runtime: Db) -> None:
+    """0034: owner notices follow the tenant policy; only their delivery columns change, and the due-notice
+    resolver returns identifiers only."""
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    runtime.run(
+        "INSERT INTO owner_notices(workspace_id, kind, dedupe_key) VALUES (:w, 'dispute_opened', 'x')",
+        w=world.b.workspace,
+    )
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM owner_notices WHERE workspace_id = :w", w=world.b.workspace) == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO owner_notices(workspace_id, kind, dedupe_key) VALUES (:w, 'dispute_opened', 'y')",
+        w=world.b.workspace,
+    )
+    runtime.run(
+        "INSERT INTO owner_notices(workspace_id, kind, dedupe_key) VALUES (:w, 'dispute_lost', 'z')",
+        w=world.a.workspace,
+    )
+    expect(
+        runtime,
+        DENIED,
+        "UPDATE owner_notices SET kind = 'dispute_opened' WHERE workspace_id = :w",
+        w=world.a.workspace,
+    )
+    expect(runtime, DENIED, "UPDATE owner_notices SET workspace_id = :b", b=world.b.workspace)
+    runtime.run(
+        "UPDATE owner_notices SET state = 'sent', sent_at = now() WHERE workspace_id = :w",
+        w=world.a.workspace,
+    )
+    runtime.context()
+    due = runtime.rows("SELECT * FROM app_private.due_owner_notices(500)")
+    assert all(set(r._mapping) == {"workspace_id", "notice_id"} for r in due)
+    assert world.b.workspace in {r.workspace_id for r in due}
+    assert runtime.one("SELECT count(*) FROM owner_notices") == 0  # the resolver exposes no rows
