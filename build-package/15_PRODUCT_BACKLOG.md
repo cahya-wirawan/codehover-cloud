@@ -28,6 +28,6 @@ Each task needs implementation, focused verification and updated contracts; esti
 | T22 | P1/L | German/Indonesian and beginner/expert variants | T12,16 | Citation markers/schema and variant anchor tests pass |
 | T23 | P1/L | Sandboxed Python/TS/Rust SCIP integration | T06,08 | No network/install/hooks; timeout fallback labeled |
 | T24 | P1/L | Batch and BYOK adapters | T10–12 | Persisted batch IDs/keys, no silent price fallback |
-| T25 | P2/L | Authenticated hosted MCP and custom domain delivery | T15–19 | Scoped tokens/origin/cross-tenant evals pass |
+| T25 | P2/L | Authenticated hosted MCP (done: `/mcp/{slug}` with personal access tokens, 0035) and custom domain delivery | T15–19 | Scoped tokens/origin/cross-tenant evals pass |
 
 Engineering definition of done: current contract; no unreviewed tenancy path; migration included for schema changes; focused tests at the relevant trust boundary; sanitized error handling; user-visible states; no unexpected provider calls in tests; docs and metrics updated. Maintain requirement/test traceability through FR IDs and acceptance scenarios.

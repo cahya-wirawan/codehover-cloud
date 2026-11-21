@@ -32,7 +32,9 @@ async def run_once(
     key: str | None,
     body: dict[str, Any],
     produce: Callable[[], Awaitable[tuple[int, dict[str, Any]]]],
+    stored: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[int, dict[str, Any]]:
+    """`stored` transforms the response kept for replays (a secret shown once is removed from it)."""
     if key is None or not 16 <= len(key) <= 128:
         raise ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "Send an Idempotency-Key header (16-128 characters).")
     digest = _digest(body)
@@ -55,8 +57,8 @@ async def run_once(
             )
         if existing.response_status is None:
             raise ApiError(409, "IDEMPOTENCY_IN_PROGRESS", "The original request is still being processed.")
-        stored: dict[str, Any] = existing.response_body
-        return int(existing.response_status), stored
+        replay: dict[str, Any] = existing.response_body
+        return int(existing.response_status), replay
     try:
         await db.execute(
             text("DELETE FROM idempotency_keys WHERE user_id = :u AND route = :r AND key = :k"), params
@@ -90,7 +92,7 @@ async def run_once(
             "UPDATE idempotency_keys SET response_status = :s, response_body = CAST(:b AS jsonb)"
             " WHERE user_id = :u AND route = :r AND key = :k"
         ),
-        {**params, "s": status, "b": json.dumps(response, default=str)},
+        {**params, "s": status, "b": json.dumps(stored(response) if stored else response, default=str)},
     )
     await db.commit()
     return status, response

@@ -71,6 +71,13 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
     grant = await unsafe(
         owner, "POST", f"/api/v1/workspaces/{ws}/support-access", json={"hours": 1, "reason": "victim grant"}
     )
+    token = await unsafe(
+        owner,
+        "POST",
+        f"/api/v1/workspaces/{ws}/access-tokens",
+        json={"name": "victim token", "expires_in_days": 30},
+        headers={"Idempotency-Key": secrets.token_hex(12)},
+    )
     me = (await owner.get("/api/v1/me")).json()
     one = lambda sql, **kw: str(ddl(sql, **kw)[0][0])  # noqa: E731
     ids = {
@@ -92,6 +99,7 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
         "invitation_id": invitation.json()["id"],
         "user_id": me["id"],
         "grant_id": grant.json()["id"],
+        "token_id": token.json()["id"],
         "session_id": one(
             "SELECT id FROM sessions WHERE user_id = :u AND revoked_at IS NULL LIMIT 1", u=me["id"]
         ),
@@ -150,6 +158,10 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
             "slug": "mine",
         },
         ("POST", "/api/v1/workspaces/{workspace_id}/support-access"): {"hours": 72, "reason": "let me in"},
+        ("POST", "/api/v1/workspaces/{workspace_id}/access-tokens"): {
+            "name": "stolen",
+            "expires_in_days": 365,
+        },
         ("POST", "/api/v1/workspaces/{workspace_id}/billing/checkout"): {"plan": "team"},
         ("POST", "/api/v1/workspaces/{workspace_id}/billing/portal"): {},
         ("POST", "/api/v1/workspaces/{workspace_id}/billing/trial"): {},
@@ -249,6 +261,7 @@ async def test_another_tenant_is_refused_on_every_route_and_changes_nothing(
         == 0
     )
     assert ddl("SELECT revoked_at IS NULL FROM sessions WHERE id = :s", s=ids["session_id"])[0][0]
+    assert ddl("SELECT revoked_at IS NULL FROM access_tokens WHERE id = :t", t=ids["token_id"])[0][0]
 
 
 async def test_anonymous_visitors_get_nothing_from_private_routes(

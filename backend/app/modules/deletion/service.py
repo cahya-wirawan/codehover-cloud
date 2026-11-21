@@ -268,6 +268,11 @@ async def delete_account(
     for m in memberships:
         await set_context(db, workspace_id=m.workspace_id, user_id=user_id)
         member = Member(principal, m.workspace_id, m.role)
+        # The account's access tokens go with it (names are the person's own words).
+        await db.execute(
+            text("DELETE FROM access_tokens WHERE workspace_id = :w AND user_id = :u"),
+            {"w": m.workspace_id, "u": user_id},
+        )
         if m.workspace_id in listed:
             await db.execute(text("SELECT 1 FROM workspaces WHERE id = :w FOR UPDATE"), {"w": m.workspace_id})
             removed.append(await _delete_workspace(db, member))

@@ -702,3 +702,36 @@ def test_owner_notices_are_tenant_scoped_and_found_by_the_resolver(world: World,
     assert all(set(r._mapping) == {"workspace_id", "notice_id"} for r in due)
     assert world.b.workspace in {r.workspace_id for r in due}
     assert runtime.one("SELECT count(*) FROM owner_notices") == 0  # the resolver exposes no rows
+
+
+def test_access_tokens_are_tenant_scoped_and_resolved_by_digest_only(world: World, runtime: Db) -> None:
+    """0035: tokens follow the tenant policy; only use and revocation change; the resolver answers a
+    digest with identifiers, and only while the token's user is still a member."""
+    digest = b"\x01" * 32
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    runtime.run(
+        "INSERT INTO access_tokens(workspace_id, user_id, name, token_hash, prefix, expires_at)"
+        " VALUES (:w, :u, 't', :h, 'chm_abcd1234', now() + interval '1 day')",
+        w=world.b.workspace,
+        u=world.b.user,
+        h=digest,
+    )
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM access_tokens WHERE workspace_id = :w", w=world.b.workspace) == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO access_tokens(workspace_id, user_id, name, token_hash, prefix, expires_at)"
+        " VALUES (:w, :u, 't', :h, 'chm_abcd1234', now() + interval '1 day')",
+        w=world.b.workspace,
+        u=world.a.user,
+        h=b"\x02" * 32,
+    )
+    expect(runtime, DENIED, "UPDATE access_tokens SET user_id = :u", u=world.a.user)
+    expect(runtime, DENIED, "UPDATE access_tokens SET expires_at = now() + interval '9 years'")
+    runtime.context()
+    found = runtime.rows("SELECT * FROM app_private.access_token(:h)", h=digest)
+    assert [(r.workspace_id, r.user_id) for r in found] == [(world.b.workspace, world.b.user)]
+    assert set(found[0]._mapping) == {"token_id", "workspace_id", "user_id", "scope"}
+    assert runtime.rows("SELECT * FROM app_private.access_token(:h)", h=b"\x03" * 32) == []
+    assert runtime.one("SELECT count(*) FROM access_tokens") == 0  # the resolver exposes no rows
