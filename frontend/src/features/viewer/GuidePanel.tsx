@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { Badge as UiBadge } from "../../components/ui/badge";
 import type { CheckStatus, GuidePage, ViewerSource } from "../../lib/api/resources";
 import { cn } from "../../lib/cn";
+import { GuideMarkdown } from "./GuideMarkdown";
 
 const BADGE: Record<CheckStatus, { label: string; tone: "success" | "warning" | "destructive" | "neutral"; icon: ReactNode }> = {
   supported: { label: "Supported", tone: "success", icon: <CircleCheck aria-hidden="true" /> },
@@ -27,45 +28,46 @@ export function Badge({ status }: { status: CheckStatus }) {
   );
 }
 
-/** Guide Markdown is shown as text, never as HTML (19 P04); citations become labeled source ranges. */
+/** Guide Markdown rendered as elements, never as HTML (19 P04); citations become labeled source ranges. */
 export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: string }) {
   const paths = new Map(page.citations.map((c) => [c.file_id, c.path ?? "unknown file"]));
-  const parts: (string | { label: string; key: string; href: string | null })[] = [];
-  let last = 0;
-  for (const match of page.markdown.matchAll(CITATION)) {
-    parts.push(page.markdown.slice(last, match.index));
-    const [, fileId = "", start = "", end = ""] = match;
-    const known = paths.has(fileId);
-    parts.push({
-      label: `${paths.get(fileId) ?? "unknown file"}:${start}–${end}`,
-      key: `${match.index}`,
-      href: known && codeBase ? `${codeBase}/code?file=${encodeURIComponent(fileId)}&line=${start}&end=${end}` : null,
-    });
-    last = (match.index ?? 0) + match[0].length;
-  }
-  parts.push(page.markdown.slice(last));
-  return (
-    <div className="max-w-[72ch] whitespace-pre-wrap text-[15px] leading-[26px]">
-      {parts.map((part, i) =>
-        typeof part === "string" ? (
-          <Fragment key={i}>{part}</Fragment>
-        ) : part.href ? (
+  const withCitations = (text: string, key: string): ReactNode => {
+    const parts: ReactNode[] = [];
+    let last = 0;
+    for (const match of text.matchAll(CITATION)) {
+      parts.push(text.slice(last, match.index));
+      const [, fileId = "", start = "", end = ""] = match;
+      const label = `${paths.get(fileId) ?? "unknown file"}:${start}–${end}`;
+      const href =
+        paths.has(fileId) && codeBase
+          ? `${codeBase}/code?file=${encodeURIComponent(fileId)}&line=${start}&end=${end}`
+          : null;
+      parts.push(
+        href ? (
           <Link
-            key={part.key}
-            to={part.href}
+            key={`${key}.${match.index}`}
+            to={href}
             className="mx-0.5 inline-flex items-center gap-1 rounded-[4px] border border-primary/25 bg-primary/[0.06] px-1.5 align-baseline font-mono text-[12px] leading-5 text-primary hover:border-primary/50"
           >
-            <FileCode2 aria-hidden="true" className="size-3" />[{part.label}]
+            <FileCode2 aria-hidden="true" className="size-3" />[{label}]
           </Link>
         ) : (
           <span
-            key={part.key}
+            key={`${key}.${match.index}`}
             className="mx-0.5 inline-flex items-center rounded-[4px] border border-border px-1.5 align-baseline font-mono text-[12px] leading-5 text-muted"
           >
-            [{part.label}]
+            [{label}]
           </span>
         ),
-      )}
+      );
+      last = (match.index ?? 0) + match[0].length;
+    }
+    parts.push(text.slice(last));
+    return <Fragment key={key}>{parts}</Fragment>;
+  };
+  return (
+    <div className="max-w-[72ch] text-[15px] leading-[26px]">
+      <GuideMarkdown markdown={page.markdown} text={withCitations} />
     </div>
   );
 }

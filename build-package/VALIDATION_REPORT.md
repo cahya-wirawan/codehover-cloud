@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-21 · Package version 0.5.37
+Date: 2026-11-21 · Package version 0.5.38
+
+0.5.38 renders guide Markdown in the viewer, which had shown it as plain text. `frontend/src/features/viewer/guide.test.tsx` checks headings (two levels below the Guide heading), ordered and bullet lists, emphasis, inline and fenced code, block quotes, and citations inside list items. It also checks that only https and in-page links become links, that `javascript:`, `data:` and `http:` targets stay text, that images show their alt text, and that raw HTML stays text. The XSS corpus (`xss.test.tsx`) passes unchanged. Results: frontend 46 tests passed; lint, typecheck, build and the env check pass.
 
 0.5.37 stops writer stages when the provider never answers. A live Anthropic build from the local stack ended `ready` with only source-only text: every request over about 1.5 KB was reset on the network's IPv4 route, each call was retried four times as `unknown`, and the 20 attempts held $1.70. `tests/integration/test_generation.py` now checks that a single unknown overview call is not retried within the call, stops the stage and succeeds on the task's retry, holding one maximum. With every explain call unknown, the build fails after the task's attempts, makes one call per chunk per attempt, and writes no fallback explanation. Results: integration 234 passed, unit 250 passed (8 skipped).
 
