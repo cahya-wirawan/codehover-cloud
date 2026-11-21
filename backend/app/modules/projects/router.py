@@ -293,6 +293,24 @@ class FileSymbol(BaseModel):
     start_column: int
     end_column: int
     summary: str | None
+    params: list[str]  # names of the parameters its card describes, for hovering their uses
+
+
+class ReferenceTarget(BaseModel):
+    id: UUID
+    name: str
+    kind: str
+
+
+class FileReference(BaseModel):
+    """A use of a definition in this file: the identifier starting at (line, column), 0-based Unicode
+    scalar column, and the definition(s) it may refer to (several when ambiguous)."""
+
+    line: int
+    column: int
+    targets: list[ReferenceTarget]
+    resolution: str  # index (resolved by a SCIP indexer) or name (matched by name)
+    ambiguous: bool
 
 
 class ChunkExplanation(BaseModel):
@@ -351,10 +369,20 @@ class PageClaim(BaseModel):
     citations: list[ClaimCitation]
 
 
+class MentionedSymbol(BaseModel):
+    mention: str  # the text between the backticks, without a trailing ()
+    id: UUID
+    name: str
+    kind: str
+    file_id: UUID
+    start_line: int
+
+
 class GuidePageOut(GuidePageSummary):
     markdown: str
     citations: list[Citation]
     claims: list[PageClaim]
+    symbols: list[MentionedSymbol]  # definitions the page names in backticks, matched unambiguously
 
 
 class QualityOut(BaseModel):
@@ -413,6 +441,7 @@ class FileOut(BaseModel):
     end_line: int
     lines: list[str]
     symbols: list[FileSymbol]
+    references: list[FileReference]
     explanation: FileExplanationOut | None = None
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import PurePosixPath
 from typing import Any
 from uuid import UUID
@@ -573,12 +574,43 @@ async def file_view(
     symbols = await db.execute(
         text(
             "SELECT id, symbol_key, name, kind, start_line, end_line, start_column, end_column,"
-            " card->>'summary' AS summary FROM symbols"
+            " card->>'summary' AS summary, ARRAY(SELECT p->>'name' FROM jsonb_array_elements("
+            "CASE WHEN jsonb_typeof(card->'params') = 'array' THEN card->'params' ELSE '[]'::jsonb END) p"
+            " WHERE p->>'name' IS NOT NULL) AS params FROM symbols"
             " WHERE workspace_id = :w AND build_id = :b AND source_file_id = :f ORDER BY start_line, start_column"
         ),
         {"w": member.workspace_id, "b": build_id, "f": file_id},
     )
     symbol_list = [dict(s._mapping) for s in symbols]
+    first = max(1, start_line)
+    window_end = min(end_line or first + MAX_LINES_PER_REQUEST - 1, first + MAX_LINES_PER_REQUEST - 1)
+    edges = await db.execute(
+        text(
+            'SELECT e.line, e."column", e.resolution, e.ambiguity_group IS NOT NULL AS ambiguous,'
+            " t.id, t.name, t.kind FROM reference_edges e JOIN symbols t"
+            " ON t.workspace_id = e.workspace_id AND t.id = e.to_symbol_id"
+            " WHERE e.workspace_id = :w AND e.build_id = :b AND e.source_file_id = :f"
+            ' AND e.line BETWEEN :first AND :last ORDER BY e.line, e."column", t.name'
+        ),
+        {"w": member.workspace_id, "b": build_id, "f": file_id, "first": first, "last": window_end},
+    )
+    references: dict[tuple[int, int], dict[str, Any]] = {}
+    for e in edges:
+        at = references.setdefault(
+            (e.line, e.column),
+            {
+                "line": e.line,
+                "column": e.column,
+                "targets": [],
+                "resolution": e.resolution,
+                "ambiguous": False,
+            },
+        )
+        if all(t["id"] != e.id for t in at["targets"]):
+            at["targets"].append({"id": e.id, "name": e.name, "kind": e.kind})
+        at["ambiguous"] = at["ambiguous"] or e.ambiguous or len(at["targets"]) > 1
+        if e.resolution == "index":
+            at["resolution"] = "index"
     explained = (
         await db.execute(
             text(
@@ -590,8 +622,7 @@ async def file_view(
     ).one_or_none()
     await db.commit()  # no transaction open while reading object storage
     lines = (await objects.get(f.blob_key)).decode("utf-8").split("\n")
-    first = max(1, start_line)
-    last = min(len(lines), end_line or first + MAX_LINES_PER_REQUEST - 1, first + MAX_LINES_PER_REQUEST - 1)
+    last = min(len(lines), window_end)
     return {
         "id": f.id,
         "path": f.path,
@@ -602,6 +633,7 @@ async def file_view(
         "end_line": last,
         "lines": lines[first - 1 : last],
         "symbols": symbol_list,
+        "references": [r for r in references.values() if r["line"] <= last],
         "explanation": None
         if explained is None
         else {
@@ -713,6 +745,7 @@ async def guide_page(
     page_claims = await quality.page_claims(db, member, page.id)
     await db.commit()
     markdown = (await objects.get(page.markdown_key)).decode("utf-8")
+    mentions = await _mentioned_symbols(db, member, build_id, markdown)
     citations = [
         {"file_id": fid, "path": paths.get(fid), "start_line": int(a), "end_line": int(b)}
         for fid, a, b in sorted(set(CITATION.findall(markdown)), key=lambda c: (c[0], int(c[1])))
@@ -720,7 +753,63 @@ async def guide_page(
     result = dict(page._mapping)
     result.pop("markdown_key")
     result.pop("id")
-    return {**result, "markdown": markdown, "citations": citations, "claims": page_claims}
+    return {
+        **result,
+        "markdown": markdown,
+        "citations": citations,
+        "claims": page_claims,
+        "symbols": mentions,
+    }
+
+
+MENTION = re.compile(r"`([A-Za-z_][\w]*(?:(?:\.|::)[A-Za-z_][\w]*)*)(?:\(\))?`")
+
+
+async def _mentioned_symbols(
+    db: AsyncSession, member: Reader, build_id: UUID, markdown: str
+) -> list[dict[str, Any]]:
+    """Definitions a page names in backticks (`json2bin`, `Parser.parse`, `parse()`), so the viewer can link
+    them to the code. A name is matched by its last segment and must name exactly one definition of the
+    build; an ambiguous name is not linked (07 "explicit ambiguity")."""
+    names: dict[str, str] = {}
+    for mention in MENTION.findall(markdown)[:200]:
+        names.setdefault(mention, re.split(r"\.|::", mention)[-1])
+    if not names:
+        return []
+    # A new transaction (the page text was read from object storage with none open): the RLS context is
+    # transaction-local, so it is set again, from the already-authorized reader (read paths use only the
+    # workspace).
+    await set_context(db, workspace_id=member.workspace_id)
+    rows = await db.execute(
+        text(
+            "SELECT y.id, y.name, y.kind, y.start_line, y.source_file_id AS file_id, y.symbol_key FROM symbols y"
+            " WHERE y.workspace_id = :w AND y.build_id = :b AND y.name = ANY(:names)"
+        ),
+        {"w": member.workspace_id, "b": build_id, "names": sorted(set(names.values()))},
+    )
+    by_name: dict[str, list[Any]] = {}
+    for row in rows:
+        by_name.setdefault(row.name, []).append(row)
+    await db.commit()
+    found = []
+    for mention, name in names.items():
+        candidates = by_name.get(name, [])
+        if "." in mention or "::" in mention:  # a qualified mention must match the definition's key
+            qualified = mention.replace("::", ".")
+            candidates = [c for c in candidates if c.symbol_key.replace("::", ".").endswith(qualified)]
+        if len(candidates) == 1:
+            c = candidates[0]
+            found.append(
+                {
+                    "mention": mention,
+                    "id": c.id,
+                    "name": c.name,
+                    "kind": c.kind,
+                    "file_id": c.file_id,
+                    "start_line": c.start_line,
+                }
+            )
+    return found
 
 
 # ---------------------------------------------------------------- cancel, retry, events

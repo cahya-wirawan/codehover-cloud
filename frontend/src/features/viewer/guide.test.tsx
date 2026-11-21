@@ -39,6 +39,7 @@ function guidePage(markdown: string): GuidePage {
     markdown,
     citations: [{ file_id: FILE, path: "src/app.py", start_line: 3, end_line: 5 }],
     claims: [],
+    symbols: [],
   };
 }
 
