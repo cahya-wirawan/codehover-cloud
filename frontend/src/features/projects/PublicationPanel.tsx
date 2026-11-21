@@ -201,7 +201,13 @@ function McpAddress({ slug, isPublic, workspaceId }: { slug: string; isPublic: b
           </>
         )}
       </p>
-      <pre className="mt-2 overflow-x-auto rounded-md border border-border p-2 font-mono text-[13px]">{command}</pre>
+      <pre
+        tabIndex={0}
+        aria-label="Command to add this site to Claude Code"
+        className="mt-2 overflow-x-auto rounded-md border border-border p-2 font-mono text-[13px]"
+      >
+        {command}
+      </pre>
     </div>
   );
 }
