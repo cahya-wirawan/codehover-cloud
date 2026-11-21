@@ -207,7 +207,7 @@ async def apply_subscriptions(
                 db,
                 workspace_id,
                 "billing_past_due",
-                f"{sub.id}:{int(past_due_since.timestamp())}",
+                f"{sub.id}:{past_due_since.astimezone(UTC).isoformat(timespec='microseconds')}",
                 {"subscription": row_id},
             )
         await _audit(
