@@ -226,3 +226,32 @@ async def test_a_missing_export_viewer_fails_the_export_not_the_build(
     status = (await owner.get(f"/api/v1/exports/{created.json()['id']}")).json()
     assert status["status"] == "failed" and status["error_code"] == "export_viewer_missing"
     assert (await owner.get(f"/api/v1/builds/{build}")).json()["status"] == "ready"
+
+
+async def test_a_static_zip_carries_the_builds_other_languages(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """FR-026: a static ZIP of a build carries the ready language variants of its family beside it, each
+    a knowledge base without source lines (the main build's, the same snapshot, are kept once)."""
+    from tests.integration.test_budgets import make_estimate, start_from
+
+    owner, _ws, build, app = await ready(client, idp, github)
+    project, snapshot = (
+        str(v) for v in ddl("SELECT project_id, snapshot_id FROM builds WHERE id = :b", b=build)[0]
+    )
+    estimate = await make_estimate(
+        owner, project, snapshot, preset="replay-v2", languages=["de"], variant_of=build
+    )
+    started = await start_from(owner, project, estimate.json()["id"])
+    assert started.status_code == 202, started.text
+    await drive(app, started.json()["id"], runtime=runtime_for(app))
+    _id, download = await exported(owner, app, build, "static_zip")
+    archive = zipfile.ZipFile(io.BytesIO(download.content))
+    data_js = archive.read("data/data.js").decode()
+    main_part, variants_part = data_js.split("window.CODEHOVER_VARIANTS = ")
+    main = json.loads(main_part.removeprefix("window.CODEHOVER_DATA = ").strip().removesuffix(";"))
+    (german,) = json.loads(variants_part.strip().removesuffix(";"))
+    assert main["build"]["variant"] == "en-standard" and german["build"]["variant"] == "de-standard"
+    assert {f["id"] for f in german["files"]} <= {f["id"] for f in main["files"]}
+    assert all(f["lines"] == [] for f in german["files"]) and any(f["lines"] for f in main["files"])
+    assert json.loads(archive.read("data/kb.json"))["build"]["variant"] == "en-standard"  # the build's own KB

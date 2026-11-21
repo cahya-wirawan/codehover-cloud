@@ -15,13 +15,14 @@ import { ExportApp } from "./ExportApp";
 import type { Kb } from "./staticSource";
 
 // data/data.js sets this before the module runs; it is the build's knowledge base, nothing else.
-const kb = (window as unknown as { CODEHOVER_DATA?: Kb }).CODEHOVER_DATA;
+const data = window as unknown as { CODEHOVER_DATA?: Kb; CODEHOVER_VARIANTS?: Kb[] };
+const kb = data.CODEHOVER_DATA;
 const root = document.getElementById("root");
 if (root && kb) {
   document.title = kb.project.name;
   createRoot(root).render(
     <StrictMode>
-      <ExportApp kb={kb} />
+      <ExportApp kb={kb} variants={data.CODEHOVER_VARIANTS ?? []} />
     </StrictMode>,
   );
 } else if (root) {

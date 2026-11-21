@@ -111,7 +111,7 @@ export function staticSource(kb: Kb): ViewerSource {
   });
 
   return {
-    key: `export:${kb.build.commit_sha}`,
+    key: `export:${kb.build.commit_sha}:${kb.build.variant}`,
     quality: null,
     async tree(path: string): Promise<Page<TreeEntry>> {
       const prefix = path ? `${path}/` : "";

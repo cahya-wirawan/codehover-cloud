@@ -56,10 +56,14 @@ def kb_validator() -> Draft202012Validator:
     return Draft202012Validator(generate.schema("kb-export"))
 
 
-async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
-    build = await _rows(
-        rt,
-        claimed,
+async def collect(rt: Any, claimed: Claim, build_id: UUID | None = None) -> tuple[dict[str, Any], Any]:
+    """The knowledge base of the claimed build, or of `build_id` (a language variant of it, same workspace)."""
+    target = build_id or claimed.build
+
+    async def rows(sql: str, **params: Any) -> list[Any]:
+        return await _rows(rt, claimed, sql, b=target, **params)
+
+    build = await rows(
         "SELECT b.project_id, b.snapshot_id, b.prompt_version, b.config, b.created_at, s.commit_sha,"
         " p.name AS project, r.owner || '/' || r.name AS repository FROM builds b"
         " JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
@@ -71,9 +75,7 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
         raise ExportError("build_not_ready")
     meta = build[0]
     files = []
-    for f in await _rows(
-        rt,
-        claimed,
+    for f in await rows(
         "SELECT f.id, f.path, f.language, f.sha256, f.blob_key, e.status, e.summary, e.chunks FROM source_files f"
         " LEFT JOIN file_explanations e ON e.workspace_id = f.workspace_id AND e.build_id = :b AND e.source_file_id = f.id"
         " WHERE f.workspace_id = :w AND f.snapshot_id = :s AND f.scan_status IN ('selected', 'unsupported')"
@@ -97,9 +99,7 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
         )
     by_file = {f["id"]: f for f in files}
     uses_at: dict[tuple[str, int, int], dict[str, Any]] = {}
-    for e in await _rows(
-        rt,
-        claimed,
+    for e in await rows(
         'SELECT source_file_id, line, "column", resolution, ambiguity_group IS NOT NULL AS ambiguous, to_symbol_id'
         ' FROM reference_edges WHERE workspace_id = :w AND build_id = :b ORDER BY source_file_id, line, "column",'
         " to_symbol_id",
@@ -118,9 +118,7 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
     for (file_id, _line, _column), use in uses_at.items():
         by_file[file_id]["references"].append(use)
     uses: dict[str, list[str]] = {}
-    for e in await _rows(
-        rt,
-        claimed,
+    for e in await rows(
         "SELECT DISTINCT from_symbol_id, to_symbol_id FROM reference_edges"
         " WHERE workspace_id = :w AND build_id = :b AND from_symbol_id IS NOT NULL",
     ):
@@ -138,17 +136,13 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
             "card": {k: v for k, v in (s.card or {}).items() if k != "source"},
             "uses": sorted(uses.get(str(s.id), [])),
         }
-        for s in await _rows(
-            rt,
-            claimed,
+        for s in await rows(
             "SELECT id, source_file_id, symbol_key, name, kind, start_line, end_line, signature, card FROM symbols"
             " WHERE workspace_id = :w AND build_id = :b ORDER BY source_file_id, start_line, symbol_key",
         )
     ]
     claims: dict[str, list[dict[str, Any]]] = {}
-    for c in await _rows(
-        rt,
-        claimed,
+    for c in await rows(
         "SELECT guide_page_id, claim_key, min(claim_text) AS text, min(ordinal) AS ordinal,"
         " CASE WHEN bool_or(status = 'invalid') THEN 'invalid' ELSE min(status) END AS status,"
         " COALESCE(min(reason) FILTER (WHERE reason <> ''), '') AS reason,"
@@ -166,9 +160,7 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
             }
         )
     guide = []
-    for g in await _rows(
-        rt,
-        claimed,
+    for g in await rows(
         "SELECT id, slug, title, section, purpose, markdown_key, check_status FROM guide_pages"
         " WHERE workspace_id = :w AND build_id = :b AND status = 'written' ORDER BY ordinal",
     ):
@@ -184,9 +176,7 @@ async def collect(rt: Any, claimed: Claim) -> tuple[dict[str, Any], Any]:
                 "claims": claims.get(str(g.id), []),
             }
         )
-    overview_key = await _rows(
-        rt,
-        claimed,
+    overview_key = await rows(
         "SELECT object_key FROM artifacts WHERE workspace_id = :w AND build_id = :b AND kind = 'overview'",
     )
     overview = json.loads(await rt.store.get(overview_key[0].object_key)) if overview_key else None
@@ -235,9 +225,42 @@ def viewer_files() -> dict[str, bytes]:
     return files
 
 
-def static_zip(kb: dict[str, Any]) -> bytes:
-    """Deterministic archive with fixed entry names only (10, 13 "safe filenames")."""
+async def family_variants(rt: Any, claimed: Claim) -> list[UUID]:
+    """The ready language variants of the claimed build's family at its reader level (FR-026), one per other
+    language (the newest), which a static ZIP carries beside it."""
+    rows = await _rows(
+        rt,
+        claimed,
+        "WITH this AS (SELECT b.id, b.project_id,"
+        "   COALESCE(CAST(b.config->'generation'->>'variant_of' AS uuid), b.id) AS family,"
+        "   COALESCE(b.config->'generation'->'languages'->>0, 'en') AS language,"
+        "   COALESCE(b.config->'generation'->'levels'->>0, 'standard') AS level"
+        "   FROM builds b WHERE b.workspace_id = :w AND b.id = :b)"
+        " SELECT DISTINCT ON (language) b.id, COALESCE(b.config->'generation'->'languages'->>0, 'en') AS language"
+        " FROM builds b JOIN this t ON b.project_id = t.project_id AND b.id <> t.id"
+        " WHERE b.workspace_id = :w AND b.status = 'ready' AND b.content_purged_at IS NULL"
+        " AND COALESCE(b.config->'generation'->'levels'->>0, 'standard') = t.level"
+        " AND COALESCE(b.config->'generation'->'languages'->>0, 'en') <> t.language"
+        " AND (b.id = t.family OR b.config->'generation'->>'variant_of' = CAST(t.family AS text))"
+        " ORDER BY language, b.created_at DESC",
+    )
+    return [r.id for r in rows]
+
+
+def without_lines(kb: dict[str, Any]) -> dict[str, Any]:
+    """A variant's knowledge base for the ZIP: its source lines are the main build's (the same snapshot), so
+    they are left out and the reader takes them from there."""
+    return {**kb, "files": [{**f, "lines": []} for f in kb["files"]]}
+
+
+def static_zip(kb: dict[str, Any], variants: list[dict[str, Any]] | None = None) -> bytes:
+    """Deterministic archive with fixed entry names only (10, 13 "safe filenames"). `variants` are the
+    knowledge bases of the build's other languages (FR-026), without source lines."""
     data_js = "window.CODEHOVER_DATA = " + json.dumps(kb, ensure_ascii=True, sort_keys=True) + ";\n"
+    if variants:
+        data_js += (
+            "window.CODEHOVER_VARIANTS = " + json.dumps(variants, ensure_ascii=True, sort_keys=True) + ";\n"
+        )
     kb_json = json.dumps(kb, ensure_ascii=False, sort_keys=True, indent=1)
     entries: dict[str, bytes] = {
         **viewer_files(),
@@ -278,7 +301,10 @@ async def export(rt: Any, claimed: Claim) -> Apply | None:
             body = json.dumps(kb, ensure_ascii=False, sort_keys=True).encode()
             name, content_type = f"exports/{export_id}.json", "application/json"
         else:
-            body = static_zip(kb)
+            variants = [
+                without_lines((await collect(rt, claimed, v))[0]) for v in await family_variants(rt, claimed)
+            ]
+            body = static_zip(kb, variants)
             name, content_type = f"exports/{export_id}.zip", "application/zip"
     except ExportError as error:  # permanent: the export fails with its code, the build stays ready
         from app.jobs.stages import StageError  # stages imports this module
