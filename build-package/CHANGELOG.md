@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.37] - 2026-11-21
+
+### Fixed
+
+- 07: a writer call whose provider never answers no longer lets the build finish on source-only text. Before, an unknown outcome (a dropped connection or a timeout) was retried at once up to three times, each try adding a worst-case hold, and the unit then fell back to the replay answer, so a build whose every call failed ended `ready` with "No valid model explanation" everywhere. Now an unknown outcome is not retried within the call; a writer call that gets no answer (transient after its retries, or unknown) stops the stage as `provider_unavailable`, the task retries later from its checkpoints, and the build fails when its attempts run out. Checker calls without an answer still leave claims `unchecked`. Seen live: a network that reset IPv4 requests to Anthropic over about 1.5 KB.
+
 ## [0.5.36] - 2026-11-21
 
 ### Fixed

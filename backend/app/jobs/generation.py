@@ -212,11 +212,19 @@ async def gateway_for(rt: Any, claimed: Claim, provider: str) -> Any:
     return rt.own_key_cache[cache_key]
 
 
+def unreachable(error: calls.CallFailed) -> bool:
+    """The provider gave no answer: it could not be reached, or the outcome is unknown."""
+    return error.kind in ("transient", "unknown")
+
+
 async def answer(
     rt: Any, claimed: Claim, prepared: generate.Prepared, validate: Callable[[dict[str, Any]], list[str]]
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
     """(output, status, provenance). Falls back to the deterministic replay answer when the provider
-    cannot produce a valid one; budget, cancellation and lease loss stop the stage instead."""
+    refuses the request or cannot produce a valid answer. A provider that could not be reached or did not
+    answer (transient after retries, or unknown) stops the stage as `provider_unavailable`, so the task
+    retries later from its checkpoints instead of finishing on source-only text; budget, cancellation and
+    lease loss stop the stage too."""
     gateway = await gateway_for(rt, claimed, prepared.request.model.provider)
     try:
         outcome = await calls.run(
@@ -227,7 +235,7 @@ async def answer(
     except calls.BuildStopped as error:
         raise StageStop("cancelled") from error
     except calls.CallFailed as error:
-        if error.kind == "transient":  # retries exhausted: let the task retry later (checkpoints kept)
+        if unreachable(error):  # let the task retry later (checkpoints kept)
             raise StageStop("provider_unavailable") from error
         fallback = await _REPLAY.generate(prepared.request)
         return fallback.output, "failed", {"generator": "replay-fallback", "error": error.code}

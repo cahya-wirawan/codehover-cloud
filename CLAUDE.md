@@ -111,6 +111,7 @@ Conventions that span files:
   - Lock order is the build row, then the task row.
   - Holds: each call earmarks its worst case. A call that fits once the build's in-flight calls settle waits (`calls.EnvelopeBusy`, up to `HOLD_WAIT_SECONDS`) instead of ending the build. After a stop, `generation.bounded` starts no new unit but lets running ones finish and settle. A call cut off by cancellation settles `unknown` (`call_cancelled`). The hourly retention sweep settles `unknown`/`started` attempts older than 24 h at their maximum (`ledger.settle_stale_hold`, state `reconciled`).
   - Never classify a connection that may have sent bytes as transient; only a connect error or connect timeout is (the Anthropic SDK chains `httpx2` errors).
+  - Unknown outcomes are never retried within a call (each try would add a worst-case hold). A writer call with no answer (transient after retries, or unknown) stops the stage as `provider_unavailable`, so the task retries from its checkpoints; only refused or invalid answers fall back to replay text. Checker calls without an answer leave claims `unchecked`.
   - Prompts are immutable per set in `app/engine/prompts/<X.Y.Z>/`; any text change is a new set and a new `GENERATION_PROMPT_VERSION`.
   - The checker never falls back to a heuristic for model output; any checker failure leaves claims `unchecked`.
   - Get gateways through `generation.gateway_for`, never `rt.gateways[...]`: own-key builds use the workspace's key, looked up on every call.
