@@ -812,3 +812,19 @@ class OwnerNotice(Base):
     recipients: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = ts(default_now=True)
     sent_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+# ---------------------------------------------------------------- access tokens (0035)
+class AccessToken(Base):
+    __tablename__ = "access_tokens"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    user_id: Mapped[UUID] = ref("users.id")
+    name: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary)
+    prefix: Mapped[str] = mapped_column(Text)
+    scope: Mapped[str] = mapped_column(Text, server_default=text("'mcp:read'"))
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts()
+    last_used_at: Mapped[datetime | None] = ts(nullable=True)
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)

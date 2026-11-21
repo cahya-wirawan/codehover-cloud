@@ -85,6 +85,9 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
       ) : (
         <p className="mt-1 text-muted">Not published. Every build stays private until an admin publishes it.</p>
       )}
+      {current?.public_slug && !current.suspended_reason ? (
+        <McpAddress slug={current.public_slug} isPublic={current.visibility === "public"} workspaceId={project.workspace_id} />
+      ) : null}
       {current?.suspended_reason ? (
         <p role="alert" className="mt-2 text-destructive">{SUSPENDED[current.suspended_reason] ?? "Suspended."}</p>
       ) : null}
@@ -177,5 +180,28 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** The site's hosted MCP address (06 "/mcp/{slug}") and the command that adds it to Claude Code. */
+function McpAddress({ slug, isPublic, workspaceId }: { slug: string; isPublic: boolean; workspaceId: string }) {
+  const url = `${window.location.origin}/api/v1/mcp/${slug}`;
+  const command = `claude mcp add --transport http ${slug} ${url}${isPublic ? "" : ' --header "Authorization: Bearer <token>"'}`;
+  return (
+    <div className="mt-3">
+      <p>
+        MCP clients can read this site at <code className="font-mono text-[13px]">{url}</code>.
+        {isPublic ? null : (
+          <>
+            {" "}It needs an{" "}
+            <Link className="text-primary underline" to={`/w/${workspaceId}`}>
+              access token
+            </Link>
+            .
+          </>
+        )}
+      </p>
+      <pre className="mt-2 overflow-x-auto rounded-md border border-border p-2 font-mono text-[13px]">{command}</pre>
+    </div>
   );
 }

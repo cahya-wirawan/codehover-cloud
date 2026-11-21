@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-11-21
+
+### Added
+
+- 01, 02, 05, 06, 09, 13, 15: hosted MCP. `POST /mcp/{slug}` serves a published site's documentation as eight read-only MCP tools (overview, search, get_definition, find_references, get_file, read_lines, list_guide, read_guide_page), the same as codehover's local server, over Streamable HTTP without sessions. Public sites answer anyone; private sites answer a personal access token of a member who may see the project (`/workspaces/{wid}/access-tokens`, migration 0035; digest stored only, shown once, scope `mcp:read`, at most 365 days, revoked when the member leaves). The publication panel shows the site's MCP address and the command to add it; the workspace page manages tokens.
+
 ## [0.6.5] - 2026-11-21
 
 ### Added

@@ -32,6 +32,7 @@ from app.modules.billing import router as billing
 from app.modules.deletion import router as deletion
 from app.modules.github import router as github
 from app.modules.identity import router as identity
+from app.modules.mcp import router as mcp
 from app.modules.ops import router as ops
 from app.modules.projects import router as projects
 from app.modules.providers import keys as provider_keys
@@ -177,6 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(github.router)
     api.include_router(projects.router)
     api.include_router(published.router)
+    api.include_router(mcp.router)
     api.include_router(usage.router)
     api.include_router(billing.router)
     api.include_router(providers.router)

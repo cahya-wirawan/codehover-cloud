@@ -11,6 +11,7 @@ import { EmptyState, PageHeader, Section } from "../../components/ui/section";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
+import { AccessTokenPanel } from "./AccessTokenPanel";
 import { SupportAccessPanel } from "./SupportAccessPanel";
 
 export function WorkspacePage() {
@@ -239,6 +240,7 @@ export function WorkspacePage() {
             ) : null}
         </form>
       </Section>
+      {workspace ? <AccessTokenPanel workspaceId={wid} /> : null}
       {workspace?.role === "admin" || workspace?.role === "owner" ? <SupportAccessPanel workspaceId={wid} /> : null}
       {workspace?.role === "owner" ? (
         <ConfirmDeletion

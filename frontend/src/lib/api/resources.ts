@@ -173,6 +173,19 @@ export interface ProviderKey {
   created_by_name: string | null;
   verified_at: string | null;
 }
+export interface AccessToken {
+  id: string;
+  name: string;
+  prefix: string;
+  scope: string;
+  created_at: string;
+  expires_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+export interface CreatedAccessToken extends AccessToken {
+  token: string | null; // shown once
+}
 export interface WorkspaceMember {
   user_id: string;
   display_name: string;
@@ -599,6 +612,19 @@ export const api = {
     json<ProviderKey>(await apiSend("PUT", `/workspaces/${wid}/provider-keys/${provider}`, { api_key: apiKey })),
   removeProviderKey: async (wid: string, provider: KeyProvider) => {
     await apiSend("DELETE", `/workspaces/${wid}/provider-keys/${provider}`);
+  },
+  accessTokens: (wid: string) => apiJson<Page<AccessToken>>(`/workspaces/${wid}/access-tokens`),
+  createAccessToken: async (wid: string, name: string, expiresInDays: number) =>
+    json<CreatedAccessToken>(
+      await apiSend(
+        "POST",
+        `/workspaces/${wid}/access-tokens`,
+        { name, expires_in_days: expiresInDays },
+        { "Idempotency-Key": crypto.randomUUID() },
+      ),
+    ),
+  revokeAccessToken: async (wid: string, tokenId: string) => {
+    await apiSend("DELETE", `/workspaces/${wid}/access-tokens/${tokenId}`);
   },
   usage: (wid: string) => apiJson<Usage>(`/workspaces/${wid}/usage`),
   usageEntries: (wid: string) => apiJson<Page<UsageEntry>>(`/workspaces/${wid}/usage/entries?limit=20`),

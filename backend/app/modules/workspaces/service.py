@@ -25,6 +25,7 @@ from app.core.request_context import current_request_id
 from app.core.security import digest, new_token
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Principal
+from app.modules.mcp import tokens
 from app.modules.workspaces.access import ROLE_RANK, Member, Role
 
 INVITATION_LIFETIME = timedelta(days=7)
@@ -244,6 +245,7 @@ async def remove_member(db: AsyncSession, member: Member, user_id: UUID) -> None
         text("DELETE FROM memberships WHERE workspace_id = :w AND user_id = :u"),
         {"w": member.workspace_id, "u": user_id},
     )
+    await tokens.revoke_for_member(db, member.workspace_id, user_id)
     await audit(
         db,
         member,
