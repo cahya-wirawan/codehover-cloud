@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.5.39] - 2026-11-21
+
+### Changed
+
+- 02, 13: the repository overview in the guide view renders its Markdown the same way as guide pages, instead of showing it as plain text. The offline export viewer is unchanged.
+
 ## [0.5.38] - 2026-11-21
 
 ### Changed

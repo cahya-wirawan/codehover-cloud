@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-21 · Package version 0.5.38
+Date: 2026-11-21 · Package version 0.5.39
+
+0.5.39 renders the repository overview's Markdown in the guide view, which had shown it as plain text. `frontend/src/features/viewer/guide.test.tsx` checks emphasis, inline code, a heading two levels below the Guide heading, a list, two paragraphs, an https link, and that a `javascript:` link and a script tag stay text. The XSS corpus (`xss.test.tsx`) adds a hostile overview. Results: frontend 48 tests passed; lint, typecheck, build and the env check pass.
 
 0.5.38 renders guide Markdown in the viewer, which had shown it as plain text. `frontend/src/features/viewer/guide.test.tsx` checks headings (two levels below the Guide heading), ordered and bullet lists, emphasis, inline and fenced code, block quotes, and citations inside list items. It also checks that only https and in-page links become links, that `javascript:`, `data:` and `http:` targets stay text, that images show their alt text, and that raw HTML stays text. The XSS corpus (`xss.test.tsx`) passes unchanged. Results: frontend 46 tests passed; lint, typecheck, build and the env check pass.
 

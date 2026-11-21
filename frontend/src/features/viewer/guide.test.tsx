@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 
 import { formatUsd, type GuidePage } from "../../lib/api/resources";
-import { GuideText } from "./GuidePanel";
+import { GuideText, OverviewText } from "./GuidePanel";
 
 const FILE = "019a90a0-0000-7000-8000-000000000001";
 
@@ -88,4 +88,27 @@ test("only https and in-page links become links; images show their alt text", ()
   expect(container.textContent).toContain("plain");
   expect(container.querySelector("img")).toBeNull();
   expect(container.textContent).toContain("diagram of the flow");
+});
+
+test("the overview renders its Markdown like a guide page", () => {
+  const overview = [
+    "A **CLI** that turns `main()` into a site.",
+    "",
+    "## Parts",
+    "",
+    "- the parser",
+    "- the *renderer*",
+    "",
+    "Second paragraph <script>x</script> [docs](https://example.com) [bad](javascript:alert(1)).",
+  ].join("\n");
+  const { container } = render(<OverviewText overview={overview} />);
+  expect(container.querySelector("strong")?.textContent).toBe("CLI");
+  expect(container.querySelector("code")?.textContent).toBe("main()");
+  expect(screen.getByRole("heading", { level: 4, name: "Parts" })).toBeInTheDocument();
+  expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["the parser", "the renderer"]);
+  expect(container.querySelectorAll("p")).toHaveLength(2);
+  expect(container.querySelector("script")).toBeNull();
+  expect(container.textContent).toContain("<script>x</script>");
+  expect(screen.getByRole("link", { name: "docs" })).toHaveAttribute("href", "https://example.com");
+  expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
 });

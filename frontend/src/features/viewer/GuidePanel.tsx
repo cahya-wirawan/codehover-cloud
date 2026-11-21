@@ -72,6 +72,15 @@ export function GuideText({ page, codeBase }: { page: GuidePage; codeBase?: stri
   );
 }
 
+/** The repository overview, shown before a page is chosen: Markdown rendered the same way as guide pages. */
+export function OverviewText({ overview }: { overview: string }) {
+  return (
+    <div className="max-w-[72ch] text-[15px] leading-[26px]">
+      <GuideMarkdown markdown={overview} text={(text, key) => <Fragment key={key}>{text}</Fragment>} />
+    </div>
+  );
+}
+
 /** Guide index and page (02 S12); the open page is part of the URL. */
 export function GuidePanel({ source, base }: { source: ViewerSource; base: string }) {
   const { slug = null } = useParams();
@@ -148,7 +157,7 @@ export function GuidePanel({ source, base }: { source: ViewerSource; base: strin
               </ul>
             </article>
           ) : guide.data.overview ? (
-            <p className="max-w-[72ch] whitespace-pre-wrap text-[15px] leading-[26px]">{guide.data.overview.overview}</p>
+            <OverviewText overview={guide.data.overview.overview} />
           ) : (
             <p className="text-muted">Choose a page to read.</p>
           )}
