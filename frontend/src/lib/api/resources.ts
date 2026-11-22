@@ -185,6 +185,26 @@ export interface AccessToken {
   last_used_at: string | null;
   revoked_at: string | null;
 }
+/** An MCP client a member signed in to one private site (0037), listed as a connected app. */
+export interface OAuthGrant {
+  id: string;
+  client_name: string;
+  project_id: string;
+  project: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+/** What an MCP client asks for on the consent page. */
+export interface OAuthConsent {
+  client_name: string;
+  redirect_host: string;
+  slug: string;
+  project: string;
+  workspace: string;
+  visibility: string;
+  scope: string;
+}
 export interface CreatedAccessToken extends AccessToken {
   token: string | null; // shown once
 }
@@ -700,6 +720,13 @@ export const api = {
   revokeAccessToken: async (wid: string, tokenId: string) => {
     await apiSend("DELETE", `/workspaces/${wid}/access-tokens/${tokenId}`);
   },
+  oauthGrants: (wid: string) => apiJson<Page<OAuthGrant>>(`/workspaces/${wid}/oauth-grants`),
+  revokeOAuthGrant: async (wid: string, grantId: string) => {
+    await apiSend("DELETE", `/workspaces/${wid}/oauth-grants/${grantId}`);
+  },
+  oauthConsent: (requestId: string) => apiJson<OAuthConsent>(`/oauth/requests/${requestId}`),
+  oauthDecide: async (requestId: string, approve: boolean) =>
+    json<{ redirect_to: string }>(await apiSend("POST", `/oauth/requests/${requestId}/decision`, { approve })),
   usage: (wid: string) => apiJson<Usage>(`/workspaces/${wid}/usage`),
   usageEntries: (wid: string) => apiJson<Page<UsageEntry>>(`/workspaces/${wid}/usage/entries?limit=20`),
   billing: (wid: string) => apiJson<BillingState>(`/workspaces/${wid}/billing`),

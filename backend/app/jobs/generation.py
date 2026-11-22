@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.models.replay import ReplayGateway
-from app.engine import generate
+from app.engine import generate, prompts
 from app.engine.catalog import Catalog, Model, Preset, Role
 from app.engine.estimate import GenerationConfig, ScannedFile, select_files
 from app.engine.globs import match as glob_match
@@ -660,8 +660,10 @@ async def _await_base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> None:
 
 
 async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
-    """A variant reuses its base build's guide plan: the same slugs, order, purposes and source ranges,
-    so page anchors are identical across variants (FR-026). Titles are rewritten with each page."""
+    """A variant reuses its base build's guide plan: the same slugs, order and source ranges, so page
+    anchors are identical across variants (FR-026). A variant in another language gets the plan's titles,
+    sections and purposes translated (P07, prompt sets from 0.6.0); each page's title is rewritten again
+    with the page."""
     await _await_base_plan(rt, claimed, ctx)
     pages = await _rows(
         rt,
@@ -670,19 +672,52 @@ async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
         " WHERE workspace_id = :w AND build_id = :base ORDER BY ordinal",
         base=ctx.config.variant_of,
     )
-    output = {
-        "pages": [
-            {
-                "slug": p.slug,
-                "title": p.title,
-                "section": p.section,
-                "purpose": p.purpose,
-                "source_ranges": p.source_ranges,
-            }
-            for p in pages
-        ],
-        "variant_of": ctx.config.variant_of,
+    base_language = (
+        await _rows(
+            rt,
+            claimed,
+            "SELECT COALESCE(config->'generation'->'languages'->>0, 'en') AS language FROM builds"
+            " WHERE workspace_id = :w AND id = CAST(:base AS uuid)",
+            base=ctx.config.variant_of,
+        )
+    )[0].language
+    copied = [
+        {
+            "slug": p.slug,
+            "title": p.title,
+            "section": p.section,
+            "purpose": p.purpose,
+            "source_ranges": p.source_ranges,
+        }
+        for p in pages
+    ]
+    texts = {p["slug"]: p for p in copied}
+    provenance: dict[str, Any] = {"generator": "variant"}
+    if copied and base_language != ctx.config.languages[0] and prompts.has(ctx.prompt_version, "translate"):
+        source = {"pages": copied, "reason": ""}
+        prepared = generate.translate_request(
+            workspace_id=str(claimed.workspace_id),
+            kind="plan",
+            source=source,
+            source_language=base_language,
+            **_writer_request(ctx),
+        )
+        translated, status, called = await answer(
+            rt, claimed, prepared, lambda o: generate.translation_problems("plan", o, source)
+        )
+        if status == "generated" and not generate.translation_problems("plan", translated, source):
+            texts = {p["slug"]: p for p in translated["pages"]}
+            provenance = _translated({**called, "generator": "variant"}, ctx)
+    written: dict[str, dict[str, Any]] = {
+        page["slug"]: {
+            **page,
+            "title": str(texts[page["slug"]]["title"])[:200],
+            "section": str(texts[page["slug"]]["section"])[:60],
+            "purpose": str(texts[page["slug"]]["purpose"])[:1000],
+        }
+        for page in copied
     }
+    output = {"pages": list(written.values()), "variant_of": ctx.config.variant_of}
 
     async def apply(db: AsyncSession) -> None:
         for page in pages:
@@ -696,10 +731,10 @@ async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
                     "w": claimed.workspace_id,
                     "b": claimed.build,
                     "slug": page.slug,
-                    "title": page.title,
-                    "section": page.section,
+                    "title": written[page.slug]["title"],
+                    "section": written[page.slug]["section"],
                     "o": page.ordinal,
-                    "purpose": page.purpose,
+                    "purpose": written[page.slug]["purpose"],
                     "ranges": json.dumps(page.source_ranges),
                 },
             )
@@ -711,7 +746,7 @@ async def _base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> Apply:
                 claimed,
                 ctx,
                 "guide-plan.json",
-                {**output, "status": "copied", "provenance": {"generator": "variant"}},
+                {**output, "status": "copied", "provenance": provenance},
             ),
         )(db)
 

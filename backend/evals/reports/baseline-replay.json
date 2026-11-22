@@ -123,7 +123,7 @@
   "ok": true
  },
  "versions": {
-  "engine": "0.3.0",
+  "engine": "0.4.0",
   "parser": "0.5.0",
   "prompt_digest": "23931aee0dc4a356fa647e6db8f2089af544d6311768e73c70e41783d47f70b9",
   "prompts": "0.6.0"

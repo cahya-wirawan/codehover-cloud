@@ -1222,6 +1222,49 @@
         "title": "ConnectionOut",
         "type": "object"
       },
+      "ConsentOut": {
+        "properties": {
+          "client_name": {
+            "title": "Client Name",
+            "type": "string"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "redirect_host": {
+            "title": "Redirect Host",
+            "type": "string"
+          },
+          "scope": {
+            "default": "mcp:read",
+            "title": "Scope",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          },
+          "workspace": {
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_name",
+          "redirect_host",
+          "slug",
+          "project",
+          "workspace",
+          "visibility"
+        ],
+        "title": "ConsentOut",
+        "type": "object"
+      },
       "CostRange": {
         "properties": {
           "high": {
@@ -1330,6 +1373,32 @@
           "csrf_token"
         ],
         "title": "CsrfResponse",
+        "type": "object"
+      },
+      "DecisionIn": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "DecisionIn",
+        "type": "object"
+      },
+      "DecisionOut": {
+        "properties": {
+          "redirect_to": {
+            "title": "Redirect To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirect_to"
+        ],
+        "title": "DecisionOut",
         "type": "object"
       },
       "DeletionOut": {
@@ -2286,6 +2355,88 @@
           "model_preset"
         ],
         "title": "GenerationConfig",
+        "type": "object"
+      },
+      "GrantList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GrantOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "GrantList",
+        "type": "object"
+      },
+      "GrantOut": {
+        "properties": {
+          "client_name": {
+            "title": "Client Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "client_name",
+          "project_id",
+          "project",
+          "created_at",
+          "last_used_at",
+          "revoked_at"
+        ],
+        "title": "GrantOut",
         "type": "object"
       },
       "GuideIndexOut": {
@@ -7142,6 +7293,102 @@
         ]
       }
     },
+    "/api/v1/oauth/requests/{request_id}": {
+      "get": {
+        "operationId": "consent_api_v1_oauth_requests__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consent",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/api/v1/oauth/requests/{request_id}/decision": {
+      "post": {
+        "operationId": "decide_api_v1_oauth_requests__request_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
     "/api/v1/ops/builds-paused": {
       "post": {
         "operationId": "set_builds_paused_api_v1_ops_builds_paused_post",
@@ -7422,6 +7669,54 @@
           }
         },
         "summary": "Suspend Publication",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/slug-reservations/{slug}": {
+      "delete": {
+        "description": "End a released address's reservation early (0036), so any workspace may publish at it.",
+        "operationId": "release_slug_api_v1_ops_slug_reservations__slug__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 3,
+              "title": "Reason",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Slug",
         "tags": [
           "operations"
         ]
@@ -10446,6 +10741,95 @@
         "summary": "Change Role",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/oauth-grants": {
+      "get": {
+        "operationId": "list_grants_api_v1_workspaces__workspace_id__oauth_grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/oauth-grants/{oauth_grant_id}": {
+      "delete": {
+        "operationId": "delete_grant_api_v1_workspaces__workspace_id__oauth_grants__oauth_grant_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oauth_grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Oauth Grant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Grant",
+        "tags": [
+          "oauth"
         ]
       }
     },

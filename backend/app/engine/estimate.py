@@ -180,7 +180,7 @@ class Estimate:
     tokens: dict[str, dict[str, int]]
     low_micro_usd: int
     high_micro_usd: int
-    # One language variant translated from the base (P07): no plan, the base's output as input.
+    # One language variant translated from the base (P07): the base's output, plan included, as input.
     translated_low_micro_usd: int = 0
     translated_high_micro_usd: int = 0
 
@@ -227,21 +227,25 @@ def estimate(
         }
 
     def translated(bytes_per_token: int, high: bool) -> dict[str, dict[str, int]]:
-        """A translated variant reads the base's answers instead of the source (19 P07) and writes as much;
-        the checker still checks every page, and a page may still need its repair cycle."""
+        """A translated variant reads the base's answers instead of the source (19 P07) and writes as much,
+        including the base's guide plan (titles, sections, purposes); the checker still checks every page,
+        and a page may still need its repair cycle."""
         writer, checker = preset.writer, preset.checker
         pages = most if high else fewest
         explain_out = high_output(writer, EXPLAIN_OUTPUT_HIGH) if high else EXPLAIN_OUTPUT_LOW
         overview_out = high_output(writer, OVERVIEW_OUTPUT) if high else OVERVIEW_OUTPUT
         page_out = writer.max_output_tokens if high else GUIDE_OUTPUT_LOW
+        plan_out = high_output(writer, PLAN_OUTPUT) if high else PLAN_OUTPUT
         writer_in = (
             chunks * (EXPLAIN_OUTPUT_HIGH if high else EXPLAIN_OUTPUT_LOW)
             + chunks * PROMPT_OVERHEAD_TOKENS
             + OVERVIEW_OUTPUT
             + PROMPT_OVERHEAD_TOKENS
+            + PLAN_OUTPUT
+            + PROMPT_OVERHEAD_TOKENS
             + pages * (page_out + PROMPT_OVERHEAD_TOKENS)
         )
-        writer_out = chunks * explain_out + overview_out + pages * page_out
+        writer_out = chunks * explain_out + overview_out + plan_out + pages * page_out
         checker_in = pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS)
         checker_out = pages * CHECK_OUTPUT_LOW
         if high:

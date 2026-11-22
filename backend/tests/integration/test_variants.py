@@ -341,6 +341,78 @@ async def test_a_translated_language_reads_the_bases_text_instead_of_the_source(
     assert config["translate"] is True and config["languages"] == ["de"] and config["variant_of"] == base
 
 
+@dataclass
+class PlanTranslator(ScriptedProvider):
+    """Translates a guide plan's prose by marking it; `break_slugs` returns a plan with a changed slug."""
+
+    break_slugs: bool = False
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        result = await super().generate(request)
+        if request.purpose != "translate" or request.evidence.get("kind") != "plan":
+            return result
+        pages = [
+            {
+                **p,
+                "slug": f"x-{p['slug']}" if self.break_slugs else p["slug"],
+                "title": f"DE {p['title']}",
+                "section": f"DE {p['section']}"[:60],
+                "purpose": f"DE {p['purpose']}",
+            }
+            for p in result.output["pages"]
+        ]
+        return GenerationResult(
+            {**result.output, "pages": pages}, result.usage, result.provider_request_id, result.model_id
+        )
+
+
+def purposes(build: str) -> list[tuple[str, str, str]]:
+    return [
+        (r[0], r[1], r[2])
+        for r in ddl(
+            "SELECT slug, section, purpose FROM guide_pages WHERE build_id = :b ORDER BY ordinal", b=build
+        )
+    ]
+
+
+async def test_a_variant_in_another_language_gets_the_plan_in_its_language(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """A language variant shows its guide's sections and purposes in its own language: the base's plan is
+    translated once (P07) and only its prose changes; a level variant in the base's language copies it,
+    and a translation that changes a slug or a range is refused, leaving the base's text."""
+    owner, _ws, project, base, app = await ready_build(client, idp, github)
+    theirs = purposes(base)
+    assert theirs
+
+    async def built(provider: PlanTranslator, language: str, level: str) -> str:
+        estimate = await variant(owner, project, base, language=language, level=level, preset="balanced-v1")
+        assert estimate.status_code == 201, estimate.text
+        started = await start_from(owner, project, estimate.json()["id"], cap=2_000_000)
+        assert started.status_code == 202, started.text
+        await drive(app, started.json()["id"], runtime=runtime_for(app, provider))
+        assert (await owner.get(f"/api/v1/builds/{started.json()['id']}")).json()["status"] == "ready"
+        return str(started.json()["id"])
+
+    translator = PlanTranslator()
+    german = await built(translator, "de", "standard")
+    assert translator.calls.count("translate") == 1 and "plan" not in translator.calls
+    assert purposes(german) == [(slug, f"DE {s}"[:60], f"DE {p}") for slug, s, p in theirs]
+    assert pages(german) == pages(base)  # the anchors are the base's
+    plan = ddl(
+        "SELECT a.object_key FROM artifacts a WHERE a.build_id = :b AND a.kind = 'guide_plan'", b=german
+    )
+    assert plan
+
+    same_language = PlanTranslator()
+    beginner = await built(same_language, "en", "beginner")
+    assert "translate" not in same_language.calls and purposes(beginner) == theirs
+
+    breaking = PlanTranslator(break_slugs=True)
+    refused = await built(breaking, "fr", "standard")
+    assert breaking.calls.count("translate") >= 1 and purposes(refused) == theirs
+
+
 async def test_a_translation_of_a_ready_build_keeps_its_reader_level(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:

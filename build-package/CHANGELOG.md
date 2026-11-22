@@ -4,6 +4,22 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-22
+
+### Added
+
+- 21, 22: TypeScript imports through path aliases (`@/…`) resolve in SCIP. The sandboxed index worker reads `baseUrl` and `paths` from the repository's `tsconfig*.json` / `jsconfig*.json` (following `extends` inside the snapshot), and gives each aliasing config a project of its own, so each app in a monorepo resolves its own `@/*`. No other option of the repository's config is loaded. Engine 0.4.0.
+- 05, 06, 09, 22: MCP sign-in (migration 0037). An MCP client can now sign its person in to a private hosted site through the browser instead of a pasted token: codehover acts as an OAuth 2.1 authorization server with RFC 9728 and RFC 8414 discovery, dynamic client registration (public clients), PKCE S256, a consent page, one-time codes of 60 s, access tokens of one hour bound to the site's project, and refresh tokens of 30 days that rotate, with replay detection for codes and refresh tokens. Connected apps are listed and disconnected on the workspace page. Without a token, a private or unknown site now answers 401 with `resource_metadata` instead of 404, so clients can start sign-in; both still look alike. The gateway forwards `/.well-known/oauth-` to the API.
+- 06: hosted MCP also serves resources (the overview, each guide page, and source files through a template, under `codehover://<slug>/...`) and three prompts (`tour`, `explain`, `where`).
+
+### Fixed
+
+- 07, 19: a language variant's guide sections and purposes were the base's, in the base's language. Each variant in another language now translates the base's guide plan once (P07 kind `plan`, same template): only titles, sections and purposes change, and a translation that changes a slug or a source range keeps the base's text. Translated estimates count that call.
+
+### Security
+
+- 05, 06: a released site address stays reserved for its workspace for 90 days (migration 0036 `slug_reservations`). Before, unpublishing, choosing a new address or deleting the project let another workspace publish at the old address at once and receive its readers, links and MCP clients. Each project keeps the 3 addresses it released last, so renaming a site through many addresses cannot hold them all, and operators can end one early (`DELETE /ops/slug-reservations/{slug}`).
+
 ## [0.6.9] - 2026-11-22
 
 ### Added

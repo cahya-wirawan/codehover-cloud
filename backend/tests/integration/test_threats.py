@@ -80,6 +80,30 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
     )
     me = (await owner.get("/api/v1/me")).json()
     one = lambda sql, **kw: str(ddl(sql, **kw)[0][0])  # noqa: E731
+    # MCP sign-in (0037): a grant the owner gave a client, and a sign-in request still waiting for them.
+    client_row = one(
+        "INSERT INTO oauth_clients(client_id, client_name, redirect_uris)"
+        " VALUES (:c, 'victim client', ARRAY['https://x.test/cb']) RETURNING id",
+        c="chc_" + secrets.token_urlsafe(24),
+    )
+    request_id = one(
+        "INSERT INTO oauth_authorizations(client, redirect_uri, code_challenge, resource, slug)"
+        " VALUES (:c, 'https://x.test/cb', :ch, 'r', :s) RETURNING id",
+        c=client_row,
+        ch="A" * 43,
+        s=slug,
+    )
+    oauth_grant = one(
+        "INSERT INTO oauth_grants(workspace_id, user_id, project_id, client, client_name, authorization_id,"
+        " refresh_hash, refresh_expires_at) VALUES (:w, :u, :p, :c, 'victim client', :a, :h, now() + interval '1 day')"
+        " RETURNING id",
+        w=ws,
+        u=me["id"],
+        p=project,
+        c=client_row,
+        a=request_id,
+        h=secrets.token_bytes(32),
+    )
     ids = {
         "workspace_id": ws,
         "project_id": project,
@@ -100,6 +124,8 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
         "user_id": me["id"],
         "grant_id": grant.json()["id"],
         "token_id": token.json()["id"],
+        "oauth_grant_id": oauth_grant,
+        "request_id": request_id,
         "session_id": one(
             "SELECT id FROM sessions WHERE user_id = :u AND revoked_at IS NULL LIMIT 1", u=me["id"]
         ),
@@ -124,6 +150,7 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
             "reason": "trust me, it is fine",
         },
         ("POST", "/api/v1/builds/{build_id}/retry"): {},
+        ("POST", "/api/v1/oauth/requests/{request_id}/decision"): {"approve": True},
         ("POST", "/api/v1/projects/{project_id}/builds"): {},
         ("POST", "/api/v1/projects/{project_id}/deletion"): {"confirmation": "API"},
         ("POST", "/api/v1/projects/{project_id}/estimates"): {
@@ -262,6 +289,8 @@ async def test_another_tenant_is_refused_on_every_route_and_changes_nothing(
     )
     assert ddl("SELECT revoked_at IS NULL FROM sessions WHERE id = :s", s=ids["session_id"])[0][0]
     assert ddl("SELECT revoked_at IS NULL FROM access_tokens WHERE id = :t", t=ids["token_id"])[0][0]
+    assert ddl("SELECT revoked_at IS NULL FROM oauth_grants WHERE id = :g", g=ids["oauth_grant_id"])[0][0]
+    assert ddl("SELECT decided_at IS NULL FROM oauth_authorizations WHERE id = :i", i=ids["request_id"])[0][0]
 
 
 async def test_anonymous_visitors_get_nothing_from_private_routes(

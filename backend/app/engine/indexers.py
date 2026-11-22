@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from app.engine import sandbox
-from app.engine.index_worker import MANIFESTS, OPENSSL_CONFIG, RUST_CONFIG
+from app.engine import sandbox, ts_project
+from app.engine.index_worker import MANIFESTS, OPENSSL_CONFIG, RUST_CONFIG, TSCONFIGS
 
 FAMILIES = {
     "scip-python": frozenset({"python"}),
@@ -28,6 +28,7 @@ FAMILIES = {
 PACKAGES = {"scip-python": "@sourcegraph/scip-python", "scip-typescript": "@sourcegraph/scip-typescript"}
 SANDBOX_GRACE_SECONDS = 60  # the sandbox's own wall clock outlasts the indexer timeout inside it
 MAX_MANIFESTS = 500
+MAX_TSCONFIGS = ts_project.MAX_CONFIGS
 # rust-analyzer's own settings: no proc-macro server, no build scripts, no cargo (the crate graph comes
 # from rust-project.json), no diagnostics. The repository's rust-analyzer.toml is never in the checkout.
 RUST_ANALYZER_SETTINGS = {
@@ -94,24 +95,10 @@ def installed(config: Config, indexer: str) -> str | None:
 
 
 def tsconfig(paths: list[str]) -> dict[str, Any]:
-    """The only TypeScript configuration the indexer sees: the repository's own tsconfig, plugins and
-    `extends` chains are never read. Imports resolve between the selected files only."""
-    return {
-        "compilerOptions": {
-            "allowJs": True,
-            "checkJs": False,
-            "noEmit": True,
-            "skipLibCheck": True,
-            "allowImportingTsExtensions": True,
-            "types": [],
-            "target": "es2022",
-            "module": "preserve",
-            "moduleResolution": "bundler",
-            "jsx": "preserve",
-            "maxNodeModuleJsDepth": 0,
-        },
-        "files": paths,
-    }
+    """The TypeScript configuration of the checkout root: the indexer's own options and the selected
+    files. A repository's own tsconfig is never loaded; the sandboxed worker reads only its path aliases
+    (app.engine.ts_project) and then writes projects of its own beside the checkout."""
+    return {"compilerOptions": dict(ts_project.BASE_OPTIONS), "files": paths}
 
 
 MAX_PYTHON_ROOTS = 100
@@ -142,7 +129,11 @@ def _scratch(work: Path) -> None:
 
 
 def _checkout(
-    work: Path, indexer: str, files: list[dict[str, Any]], manifests: list[dict[str, Any]] | None = None
+    work: Path,
+    indexer: str,
+    files: list[dict[str, Any]],
+    manifests: list[dict[str, Any]] | None = None,
+    tsconfigs: list[dict[str, Any]] | None = None,
 ) -> None:
     src = work / "src"
     src.mkdir()
@@ -162,6 +153,16 @@ def _checkout(
         (work / "rust-project.json").symlink_to(Path("out") / "rust-project.json")
     if indexer == "scip-typescript":
         (src / "tsconfig.json").write_text(json.dumps(tsconfig([f["path"] for f in files])))
+        # scip-typescript names a file's package from the nearest package.json, searching upwards until its
+        # project's root. The generated projects (in out) are not above the checkout, so the search would
+        # leave the scratch directory; this fixed one ends it here for every project alike.
+        (work / "package.json").write_text(json.dumps({"name": "codehover", "version": "0.0.0"}))
+        # The repository's configs as data, beside the checkout: the sandboxed worker reads their aliases.
+        for c in (tsconfigs or [])[:MAX_TSCONFIGS]:
+            if _safe(c["path"]) and ts_project.is_config(c["path"]):
+                target = work / TSCONFIGS / c["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(c["text"].encode("utf-8"))
     if indexer == "scip-python":
         (work / "environment.json").write_text("[]")
         roots = python_roots([f["path"] for f in files])
@@ -175,6 +176,7 @@ async def run_one(
     *,
     allow_unsandboxed: bool,
     manifests: list[dict[str, Any]] | None = None,
+    tsconfigs: list[dict[str, Any]] | None = None,
 ) -> tuple[Outcome, list[dict[str, Any]]]:
     version = await asyncio.to_thread(installed, config, indexer)
     program = config.program(indexer)
@@ -182,7 +184,7 @@ async def run_one(
         return Outcome(indexer, len(files), "failed", "not_installed"), []
     work = Path(tempfile.mkdtemp(prefix="codehover-index-", dir=config.scratch))
     try:
-        await asyncio.to_thread(_checkout, work, indexer, files, manifests)
+        await asyncio.to_thread(_checkout, work, indexer, files, manifests, tsconfigs)
         paths = sandbox.IndexerPaths(program=program[0], tools=program[1], work=str(work))
         request = {
             "indexer": indexer,
@@ -248,10 +250,12 @@ async def resolve(
     *,
     allow_unsandboxed: bool = False,
     manifests: list[dict[str, Any]] | None = None,
+    tsconfigs: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], list[Outcome]]:
     """Resolved occurrences per file ID (see index.build_index) and one outcome per indexer that ran.
     Symbols are namespaced by indexer, so two indexes never share an ID. `manifests` are the snapshot's
-    `Cargo.toml` files ({"path", "text"}), read only by the Rust family."""
+    `Cargo.toml` files ({"path", "text"}), read only by the Rust family; `tsconfigs` its `tsconfig*.json`
+    and `jsconfig*.json` files, whose path aliases only the TypeScript family reads."""
     by_path = {f["path"]: f for f in files if _safe(f["path"])}
     resolved: dict[str, dict[str, Any]] = {}
     outcomes = []
@@ -260,7 +264,12 @@ async def resolve(
         if not family:
             continue
         outcome, documents = await run_one(
-            config, indexer, family, allow_unsandboxed=allow_unsandboxed, manifests=manifests
+            config,
+            indexer,
+            family,
+            allow_unsandboxed=allow_unsandboxed,
+            manifests=manifests,
+            tsconfigs=tsconfigs,
         )
         outcomes.append(outcome)
         for document in documents:

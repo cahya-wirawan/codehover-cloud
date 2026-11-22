@@ -110,6 +110,7 @@ async def _purge_workspace(
             "DELETE FROM invitations WHERE workspace_id = :w",
             "DELETE FROM owner_notices WHERE workspace_id = :w",
             "DELETE FROM access_tokens WHERE workspace_id = :w",
+            "DELETE FROM oauth_grants WHERE workspace_id = :w",  # after the tokens that name them
             # The workspace is `deleting`, so the owner invariant no longer applies (0003).
             "DELETE FROM memberships WHERE workspace_id = :w",
             "UPDATE repository_connections SET status = 'revoked', updated_at = now()"

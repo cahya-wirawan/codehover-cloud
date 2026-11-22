@@ -14,6 +14,9 @@ addons or WASI). Nothing is installed and no repository script, hook or config r
 source files only. For Rust, the repository's Cargo manifests sit in `<work>/manifests`; this module
 turns them into `out/rust-project.json` (app.engine.rust_project), which `<work>/rust-project.json`
 links to, so rust-analyzer loads that crate graph and never runs cargo, build scripts or proc macros.
+For TypeScript, the repository's tsconfig/jsconfig files sit in `<work>/tsconfigs`; this module reads only
+their path aliases (app.engine.ts_project) and writes projects of its own to `out`, which
+scip-typescript then indexes in place of the checkout's tsconfig.
 Output positions match the parser's (02/06): lines 1-based, columns in Unicode scalars. Symbols are
 small integers, local symbols scoped to their document.
 """
@@ -27,7 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from app.engine import rust_project, scip
+from app.engine import rust_project, scip, ts_project
 
 ENTRY_POINTS = {
     "scip-python": "@sourcegraph/scip-python/index.js",
@@ -36,6 +39,8 @@ ENTRY_POINTS = {
 INDEXERS = frozenset({*ENTRY_POINTS, "rust-analyzer"})
 RUST_CONFIG = "rust-analyzer.json"  # written by the worker beside the checkout
 MANIFESTS = "manifests"  # the repository's Cargo.toml files, beside the checkout (never in `src`)
+TSCONFIGS = "tsconfigs"  # the repository's tsconfig/jsconfig files, beside the checkout (never in `src`)
+TS_PROJECT = "tsconfig.{n}.json"  # generated TypeScript projects, in `out` (the sandbox makes no directories)
 # Node's permission model, a second layer inside the OS sandbox. scip-python cannot run under it: its
 # bundled @yarnpkg/fslib patches the `path` module, which the permission model freezes.
 NODE_PERMISSION = frozenset({"scip-typescript"})
@@ -49,7 +54,7 @@ MAX_REFERENCES_PER_FILE = 20000  # as the parser (parse_worker)
 FOREIGN_BREAKS = ("\u2028", "\u2029", "\x85")
 
 
-def command(request: dict[str, Any]) -> list[str]:
+def command(request: dict[str, Any], projects: list[str] | None = None) -> list[str]:
     tools, work = Path(request["tools"]), Path(request["work"])
     src, out = work / "src", work / "out"
     if request["indexer"] == "rust-analyzer":
@@ -82,6 +87,7 @@ def command(request: dict[str, Any]) -> list[str]:
         ],
         "scip-typescript": [
             "index",
+            *(projects or []),  # none: the checkout's own tsconfig.json
             "--no-progress-bar",
             "--cwd",
             str(src),
@@ -168,6 +174,27 @@ def write_rust_project(work: Path, sysroot_src: str) -> int:
     return len(graph["crates"])
 
 
+def write_ts_projects(work: Path) -> list[str]:
+    """`out/tsconfig.<n>.json` for each project with path aliases (app.engine.ts_project), plus the
+    plain one; returns their paths, or [] when the repository has no aliases."""
+    src, configs = work / "src", work / TSCONFIGS
+    texts = {}
+    for path in sorted(configs.rglob("*.json")) if configs.is_dir() else []:
+        if path.is_file() and path.stat().st_size <= ts_project.MAX_CONFIG_BYTES:
+            texts[path.relative_to(configs).as_posix()] = path.read_bytes().decode("utf-8", "replace")
+    files = [
+        p.relative_to(src).as_posix()
+        for p in src.rglob("*")
+        if p.is_file() and not (p.parent == src and p.name in WORKER_FILES)
+    ]
+    written = []
+    for n, config in enumerate(ts_project.projects(texts, files, str(src))):
+        target = work / "out" / TS_PROJECT.format(n=n)
+        target.write_text(json.dumps(config))
+        written.append(str(target))
+    return written
+
+
 def run(request: dict[str, Any]) -> dict[str, Any]:
     indexer = request["indexer"]
     work = Path(request["work"])
@@ -178,10 +205,11 @@ def run(request: dict[str, Any]) -> dict[str, Any]:
 
     if indexer == "rust-analyzer" and write_rust_project(work, request["tools"]) == 0:
         return failed("no_crates")
+    projects = write_ts_projects(work) if indexer == "scip-typescript" else []
 
     with (out / "indexer.log").open("wb") as log:
         process = subprocess.Popen(  # noqa: S603 - fixed argv: the pinned binary and indexer
-            command(request),
+            command(request, projects),
             stdin=subprocess.PIPE,
             stdout=log,
             stderr=log,

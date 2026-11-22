@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Field, Input } from "../../components/ui/input";
 import { Section } from "../../components/ui/section";
 import { ApiError } from "../../lib/api/client";
-import { api, type AccessToken } from "../../lib/api/resources";
+import { api, type AccessToken, type OAuthGrant } from "../../lib/api/resources";
 
 const EXPIRY = [30, 90, 365] as const;
 
@@ -107,6 +107,55 @@ export function AccessTokenPanel({ workspaceId }: { workspaceId: string }) {
       {failure ? (
         <p role="alert" className="mt-3 text-destructive">
           {failure instanceof ApiError ? failure.message : "That did not work. Try again."}
+        </p>
+      ) : null}
+    </Section>
+  );
+}
+
+/** MCP clients signed in through the browser (0037): each reads one private site as the person who
+ * allowed it, until disconnected here, or until that person loses access. */
+export function ConnectedAppsPanel({ workspaceId }: { workspaceId: string }) {
+  const client = useQueryClient();
+  const grants = useQuery({ queryKey: ["oauth-grants", workspaceId], queryFn: () => api.oauthGrants(workspaceId) });
+  const revoke = useMutation({
+    mutationFn: (id: string) => api.revokeOAuthGrant(workspaceId, id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["oauth-grants", workspaceId] }),
+  });
+  const live: OAuthGrant[] = grants.data?.items.filter((g) => !g.revoked_at) ?? [];
+  return (
+    <Section
+      title="Connected apps"
+      description="MCP clients you signed in to a private site from the client itself. Each reads only that site, as you."
+    >
+      {live.length ? (
+        <ul className="divide-y divide-border">
+          {live.map((g) => (
+            <li key={g.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+              <span className="font-medium">{g.client_name}</span>
+              <span>{g.project}</span>
+              <span className="text-muted">
+                connected {new Date(g.created_at).toLocaleDateString()}
+                {g.last_used_at ? `, last used ${new Date(g.last_used_at).toLocaleDateString()}` : ""}
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => revoke.mutate(g.id)}
+                disabled={revoke.isPending}
+                aria-label={`Disconnect ${g.client_name} from ${g.project}`}
+              >
+                Disconnect
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-muted">No apps are connected.</p>
+      )}
+      {revoke.error ? (
+        <p role="alert" className="mt-3 text-destructive">
+          {revoke.error instanceof ApiError ? revoke.error.message : "That did not work. Try again."}
         </p>
       ) : null}
     </Section>

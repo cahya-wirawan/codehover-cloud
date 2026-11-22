@@ -1,6 +1,6 @@
 {
   "product_name": "codehover-cloud",
-  "package_version": "0.6.9",
+  "package_version": "0.7.0",
   "research_date": "2026-11-17",
   "reference_product": "cahya-wirawan/codehover",
   "reference_commit": "a3f668bc36420b414e7c8e048b06ca5e18ce8ad2",
@@ -65,15 +65,15 @@
     },
     "05_DATA_MODEL.md": {
       "status": "complete specification",
-      "sha256": "ee46b1a706b427b5ecab446105e8cc85d56e61c7fc871fb313385b1c1ee79f4b"
+      "sha256": "66c56f3c6eadcb28a892e920032302f151c8ed07677888a778d9b6d2d63560da"
     },
     "06_API_SPEC.md": {
       "status": "complete specification",
-      "sha256": "d667300ee1019e364eaca662d36cd2481ce04d8d78d4ff58bf52737b889d4992"
+      "sha256": "4e3aaa2f902b73cad4343a289b85185ae7607bea58d99050b8621408c691f63e"
     },
     "07_AI_OR_AUTOMATION_PIPELINE.md": {
       "status": "complete specification",
-      "sha256": "d1bb78654cae43e77a5cc2ec124731cd6f98758233f693b9ec52d0e5e1ad4dab"
+      "sha256": "62337c5e53596d87c0fdcae14c7d0ee0f90f3c06d134e2455a9097e2340f361d"
     },
     "08_SAFETY_PRIVACY_COMPLIANCE.md": {
       "status": "complete specification",
@@ -81,7 +81,7 @@
     },
     "09_AUTH_AND_PERMISSIONS.md": {
       "status": "complete specification",
-      "sha256": "13b18548615678b430fad5eec6ad7698bda163bb87a124e139eaa85bfe6f5ed3"
+      "sha256": "176180622aac58085a440c2cbad211f2f1569d7954a125b84bb8de1a5d4b6e87"
     },
     "10_OFFLINE_SYNC_AND_STORAGE.md": {
       "status": "complete specification",
@@ -121,7 +121,7 @@
     },
     "19_PROMPT_LIBRARY.md": {
       "status": "complete specification",
-      "sha256": "822f9f5a741810216214bbe1be35fcf1ddcdb2139791610003233625782cb2dd"
+      "sha256": "0fbfcc3ed9b1f61b0e0e40a090eaaa3ed30765d96014b1d82b102ed07be353ab"
     },
     "20_ACCEPTANCE_CRITERIA.md": {
       "status": "complete specification",
@@ -129,11 +129,11 @@
     },
     "21_RISKS_AND_OPEN_QUESTIONS.md": {
       "status": "complete specification",
-      "sha256": "8b2abbc99cf31c152a5bc44660528e819e6b28dd84cf8f8699fd668f692dce42"
+      "sha256": "8dd1e5c79a9f90fd610c4a8226db4ef72758e1dd3a4fd2dd006da87cadfb949a"
     },
     "22_DEPLOYMENT_AND_OPERATIONS.md": {
       "status": "complete specification",
-      "sha256": "c24c68953a6e5744b13ee56a2f9f871de6f49fd2dfa20e817453d1b5625deb6c"
+      "sha256": "1be25a96395ad758d93d647dfb3b3ee6dd145dba3e08f443824baf92501ac2b9"
     },
     "23_VERSIONING_AND_RELEASES.md": {
       "status": "complete specification",
@@ -141,11 +141,11 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "edd4fa343cd787252e267c8363507597c5959df3c3ee358903cc1ea89e9ec9f9"
+      "sha256": "4267d61d6f65c3e330aec77eb22fbaac44545aabd0ae9f57048301d15f2b2679"
     },
     "README.md": {
       "status": "complete specification",
-      "sha256": "fab23d1f22987dbf3d565d6f7154012ddbe5a8f21c72d6e5d96ea75cae45fd8d"
+      "sha256": "470b62c7f2835c59f072ad2d691bc87e22e3449f7bd406ce624542484bb04d55"
     },
     "SOURCES.md": {
       "status": "complete specification",
@@ -153,11 +153,11 @@
     },
     "VALIDATION_REPORT.md": {
       "status": "package checks completed; SQL contracts executed on PostgreSQL 18.0; application untested",
-      "sha256": "ebb64b6de48f27cc7978949bf6f95f8584786d4a7f3c00815b2c5a1f9f0ac10e"
+      "sha256": "0d3bc158171d1370ab898a6e35be9e5acf48f11023e366339d68edc8951f0984"
     },
     "VERSION": {
       "status": "package tooling",
-      "sha256": "13eb74b44be6e3a85a0efa0dedf56aec05e9e50140e1c8bbc0d0fbd8097b0717"
+      "sha256": "967d9afb101346667166f2e76e81910bc190488d7d41d50ca0072e9d92f00e32"
     },
     "contracts/claim-check.schema.json": {
       "status": "reference template/schema",
@@ -237,7 +237,7 @@
     },
     "deployment/nginx.conf": {
       "status": "reference template/schema",
-      "sha256": "57b737c158fe5b6582428803534d5ed1b193e0a67d4f7d5e49b4334c65491d7b"
+      "sha256": "03dc98562a96c780fc93891e3076dfaf19ebd055c0397911363fb6f19c920862"
     },
     "deployment/prometheus/alerts.test.yml": {
       "status": "reference template/schema",
@@ -260,5 +260,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "463e37d3db87296c47043201d7636a751c4d6f342f7c38f560b4a40eb82e7043"
+  "master_spec_sha256": "c8a83e596470e1c0803bff0313b23e4cd2adb11b7b0182d4105b0c57f301393c"
 }

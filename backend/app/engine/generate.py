@@ -594,11 +594,17 @@ def validate_guide(
 
 # ---------------------------------------------------------------- translation (P07)
 LINK_TARGET = re.compile(r"\]\((guide:[a-z0-9-]+|https://[^)\s]+)\)")
-TRANSLATION_SCHEMAS = {"explanation": "explanation", "overview": "overview", "page": "guide-page"}
+TRANSLATION_SCHEMAS = {
+    "explanation": "explanation",
+    "overview": "overview",
+    "page": "guide-page",
+    "plan": "guide-plan",
+}
 TRANSLATION_FORMATS = {
     "explanation": "Explanation JSON",
     "overview": "Overview JSON",
     "page": "guide page JSON whose `markdown` is the translated page",
+    "plan": "guide plan JSON whose titles, sections and purposes are translated",
 }
 
 
@@ -615,8 +621,9 @@ def translate_request(
     source_language: str,
 ) -> Prepared:
     """A language variant's unit translated from its base build's validated output (P07, prompt sets from
-    0.6.0): `kind` is explanation (one chunk's Explanation JSON), overview, or page ({markdown}). The
-    audience instruction names the target language; the answer has the source's schema."""
+    0.6.0): `kind` is explanation (one chunk's Explanation JSON), overview, page ({markdown}) or plan (the
+    base's guide plan, whose titles, sections and purposes every language variant shows in its own
+    language). The audience instruction names the target language; the answer has the source's schema."""
     name = TRANSLATION_SCHEMAS[kind]
     user = prompts.render(
         prompt_version,
@@ -658,6 +665,12 @@ def translation_problems(kind: str, output: dict[str, Any], source: dict[str, An
             problems.append("keep the reading_order's file_ids in the same order")
         if len(output.get("key_concepts", [])) != len(source["key_concepts"]):
             problems.append("keep the same number of key_concepts")
+    elif kind == "plan":
+        anchors = [(p["slug"], p["source_ranges"]) for p in source["pages"]]
+        if [(p.get("slug"), p.get("source_ranges")) for p in output.get("pages", [])] != anchors:
+            problems.append("keep every page's slug and source_ranges exactly, in the same order")
+        if any(not str(p.get("title", "")).strip() for p in output.get("pages", [])):
+            problems.append("give every page a title")
     else:
         markdown = normalize_citations(str(output.get("markdown", "")))
         if sorted(CITATION.findall(markdown)) != sorted(CITATION.findall(source["markdown"])):

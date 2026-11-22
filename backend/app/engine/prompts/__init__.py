@@ -94,6 +94,11 @@ def system(version: str, audience: str = DEFAULT_VARIANT) -> str:
     return f"{base}\n\n{instruction.strip()}"
 
 
+def has(version: str, name: str) -> bool:
+    """Whether the set has the template `name` (translate exists from 0.6.0)."""
+    return name in _load(version)
+
+
 def uses(version: str, name: str, placeholder: str) -> bool:
     """Whether a template of the set reads `$placeholder`; inputs it does not read stay out of cache keys,
     so a newer engine does not invalidate an older set's cached outputs."""

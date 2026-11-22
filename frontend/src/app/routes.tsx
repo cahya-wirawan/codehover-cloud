@@ -3,6 +3,7 @@ import type { RouteObject } from "react-router";
 import { AccountPage } from "../features/account/AccountPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { PrivacyPage, SupportPage, TermsPage } from "../features/legal/LegalPages";
+import { OAuthConsentPage } from "../features/mcp/OAuthConsentPage";
 import { OpsPage } from "../features/ops/OpsPage";
 import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
@@ -41,6 +42,7 @@ export const routes: RouteObject[] = [
         children: [
           { path: "account", element: <AccountPage /> },
           { path: "ops", element: <OpsPage /> },
+          { path: "oauth/authorize", element: <OAuthConsentPage /> },
           { path: "w", element: <WorkspacesPage /> },
           { path: "w/:wid", element: <WorkspacePage /> },
           { path: "w/:wid/members", element: <MembersPage /> },

@@ -253,8 +253,27 @@ async def index(rt: Runtime, claimed: Claim) -> Apply | None:
                 {"path": m.path, "text": (await rt.store.get(m.blob_key)).decode("utf-8")}
                 for m in manifest_rows
             ]
+        tsconfigs = []
+        if any(r.language in indexers.FAMILIES["scip-typescript"] for r in rows):  # path aliases (07)
+            config_rows = await _read(
+                rt,
+                claimed,
+                "SELECT f.path, f.blob_key FROM builds b"
+                " JOIN source_files f ON f.workspace_id = b.workspace_id AND f.snapshot_id = b.snapshot_id"
+                " WHERE b.workspace_id = :w AND b.id = :b AND f.blob_key IS NOT NULL"
+                " AND f.path ~ '(^|/)(tsconfig|jsconfig)[^/]*[.]json$' ORDER BY f.path LIMIT :n",
+                n=indexers.MAX_TSCONFIGS,
+            )
+            tsconfigs = [
+                {"path": c.path, "text": (await rt.store.get(c.blob_key)).decode("utf-8")}
+                for c in config_rows
+            ]
         resolved, outcomes = await indexers.resolve(
-            rt.indexers, payload["files"], allow_unsandboxed=rt.allow_unsandboxed, manifests=manifests
+            rt.indexers,
+            payload["files"],
+            allow_unsandboxed=rt.allow_unsandboxed,
+            manifests=manifests,
+            tsconfigs=tsconfigs,
         )
         for outcome in outcomes:
             metrics.INDEXER_RUNS.labels(indexer=outcome.indexer, outcome=outcome.status).inc()

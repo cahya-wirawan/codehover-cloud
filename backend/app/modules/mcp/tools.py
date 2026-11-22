@@ -523,16 +523,8 @@ async def call(
         raise InvalidArguments(
             "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in error.errors())
         ) from error
-    build_id = site.build_id
-    if args.language is not None:
-        await set_context(db, workspace_id=site.reader.workspace_id)
-        variants = await site_variants(db, site)
-        match = [v for v in variants if v["language"] == args.language]
-        if not match:
-            return f"This site has no {args.language!r} version.", True
-        build_id = UUID(str(match[0]["id"]))
-    ctx = Context(db, objects, site, build_id)
     try:
+        ctx = await context_for(db, objects, site, args.language)
         return _clip(await tool.run(ctx, args)), False
     except ToolError as error:
         return str(error), True
@@ -540,3 +532,16 @@ async def call(
         if error.status_code in (404, 409):
             return str(error), True
         raise
+
+
+async def context_for(db: AsyncSession, objects: ObjectStore, site: Site, language: Language) -> Context:
+    """The site's published build, or its approved variant in `language` (ToolError when it has none)."""
+    build_id = site.build_id
+    if language is not None:
+        await set_context(db, workspace_id=site.reader.workspace_id)
+        variants = await site_variants(db, site)
+        match = [v for v in variants if v["language"] == language]
+        if not match:
+            raise ToolError(f"This site has no {language!r} version.")
+        build_id = UUID(str(match[0]["id"]))
+    return Context(db, objects, site, build_id)

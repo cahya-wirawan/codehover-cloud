@@ -280,6 +280,8 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
     async with sessions() as db:
         identity = (await db.execute(text("SELECT * FROM app_private.sweep_identity()"))).one()
         audit = (await db.execute(text("SELECT app_private.sweep_audit()"))).scalar_one()
+        slugs = (await db.execute(text("SELECT app_private.sweep_slug_reservations()"))).scalar_one()
+        oauth = (await db.execute(text("SELECT app_private.sweep_oauth()"))).scalar_one()
         windows: Any = await db.execute(  # rate-limit counters (0019): no tenant data, kept two days
             text("DELETE FROM rate_limits WHERE window_start < now() - interval '2 days'")
         )
@@ -292,9 +294,19 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
             "oauth_transactions": identity.oauth_transactions,
             "sessions": identity.sessions,
             "audit_events": audit,
+            "slug_reservations": slugs,
+            "oauth": oauth,
             "rate_limit_windows": int(windows.rowcount or 0),
         }
     )
-    for key in ("idempotency_keys", "oauth_transactions", "sessions", "audit_events", "rate_limit_windows"):
+    for key in (
+        "idempotency_keys",
+        "oauth_transactions",
+        "sessions",
+        "audit_events",
+        "slug_reservations",
+        "oauth",
+        "rate_limit_windows",
+    ):
         metrics.RETENTION.labels(kind=key).inc(totals[key])
     return totals

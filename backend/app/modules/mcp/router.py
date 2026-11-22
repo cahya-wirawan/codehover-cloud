@@ -5,9 +5,11 @@ JSON-RPC message answered with one JSON body (notifications get 202). There is n
 stream, so GET is 405. Each request resolves the site again, exactly like the site's own routes: an
 unpublished or suspended site stops answering at once.
 
-Access: a public site needs nothing. A private site needs `Authorization: Bearer <token>` from a member
-of its workspace who may see the project; anything else is 404, so slugs cannot be probed. A token that
-is malformed, revoked or expired is 401 whatever the slug. Cookies are never read here, so a browser
+Access: a public site needs nothing. A private site needs `Authorization: Bearer <token>` of a member of
+its workspace who may see the project: a personal access token, or one from MCP sign-in (app.modules.mcp
+.oauth), which is bound to that one site. Without a token, a private and an unknown address both answer
+401 naming the protected-resource metadata, so clients can sign in and slugs cannot be probed; a valid
+token without access is 404. A token that is malformed, revoked, expired or for another site is 401. Cookies are never read here, so a browser
 session cannot be used cross-site, and an `Origin` other than the app's own is refused (DNS rebinding).
 """
 
@@ -28,7 +30,7 @@ from app.core import idempotency, ratelimit
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Db
-from app.modules.mcp import tokens, tools
+from app.modules.mcp import oauth, resources, tokens, tools
 from app.modules.published.router import Site, SlugPath
 from app.modules.workspaces.access import PublicReader, ReadMember, WriteMember
 
@@ -117,18 +119,20 @@ async def revoke_token(token_id: UUID, db: Db, member: WriteMember) -> Response:
 
 
 # ---------------------------------------------------------------- MCP endpoint
-def _bearer(request: Request) -> str | None:
+def _bearer(request: Request, slug: str) -> str | None:
     header = request.headers.get("authorization")
     if header is None:
         return None
     scheme, _, value = header.partition(" ")
     if scheme.lower() != "bearer" or not value.strip():
-        raise ApiError(401, "UNAUTHENTICATED", "Send a valid access token.", headers=_challenge())
+        raise _unauthenticated(request, slug, "Send a valid access token.", "invalid_token")
     return value.strip()
 
 
-def _challenge() -> dict[str, str]:
-    return {"WWW-Authenticate": 'Bearer realm="codehover", error="invalid_token"'}
+def _unauthenticated(request: Request, slug: str, message: str, error: str | None = None) -> ApiError:
+    """401 naming the protected-resource metadata, from which an MCP client starts sign-in (0037)."""
+    headers = oauth.challenge_header(request.app.state.settings, slug, error)
+    return ApiError(401, "UNAUTHENTICATED", message, headers=headers)
 
 
 async def _site(slug: str, request: Request, db: Db) -> Site:
@@ -139,10 +143,10 @@ async def _site(slug: str, request: Request, db: Db) -> Site:
     origin = request.headers.get("origin")
     if origin is not None and origin != settings.public_origin:
         raise ApiError(403, "FORBIDDEN", "This origin may not call the MCP endpoint.")
-    token = _bearer(request)
+    token = _bearer(request, slug)
     principal = await tokens.resolve(db, token) if token is not None else None
     if token is not None and principal is None:
-        raise ApiError(401, "UNAUTHENTICATED", "This access token is not valid.", headers=_challenge())
+        raise _unauthenticated(request, slug, "This access token is not valid.", "invalid_token")
     found = (
         await db.execute(
             text(
@@ -151,18 +155,26 @@ async def _site(slug: str, request: Request, db: Db) -> Site:
             {"s": slug},
         )
     ).one_or_none()
-    if found is None:
-        raise ApiError(404, "NOT_FOUND", "Site not found.")
-    if found.visibility != "public":
+    if (
+        principal is not None
+        and principal.project_id is not None
+        and (found is None or found.project_id != principal.project_id)
+    ):
+        # A token from MCP sign-in is for one site only (RFC 8707 audience).
+        raise _unauthenticated(request, slug, "This access token is for another site.", "invalid_token")
+    if found is None or found.visibility != "public":
+        if principal is None:
+            # Unknown and private addresses answer alike, so slugs cannot be probed.
+            raise _unauthenticated(request, slug, "Sign in to read this site.")
         allowed = None
-        if principal is not None and principal.workspace_id == found.workspace_id:
+        if found is not None and principal.workspace_id == found.workspace_id:
             allowed = (
                 await db.execute(
                     text("SELECT app_private.project_role(:w, :p, :u)"),
                     {"w": found.workspace_id, "p": found.project_id, "u": principal.user_id},
                 )
             ).scalar_one_or_none()
-        if allowed is None:
+        if found is None or allowed is None:
             raise ApiError(404, "NOT_FOUND", "Site not found.")
     await set_context(db, workspace_id=found.workspace_id)
     if principal is not None and principal.workspace_id == found.workspace_id:
@@ -215,7 +227,11 @@ async def mcp(
             id_,
             {
                 "protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
-                "capabilities": {"tools": {"listChanged": False}},
+                "capabilities": {
+                    "tools": {"listChanged": False},
+                    "resources": {"listChanged": False, "subscribe": False},
+                    "prompts": {"listChanged": False},
+                },
                 "serverInfo": {"name": "codehover-cloud", "version": __version__},
                 "instructions": INSTRUCTIONS,
             },
@@ -235,6 +251,30 @@ async def mcp(
         except tools.InvalidArguments as error:
             return _error(id_, -32602, f"Invalid arguments: {error}"[:500])
         return _result(id_, {"content": [{"type": "text", "text": output}], "isError": is_error})
+    if method == "resources/list":
+        return _result(id_, {"resources": await resources.listing(db, request.app.state.objects, site, slug)})
+    if method == "resources/templates/list":
+        return _result(id_, {"resourceTemplates": resources.templates(slug)})
+    if method == "resources/read":
+        uri = params.get("uri")
+        if not isinstance(uri, str) or len(uri) > 2048:
+            return _error(id_, -32602, "Invalid params: uri")
+        try:
+            return _result(id_, await resources.read(db, request.app.state.objects, site, slug, uri))
+        except resources.NotFound:
+            return _error(id_, -32002, "Resource not found")
+    if method == "prompts/list":
+        return _result(id_, {"prompts": resources.prompt_listing()})
+    if method == "prompts/get":
+        name, arguments = params.get("name"), params.get("arguments") or {}
+        if not isinstance(name, str) or not isinstance(arguments, dict):
+            return _error(id_, -32602, "Invalid params: name and arguments")
+        try:
+            return _result(id_, resources.prompt(name, arguments))
+        except KeyError:
+            return _error(id_, -32602, f"Unknown prompt: {name[:80]}")
+        except resources.InvalidPrompt as error:
+            return _error(id_, -32602, f"Invalid arguments: {error}")
     return _error(id_, -32601, "Method not found")
 
 

@@ -344,7 +344,10 @@ async def publish(
             )
     except exc.IntegrityError as error:
         await db.rollback()
-        raise ApiError(409, "SLUG_TAKEN", "That public address is already in use.") from error
+        # Also a recently released address of another workspace (0036 publications_slug_reserved).
+        raise ApiError(
+            409, "SLUG_TAKEN", "That address is in use or was released recently; choose another."
+        ) from error
     await audit(
         db,
         member,

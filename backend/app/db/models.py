@@ -828,3 +828,66 @@ class AccessToken(Base):
     expires_at: Mapped[datetime] = ts()
     last_used_at: Mapped[datetime | None] = ts(nullable=True)
     revoked_at: Mapped[datetime | None] = ts(nullable=True)
+    grant_id: Mapped[UUID | None] = ref(nullable=True)  # 0037: issued through MCP sign-in
+    project_id: Mapped[UUID | None] = ref(nullable=True)
+
+
+# ---------------------------------------------------------------- slug reservations (0036)
+class SlugReservation(Base):
+    """A released site address, reserved for the workspace that let it go (no runtime access)."""
+
+    __tablename__ = "slug_reservations"
+    slug: Mapped[str] = mapped_column(Text, primary_key=True)
+    workspace_id: Mapped[UUID] = ref()
+    project_id: Mapped[UUID] = ref()
+    released_at: Mapped[datetime] = ts(default_now=True)
+    reserved_until: Mapped[datetime] = ts()
+
+
+# ---------------------------------------------------------------- MCP sign-in (0037)
+class OAuthClient(Base):
+    __tablename__ = "oauth_clients"
+    id: Mapped[UUID] = pk()
+    client_id: Mapped[str] = mapped_column(Text)
+    client_name: Mapped[str] = mapped_column(Text)
+    redirect_uris: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    created_at: Mapped[datetime] = ts(default_now=True)
+    last_used_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class OAuthAuthorization(Base):
+    __tablename__ = "oauth_authorizations"
+    id: Mapped[UUID] = pk()
+    client: Mapped[UUID] = ref("oauth_clients.id")
+    redirect_uri: Mapped[str] = mapped_column(Text)
+    code_challenge: Mapped[str] = mapped_column(Text)
+    resource: Mapped[str] = mapped_column(Text)
+    slug: Mapped[str] = mapped_column(Text)
+    state: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts()
+    decided_at: Mapped[datetime | None] = ts(nullable=True)
+    approved: Mapped[bool | None] = mapped_column(Boolean)
+    user_id: Mapped[UUID | None] = ref("users.id", nullable=True)
+    workspace_id: Mapped[UUID | None] = ref(nullable=True)
+    project_id: Mapped[UUID | None] = ref(nullable=True)
+    code_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
+    code_expires_at: Mapped[datetime | None] = ts(nullable=True)
+    redeemed_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class OAuthGrant(Base):
+    __tablename__ = "oauth_grants"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    user_id: Mapped[UUID] = ref("users.id")
+    project_id: Mapped[UUID] = ref()
+    client: Mapped[UUID] = ref("oauth_clients.id")
+    client_name: Mapped[str] = mapped_column(Text)
+    authorization_id: Mapped[UUID] = ref()
+    refresh_hash: Mapped[bytes] = mapped_column(LargeBinary)
+    previous_refresh_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
+    refresh_expires_at: Mapped[datetime] = ts()
+    created_at: Mapped[datetime] = ts(default_now=True)
+    last_used_at: Mapped[datetime | None] = ts(nullable=True)
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
