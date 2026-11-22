@@ -50,7 +50,7 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - owner notices have run only against the recording fake and the local Mailpit, not a production relay;
 - only the explain stage is batched (Anthropic, OpenAI and Gemini); the OpenAI and Gemini batch paths have run only against mocked HTTP, and Gemini's batch state and result fields are read in every place its docs give them;
 - the OpenAI, Gemini (`gemini-3.8-flash`, `generateContent` with `responseJsonSchema`) and OpenRouter (`qwen/qwen4-max`) adapters have run live only through the eval harness (2026-11-20), not a full build; OpenAI's input counts include cached tokens (shown by repeated runs), OpenRouter's is assumed to follow the same convention;
-- SCIP links calls through an interface or Protocol to the interface method, and never reads a repository's tsconfig path aliases;
+- SCIP links calls through an interface or Protocol to the interface method, and reads only `baseUrl`/`paths` from a repository's tsconfig (`engine/ts_project.py`, in the sandbox; project references and other resolution options are ignored);
 - C and C++ uses resolve by name only (no indexer; scip-clang would need a compile database), and macros other than function-like `#define`s are not definitions;
 - Rust resolution has no crates.io dependencies, proc-macro expansion or build-script output, and assumes a 64-bit Linux target;
 - a published site and an offline ZIP switch languages only at the published or exported build's reader level;

@@ -575,3 +575,47 @@ async def test_a_rust_repository_builds_and_gives_the_indexer_its_cargo_manifest
     )
     assert [tuple(e) for e in edges] == [("add", "index")]
     await owner.aclose()
+
+
+async def test_a_typescript_repository_gives_the_indexer_its_tsconfig_files(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """07: the index stage hands scip-typescript the snapshot's tsconfig/jsconfig files (and only those),
+    whose path aliases the sandboxed worker reads. The real indexer runs in tests/unit/test_scip.py."""
+    owner, _ws, project = await setup_project(client, idp, github)
+    repository = {
+        "tsconfig.json": '{"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}',
+        "tsconfig.base.json": "{}",
+        "web/jsconfig.json": "{}",
+        "src/util.ts": "export function helper(): number { return 1; }\n",
+        "src/main.ts": 'import { helper } from "@/util";\nexport const x = helper();\n',
+        "package.json": "{}",
+        "src/config.json": "{}",
+    }
+    for repo_id in list(github.tarballs):
+        github.tarballs[repo_id] = tarball_of(repository)
+    seen: dict[str, Any] = {}
+
+    async def resolved(config: Any, files: list[dict[str, Any]], **kwargs: Any) -> Any:
+        seen["tsconfigs"] = kwargs["tsconfigs"]
+        seen["manifests"] = kwargs["manifests"]
+        return {}, [indexers.Outcome("scip-typescript", len(files), "ok", None, "x")]
+
+    monkeypatch.setattr(indexers, "resolve", resolved)
+    build = (await start(owner, project)).json()["id"]
+    assert RUNTIME_URL
+    rt = Runtime(
+        sessions=session_factory(create_async_engine(RUNTIME_URL)),
+        store=client.app.state.objects,  # type: ignore[attr-defined]
+        github=client.app.state.github_app,  # type: ignore[attr-defined]
+        allow_unsandboxed=True,
+        catalog=client.app.state.catalog,  # type: ignore[attr-defined]
+        indexers=indexers.Config(node="/opt/none/node", tools="/opt/none"),
+    )
+    assert await drive(client.app, build, runtime=rt) == ["completed"] * 4  # type: ignore[attr-defined]
+    assert seen["manifests"] == []
+    assert seen["tsconfigs"] == [
+        {"path": p, "text": repository[p]}
+        for p in ("tsconfig.base.json", "tsconfig.json", "web/jsconfig.json")
+    ]
+    await owner.aclose()

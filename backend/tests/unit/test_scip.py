@@ -403,3 +403,74 @@ def test_an_indexer_timeout_falls_back_and_cleans_up() -> None:
     resolved, outcomes = asyncio.run(indexers.resolve(config, _fixture()))
     assert resolved == {} and {(o.status, o.reason) for o in outcomes} == {("failed", "timeout")}
     assert list(Path(scratch).iterdir()) == []  # scratch checkouts never outlive the run
+
+
+ALIASED = [
+    ("apps/web/src/util.ts", "typescript", "export function helper(): number { return 1; }\n"),
+    (
+        "apps/web/src/main.ts",
+        "typescript",
+        'import { helper } from "@/util";\nexport function run(): number { return helper(); }\n',
+    ),
+    ("apps/admin/app/util.ts", "typescript", "export function helper(): number { return 2; }\n"),
+    (
+        "apps/admin/app/main.ts",
+        "typescript",
+        'import { helper } from "@/util";\nimport { shared } from "@shared/tools";\n'
+        "export function run(): number { return helper() + shared(); }\n",
+    ),
+    ("packages/shared/tools.ts", "typescript", "export function shared(): number { return 3; }\n"),
+]
+TSCONFIGS = [
+    {
+        "path": "tsconfig.base.json",
+        "text": '{"compilerOptions": {"baseUrl": ".", "paths": {"@shared/*": ["packages/shared/*"]}}}',
+    },
+    {
+        "path": "apps/web/tsconfig.json",
+        "text": '{\n  // the app\'s own alias\n  "compilerOptions": {"paths": {"@/*": ["./src/*"],},},\n}',
+    },
+    {
+        "path": "apps/admin/tsconfig.json",
+        # The inherited baseUrl (the repository root) is what these targets are relative to.
+        "text": '{"extends": "../../tsconfig.base.json", "compilerOptions": {"paths": {"@/*": ["apps/admin/app/*"], "@shared/*": ["packages/shared/*"]}}}',
+    },
+]
+
+
+@needs_tools
+def test_typescript_path_aliases_resolve_per_project() -> None:
+    """Each app's `@/*` resolves to its own folder (07): imports through aliases become `index` edges."""
+    files = [{"file_id": p, "path": p, "language": lang, "text": t} for p, lang, t in ALIASED]
+    resolved, outcomes = asyncio.run(
+        indexers.resolve(indexers.Config(NODE, TOOLS), files, tsconfigs=TSCONFIGS)
+    )
+    assert [(o.indexer, o.status) for o in outcomes] == [("scip-typescript", "ok")]
+    assert set(resolved) == {p for p, _, _ in ALIASED}  # every file indexed once
+    parsed = [
+        {"file_id": f["path"], **parse_file(LANGS[f["language"]], f["language"], f["text"])} for f in files
+    ]
+    graph = build_index(parsed, {f["path"]: f["path"] for f in files}, resolved)
+    edges = {(e.from_key, e.to_key) for e in graph.edges if e.resolution == "index"}
+    assert ("apps/web/src/main.ts::run", "apps/web/src/util.ts::helper") in edges
+    assert ("apps/admin/app/main.ts::run", "apps/admin/app/util.ts::helper") in edges
+    assert ("apps/admin/app/main.ts::run", "packages/shared/tools.ts::shared") in edges
+    assert ("apps/web/src/main.ts::run", "apps/admin/app/util.ts::helper") not in edges
+    without, _ = asyncio.run(indexers.resolve(indexers.Config(NODE, TOOLS), files))
+    plain = build_index(parsed, {f["path"]: f["path"] for f in files}, without)
+    assert ("apps/web/src/main.ts::run", "apps/web/src/util.ts::helper") not in {
+        (e.from_key, e.to_key) for e in plain.edges if e.resolution == "index"
+    }  # before: aliases were unknown
+
+
+def test_typescript_projects_are_passed_before_the_options() -> None:
+    request = {"indexer": "scip-typescript", "program": "/n", "tools": "/t", "work": "/w", "heap_mb": 512}
+    plain = index_worker.command(request)
+    assert plain[plain.index("index") + 1] == "--no-progress-bar"  # the checkout's own tsconfig.json
+    aliased = index_worker.command(request, ["/w/out/tsconfig.0.json", "/w/out/tsconfig.1.json"])
+    start = aliased.index("index") + 1
+    assert aliased[start : start + 3] == [
+        "/w/out/tsconfig.0.json",
+        "/w/out/tsconfig.1.json",
+        "--no-progress-bar",
+    ]

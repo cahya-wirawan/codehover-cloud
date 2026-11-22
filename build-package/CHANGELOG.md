@@ -4,6 +4,10 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+### Added
+
+- 21, 22: TypeScript imports through path aliases (`@/…`) resolve in SCIP. The sandboxed index worker reads `baseUrl` and `paths` from the repository's `tsconfig*.json` / `jsconfig*.json` (following `extends` inside the snapshot), and gives each aliasing config a project of its own, so each app in a monorepo resolves its own `@/*`. No other option of the repository's config is loaded. Engine 0.4.0.
+
 ### Security
 
 - 05, 06: a released site address stays reserved for its workspace for 90 days (migration 0036 `slug_reservations`). Before, unpublishing, choosing a new address or deleting the project let another workspace publish at the old address at once and receive its readers, links and MCP clients. Each project keeps the 3 addresses it released last, so renaming a site through many addresses cannot hold them all, and operators can end one early (`DELETE /ops/slug-reservations/{slug}`).
