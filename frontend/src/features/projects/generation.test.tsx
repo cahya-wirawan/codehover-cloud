@@ -17,7 +17,7 @@ function serve(sent: unknown[]) {
       if (url === "/api/v1/workspaces/w1/usage") return new Response(JSON.stringify({ available_micro_usd: 10_000_000 }));
       if (url === "/api/v1/projects/p1/snapshots/s1") return new Response(JSON.stringify(SNAPSHOT));
       if (url === "/api/v1/projects/p1/estimates" && init?.method === "POST") {
-        const body = JSON.parse(String(init.body)) as { config: { languages: string[] } };
+        const body = JSON.parse(String(init.body)) as { config: { languages: string[]; translate?: boolean } };
         sent.push(body);
         return new Response(
           JSON.stringify({
@@ -25,6 +25,7 @@ function serve(sent: unknown[]) {
             estimated_tokens: { low: { input: 1, output: 1 }, high: { input: 2, output: 2 } },
             cost_micro_usd: { low: 200_000, high: 600_000 }, per_language_micro_usd: { low: 100_000, high: 300_000 },
             config: { languages: body.config.languages, levels: ["standard"] },
+            per_translation_micro_usd: body.config.translate ? { low: 40_000, high: 90_000 } : null,
             expires_at: "2026-11-21T12:00:00Z", expired: false, disclaimer: "An estimate.",
           }),
           { status: 201 },
@@ -57,4 +58,26 @@ test("several languages go into one estimate, which shows the cost of each", asy
   expect(sent[0]?.config.languages).toEqual(["en", "id", "de"]);
   expect(await screen.findByText(/English, Bahasa Indonesia, Deutsch: \$0\.10 – \$0\.30 each/)).toBeInTheDocument();
   expect(screen.getByText("$0.20 – $0.60")).toBeInTheDocument(); // every language together
+});
+
+test("further languages can be translated from the first, which the estimate prices on its own", async () => {
+  const sent: { config: { languages: string[]; translate?: boolean } }[] = [];
+  serve(sent);
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={["/?snapshot=s1"]}>
+        <GenerationPanel projectId="p1" workspaceId="w1" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await screen.findByRole("group", { name: "Also write in" });
+  expect(screen.queryByRole("checkbox", { name: /Translate the other languages/ })).toBeNull(); // one language
+  fireEvent.click(screen.getByRole("checkbox", { name: "Deutsch" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Translate the other languages from the first/ }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Estimate" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Estimate" }));
+  await waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.config).toMatchObject({ languages: ["en", "de"], translate: true });
+  expect(await screen.findByText(/Deutsch, translated: \$0\.04 – \$0\.09 each/)).toBeInTheDocument();
+  expect(screen.getByText(/in proportion to these estimates/)).toBeInTheDocument();
 });

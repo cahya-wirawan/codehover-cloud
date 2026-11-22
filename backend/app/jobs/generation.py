@@ -262,9 +262,99 @@ def _writer_request(ctx: BuildContext) -> dict[str, Any]:
     return {**_role_request(ctx, ctx.preset.writer), "audience": ctx.config.variant}
 
 
+# ---------------------------------------------------------------- translation (P07)
+def translating(ctx: BuildContext) -> bool:
+    """A language variant that translates its base build's text instead of writing from the source."""
+    return ctx.config.variant_of is not None and ctx.config.translate
+
+
+async def _await_base_stage(rt: Any, claimed: Claim, ctx: BuildContext, stage: str) -> str:
+    """Wait (without using up an attempt) until the base build has finished `stage`; returns the base's
+    language. A base that stopped before finishing it fails the variant (`base_unavailable`)."""
+    rows = await _rows(
+        rt,
+        claimed,
+        "SELECT b.status, COALESCE(b.config->'generation'->'languages'->>0, 'en') AS language,"
+        " EXISTS (SELECT 1 FROM build_tasks t WHERE t.workspace_id = b.workspace_id AND t.build_id = b.id"
+        " AND t.stage = :stage AND t.state = 'succeeded') AS done FROM builds b"
+        " WHERE b.workspace_id = :w AND b.id = CAST(:base AS uuid)",
+        base=ctx.config.variant_of,
+        stage=stage,
+    )
+    if rows and rows[0].done:
+        return str(rows[0].language)
+    if not rows or rows[0].status not in ("queued", "running"):
+        raise StageStop("base_unavailable")
+    raise batching.StageWait(BASE_PLAN_POLL_SECONDS)
+
+
+_CARD_FIELDS = {"summary": "", "details": "", "params": [], "returns": "", "notes": ""}
+
+
+async def _base_explanations(
+    rt: Any, claimed: Claim, ctx: BuildContext
+) -> dict[tuple[str, int, int], dict[str, Any]]:
+    """The base's generated explanation of each chunk, as Explanation JSON to translate, keyed by
+    (file_id, start_line, end_line). Chunks the base could not write (fallbacks) are left out: those are
+    written from the source instead."""
+    explained = await _rows(
+        rt,
+        claimed,
+        "SELECT source_file_id, chunks FROM file_explanations WHERE workspace_id = :w AND build_id = CAST(:base AS uuid)",
+        base=ctx.config.variant_of,
+    )
+    cards = {
+        (str(r.source_file_id), r.symbol_key): r.card
+        for r in await _rows(
+            rt,
+            claimed,
+            "SELECT source_file_id, symbol_key, card FROM symbols WHERE workspace_id = :w AND build_id = CAST(:base AS uuid)",
+            base=ctx.config.variant_of,
+        )
+    }
+    sources: dict[tuple[str, int, int], dict[str, Any]] = {}
+    for row in explained:
+        for chunk in row.chunks or []:
+            if chunk.get("status") != "generated":
+                continue
+            sources[(str(row.source_file_id), chunk["start_line"], chunk["end_line"])] = {
+                "summary": chunk["summary"],
+                "notes": [
+                    {"start_line": n["start_line"], "end_line": n["end_line"], "text": n["text"]}
+                    for n in chunk["notes"]
+                ],
+                "file_cards": cards,
+            }
+    return sources
+
+
+def _chunk_source(found: dict[str, Any] | None, file_id: str, chunk: generate.Chunk) -> dict[str, Any] | None:
+    """The base's text for this chunk, when the base generated it and every card of the chunk."""
+    if found is None:
+        return None
+    symbols = []
+    for symbol in chunk.symbols:
+        card = found["file_cards"].get((file_id, symbol.symbol_key))
+        if not card or card.get("status") != "generated":
+            return None
+        symbols.append(
+            {
+                "symbol_key": symbol.symbol_key,
+                **{k: card.get(k, default) for k, default in _CARD_FIELDS.items()},
+            }
+        )
+    return {"summary": found["summary"], "symbols": symbols, "notes": found["notes"]}
+
+
+def _translated(provenance: dict[str, Any], ctx: BuildContext) -> dict[str, Any]:
+    return {**provenance, "translated_from": ctx.config.variant_of}
+
+
 # ---------------------------------------------------------------- explain
 async def explain(rt: Any, claimed: Claim) -> Apply | None:
     ctx = await context(rt, claimed)
+    base_language = await _await_base_stage(rt, claimed, ctx, "explain") if translating(ctx) else None
+    sources = await _base_explanations(rt, claimed, ctx) if base_language else {}
     files = await load_files(rt, claimed, ctx)
     map_entries = generate.repo_map(files)
     related_rows = await _rows(
@@ -297,27 +387,41 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
     batchable: list[tuple[generate.Prepared, Callable[[dict[str, Any]], list[str]]]] = []
     for f in files:
         for chunk in generate.chunks(f):
-            prepared = generate.explain_request(
-                workspace_id=str(claimed.workspace_id),
-                file=f,
-                chunk=chunk,
-                related=related.get(f.file_id, []),
-                map_entries=map_entries,
-                **_writer_request(ctx),
+            source = _chunk_source(
+                sources.get((f.file_id, chunk.start_line, chunk.end_line)), f.file_id, chunk
             )
+            if source is not None and base_language is not None:
+                prepared = generate.translate_request(
+                    workspace_id=str(claimed.workspace_id),
+                    kind="explanation",
+                    source=source,
+                    source_language=base_language,
+                    **_writer_request(ctx),
+                )
+                validate = functools.partial(_valid_translation, chunk=chunk, source=source)
+            else:
+                prepared = generate.explain_request(
+                    workspace_id=str(claimed.workspace_id),
+                    file=f,
+                    chunk=chunk,
+                    related=related.get(f.file_id, []),
+                    map_entries=map_entries,
+                    **_writer_request(ctx),
+                )
+                validate = functools.partial(generate.validate_explanation, chunk=chunk)
 
             async def unit(
                 f: generate.FileInfo = f,
                 chunk: generate.Chunk = chunk,
                 prepared: generate.Prepared = prepared,
+                validate: Callable[[dict[str, Any]], list[str]] = validate,
+                translated: bool = source is not None,
             ) -> Any:
-                output, status, provenance = await answer(
-                    rt, claimed, prepared, lambda o: generate.validate_explanation(o, chunk)
-                )
-                return f, chunk, output, status, provenance
+                output, status, provenance = await answer(rt, claimed, prepared, validate)
+                return f, chunk, output, status, _translated(provenance, ctx) if translated else provenance
 
-            work.append(functools.partial(unit, f, chunk, prepared))
-            batchable.append((prepared, functools.partial(generate.validate_explanation, chunk=chunk)))
+            work.append(functools.partial(unit, f, chunk, prepared, validate, source is not None))
+            batchable.append((prepared, validate))
     if ctx.config.batch and batchable:  # M6, T24: one provider batch fills the cache first
         gateway = await gateway_for(rt, claimed, ctx.model(ctx.preset.writer).provider)
         try:
@@ -390,6 +494,12 @@ async def explain(rt: Any, claimed: Claim) -> Apply | None:
             )
 
     return apply
+
+
+def _valid_translation(output: dict[str, Any], *, chunk: generate.Chunk, source: dict[str, Any]) -> list[str]:
+    return generate.validate_explanation(output, chunk) or generate.translation_problems(
+        "explanation", output, source
+    )
 
 
 # ---------------------------------------------------------------- overview and plan
@@ -470,19 +580,39 @@ def _artifact(
 
 async def overview(rt: Any, claimed: Claim) -> Apply | None:
     ctx = await context(rt, claimed)
+    source = await _base_overview(rt, claimed, ctx) if translating(ctx) else None
     files = await load_files(rt, claimed, ctx)
-    summaries = await _summaries(rt, claimed, files)
-    prepared = generate.overview_request(
-        workspace_id=str(claimed.workspace_id),
-        summaries=summaries,
-        map_entries=generate.repo_map(files),
-        readme=await _readme(rt, claimed, ctx),
-        **_writer_request(ctx),
-    )
     ids = {f.file_id for f in files}
-    output, status, provenance = await answer(
-        rt, claimed, prepared, lambda o: generate.validate_overview(o, ids)
-    )
+    if source is not None:
+        language, text_ = source
+        prepared = generate.translate_request(
+            workspace_id=str(claimed.workspace_id),
+            kind="overview",
+            source=text_,
+            source_language=language,
+            **_writer_request(ctx),
+        )
+        output, status, provenance = await answer(
+            rt,
+            claimed,
+            prepared,
+            lambda o: (
+                generate.validate_overview(o, ids) or generate.translation_problems("overview", o, text_)
+            ),
+        )
+        provenance = _translated(provenance, ctx)
+    else:
+        summaries = await _summaries(rt, claimed, files)
+        prepared = generate.overview_request(
+            workspace_id=str(claimed.workspace_id),
+            summaries=summaries,
+            map_entries=generate.repo_map(files),
+            readme=await _readme(rt, claimed, ctx),
+            **_writer_request(ctx),
+        )
+        output, status, provenance = await answer(
+            rt, claimed, prepared, lambda o: generate.validate_overview(o, ids)
+        )
     stored = await _store_json(
         rt, claimed, ctx, "overview.json", {**output, "status": status, "provenance": provenance}
     )
@@ -490,6 +620,24 @@ async def overview(rt: Any, claimed: Claim) -> Apply | None:
 
 
 BASE_PLAN_POLL_SECONDS = 30
+
+
+async def _base_overview(rt: Any, claimed: Claim, ctx: BuildContext) -> tuple[str, dict[str, Any]] | None:
+    """(base language, the base's generated overview) to translate, or None to write it from the source."""
+    language = await _await_base_stage(rt, claimed, ctx, "overview")
+    rows = await _rows(
+        rt,
+        claimed,
+        "SELECT object_key FROM artifacts WHERE workspace_id = :w AND build_id = CAST(:base AS uuid)"
+        " AND kind = 'overview'",
+        base=ctx.config.variant_of,
+    )
+    if not rows:
+        return None
+    stored = json.loads(await rt.store.get(rows[0].object_key))
+    if stored.get("status") != "generated":
+        return None
+    return language, {k: stored[k] for k in ("overview", "key_concepts", "reading_order")}
 
 
 async def _await_base_plan(rt: Any, claimed: Claim, ctx: BuildContext) -> None:
@@ -626,6 +774,21 @@ async def plan(rt: Any, claimed: Claim) -> Apply | None:
 # ---------------------------------------------------------------- guide pages
 async def guide(rt: Any, claimed: Claim) -> Apply | None:
     ctx = await context(rt, claimed)
+    base_language = await _await_base_stage(rt, claimed, ctx, "guide") if translating(ctx) else None
+    base_pages = (
+        {
+            r.slug: r.markdown_key
+            for r in await _rows(
+                rt,
+                claimed,
+                "SELECT slug, markdown_key FROM guide_pages WHERE workspace_id = :w AND build_id = CAST(:base AS uuid)"
+                " AND status = 'written' AND markdown_key IS NOT NULL",
+                base=ctx.config.variant_of,
+            )
+        }
+        if base_language
+        else {}
+    )
     files = {f.file_id: f for f in await load_files(rt, claimed, ctx)}
     pages = await _rows(
         rt,
@@ -664,9 +827,26 @@ async def guide(rt: Any, claimed: Claim) -> Apply | None:
         ) -> Any:
             if not evidence:
                 return page, None, {"generator": "none", "error": "no_evidence"}
-            output, _, provenance = await answer(
-                rt, claimed, prepared, lambda o: generate.validate_guide(o, evidence, slugs)
-            )
+            source: dict[str, Any] | None = None
+            if base_language and page.slug in base_pages:  # P07: translate the base's page
+                source = {"markdown": (await rt.store.get(base_pages[page.slug])).decode("utf-8")}
+                prepared = generate.translate_request(
+                    workspace_id=str(claimed.workspace_id),
+                    kind="page",
+                    source=source,
+                    source_language=base_language,
+                    **_writer_request(ctx),
+                )
+
+            def validate(o: dict[str, Any]) -> list[str]:
+                problems = generate.validate_guide(o, evidence, slugs)
+                if problems or source is None:
+                    return problems
+                return generate.translation_problems("page", o, source)
+
+            output, _, provenance = await answer(rt, claimed, prepared, validate)
+            if source is not None:
+                provenance = _translated(provenance, ctx)
             if generate.validate_guide(output, evidence, slugs):
                 return page, None, {"generator": "none", "error": "no_valid_page"}
             markdown = generate.normalize_citations(output["markdown"])

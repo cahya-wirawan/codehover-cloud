@@ -96,7 +96,7 @@ async def test_a_variant_keeps_page_and_source_anchors_and_valid_citations(
         "beginner",
         base,
     )
-    assert status["prompt_version"] == GENERATION_PROMPT_VERSION == "0.5.0"
+    assert status["prompt_version"] == GENERATION_PROMPT_VERSION == "0.6.0"
 
     assert pages(built) == pages(base) and pages(base)  # same slugs, order and source ranges
     base_files = {
@@ -166,11 +166,16 @@ async def test_variant_requests_are_validated(
 
 
 async def family(
-    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, languages: list[str], cap: int
+    client: httpx.AsyncClient,
+    idp: FakeIdP,
+    github: FakeGitHub,
+    languages: list[str],
+    cap: int,
+    **config: Any,
 ) -> tuple[httpx.AsyncClient, Any, dict[str, Any], list[str]]:
     owner, _ws, project, base, app = await ready_build(client, idp, github)
     estimate = await make_estimate(
-        owner, project, snapshot_of(base), preset="balanced-v1", languages=languages
+        owner, project, snapshot_of(base), preset="balanced-v1", languages=languages, **config
     )
     assert estimate.status_code == 201, estimate.text
     started = await start_from(owner, project, estimate.json()["id"], cap=cap)
@@ -273,6 +278,100 @@ async def test_a_variant_fails_when_its_base_stops_before_planning(
     status = (await owner.get(f"/api/v1/builds/{variant_build}")).json()
     assert status["status"] == "failed", status
     assert any(s["error_code"] == "base_unavailable" for s in status["stages"]), status["stages"]
+
+
+def explanations(build: str) -> list[tuple[str, Any]]:
+    return [
+        (str(r[0]), r[1])
+        for r in ddl(
+            "SELECT source_file_id, chunks FROM file_explanations WHERE build_id = :b ORDER BY source_file_id",
+            b=build,
+        )
+    ]
+
+
+async def test_a_translated_language_reads_the_bases_text_instead_of_the_source(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """P07: with `translate`, a further language translates the base's validated explanations, overview and
+    pages (the replay translation returns them unchanged), costs the translation estimate, gets the cap
+    share of that estimate, and is still checked against the source."""
+    owner, app, estimate, builds = await family(
+        client, idp, github, ["en", "de"], cap=2_000_000, translate=True
+    )
+    per_language, per_translation = estimate["per_language_micro_usd"], estimate["per_translation_micro_usd"]
+    assert per_translation["high"] < per_language["high"] and per_translation["low"] < per_language["low"]
+    assert estimate["cost_micro_usd"] == {k: per_language[k] + per_translation[k] for k in ("low", "high")}
+    base, german = builds
+    caps = dict(
+        ddl(
+            "SELECT id::text, reserved_micro_usd FROM builds WHERE id = ANY(CAST(:ids AS uuid[]))", ids=builds
+        )
+    )
+    assert caps[german] < caps[base] and caps[german] + caps[base] == 2_000_000
+
+    provider = ScriptedProvider()
+    rt = runtime_for(app, provider)
+    assert (await drive(app, german, runtime=rt))[-1] == "waiting"  # the base has not explained yet
+    await drive(app, base, runtime=rt)
+    written = list(provider.calls)
+    assert "explain" in written and "translate" not in written, sorted(set(written))
+    provider.calls.clear()
+    for _ in range(4):  # each waiting stage resumes once the base has finished it
+        await resume(app, german, rt)
+        if (await owner.get(f"/api/v1/builds/{german}")).json()["status"] != "running":
+            break
+    status = (await owner.get(f"/api/v1/builds/{german}")).json()
+    assert status["status"] == "ready", status
+    assert "translate" in provider.calls
+    assert not {"explain", "overview", "plan", "guide"} & set(provider.calls)  # nothing written from source
+    # The translated pages' claims are checked against the source like any page's (here the replay
+    # translation repeats the base's claims, so their checks come from the workspace's cache).
+    checked = "SELECT status, count(*) FROM claim_checks WHERE build_id = :b AND current GROUP BY status ORDER BY status"
+    assert ddl(checked, b=german) == ddl(checked, b=base) and ddl(checked, b=german)
+    assert pages(german) == pages(base)
+    ours, theirs = explanations(german), explanations(base)
+    assert [(f, [(c["start_line"], c["summary"], c["notes"]) for c in chunks]) for f, chunks in ours] == [
+        (f, [(c["start_line"], c["summary"], c["notes"]) for c in chunks]) for f, chunks in theirs
+    ]
+    assert all(c["provenance"]["translated_from"] == base for _f, chunks in ours for c in chunks)
+    config = ddl("SELECT config->'generation' FROM builds WHERE id = :b", b=german)[0][0]
+    assert config["translate"] is True and config["languages"] == ["de"] and config["variant_of"] == base
+
+
+async def test_a_translation_of_a_ready_build_keeps_its_reader_level(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    owner, _ws, project, base, app = await ready_build(client, idp, github)
+    level = await make_estimate(
+        owner,
+        project,
+        snapshot_of(base),
+        preset="replay-v2",
+        languages=["de"],
+        levels=["beginner"],
+        variant_of=base,
+        translate=True,
+    )
+    assert level.status_code == 422 and code(level) == "TRANSLATION_NEEDS_LANGUAGE"
+    alone = await make_estimate(owner, project, snapshot_of(base), preset="replay-v2", translate=True)
+    assert alone.status_code == 422
+    translated = await make_estimate(
+        owner,
+        project,
+        snapshot_of(base),
+        preset="replay-v2",
+        languages=["id"],
+        variant_of=base,
+        translate=True,
+    )
+    assert translated.status_code == 201, translated.text
+    started = await start_from(owner, project, translated.json()["id"])
+    assert started.status_code == 202, started.text
+    await drive(app, started.json()["id"], runtime=runtime_for(app))
+    status = (await owner.get(f"/api/v1/builds/{started.json()['id']}")).json()
+    assert status["status"] == "ready" and status["variant_of"] == base, status
+    assert pages(started.json()["id"]) == pages(base)
 
 
 async def test_several_languages_are_validated(

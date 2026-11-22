@@ -1629,6 +1629,16 @@
           "per_language_micro_usd": {
             "$ref": "#/components/schemas/CostRange"
           },
+          "per_translation_micro_usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "price_version": {
             "title": "Price Version",
             "type": "string"
@@ -2253,6 +2263,11 @@
             "minLength": 1,
             "title": "Model Preset",
             "type": "string"
+          },
+          "translate": {
+            "default": false,
+            "title": "Translate",
+            "type": "boolean"
           },
           "variant_of": {
             "anyOf": [

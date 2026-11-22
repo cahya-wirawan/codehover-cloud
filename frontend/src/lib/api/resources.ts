@@ -91,6 +91,7 @@ export interface GenerationConfig {
   levels?: string[];
   variant_of?: string;
   batch?: boolean;
+  translate?: boolean; // further languages translate the first build's text (P07)
 }
 export interface Estimate {
   id: string;
@@ -102,6 +103,7 @@ export interface Estimate {
   estimated_tokens: { low: { input: number; output: number }; high: { input: number; output: number } };
   cost_micro_usd: { low: number; high: number }; // every language together
   per_language_micro_usd: { low: number; high: number }; // one build
+  per_translation_micro_usd?: { low: number; high: number } | null; // each translated language (translate)
   config: { languages: string[]; levels: string[]; variant_of?: string | null };
   expires_at: string;
   expired: boolean;

@@ -301,9 +301,22 @@ async def start_generation_build(
         )
     generation = GenerationConfig.model_validate(approved.config)
     # Several languages (FR-026): this build writes the first; each further one is a variant build of it,
-    # started now beside it with an equal share of the cap, so the whole family is reserved at once.
+    # started now beside it with a share of the cap, so the whole family is reserved at once. Shares are
+    # equal, or for translated variants (P07) in proportion to the estimate's high bounds.
     others = generation.family[1:] if generation.variant_of is None else []
     share = requested_cap // (1 + len(others))
+    if others and generation.translate:
+        tokens = (
+            await db.execute(
+                text("SELECT token_estimate FROM estimates WHERE workspace_id = :w AND id = :e"),
+                {"w": member.workspace_id, "e": approved.id},
+            )
+        ).scalar_one()
+        base_high = int(tokens["per_language"]["high"])
+        each_high = int((tokens.get("per_translation") or tokens["per_language"])["high"])
+        total_high = base_high + each_high * len(others)
+        if total_high > 0:
+            share = requested_cap * each_high // total_high
     build_id = await _start_one(
         db,
         member,

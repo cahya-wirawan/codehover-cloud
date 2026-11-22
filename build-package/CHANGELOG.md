@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-11-22
+
+### Added
+
+- 06, 07, 13, 19 (P07), prompt set 0.6.0: translated language variants. With `translate: true`, a several-language build (or a `variant_of` in another language at the same reader level) translates the first build's validated explanations, overview and guide pages instead of writing them from the source. Each stage waits for the base's; translations must keep the source's structure, identifiers, ranges, citations and links exactly; units the base could not write are written from the source; translated pages are still claim-checked. Estimates price each translated language separately (`per_translation_micro_usd`), and a family's cap is shared in proportion to the estimates.
+
 ## [0.6.7] - 2026-11-21
 
 ### Fixed

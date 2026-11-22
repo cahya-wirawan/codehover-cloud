@@ -269,6 +269,14 @@ async def _variant_config(
         raise ApiError(
             422, "VARIANT_UNCHANGED", "Choose another language or reader level than the base build's."
         )
+    if config.translate and (
+        original.levels != config.levels or original.languages[0] == config.languages[0]
+    ):
+        raise ApiError(
+            422,
+            "TRANSLATION_NEEDS_LANGUAGE",
+            "A translation changes only the language: keep the base build's reader level.",
+        )
     return config.model_copy(
         update={
             "include": original.include,
@@ -353,14 +361,24 @@ async def create_estimate(
         prompts=GENERATION_PROMPT_VERSION,
     )
     # A family (several languages, FR-026) costs one build per language: the base plans the guide and each
-    # variant copies the plan, so the per-language estimate bounds each of them.
+    # variant copies the plan, so the per-language estimate bounds each of them. A translated variant (P07)
+    # costs the translation estimate instead.
     languages = len(config.family) if config.variant_of is None else 1
+    per_language = {"low": result.low_micro_usd, "high": result.high_micro_usd}
+    per_translation = {"low": result.translated_low_micro_usd, "high": result.translated_high_micro_usd}
+    if config.variant_of is not None:
+        total = per_translation if config.translate else per_language
+    else:
+        each = per_translation if config.translate else per_language
+        total = {k: per_language[k] + each[k] * (languages - 1) for k in ("low", "high")}
     tokens = {
         **result.tokens,
         "files": {"selected": len(result.selected), "excluded": result.excluded},
-        "per_language": {"low": result.low_micro_usd, "high": result.high_micro_usd},
+        "per_language": per_language,
         "languages": languages,
     }
+    if config.translate:
+        tokens["per_translation"] = per_translation
     estimate_id = (
         await db.execute(
             text(
@@ -376,8 +394,8 @@ async def create_estimate(
                 "c": json.dumps(config.canonical()),
                 "d": digest,
                 "v": catalog.revision,
-                "low": result.low_micro_usd * languages,
-                "high": result.high_micro_usd * languages,
+                "low": total["low"],
+                "high": total["high"],
                 "t": json.dumps(tokens),
                 "ttl": VALIDITY_SECONDS,
                 "u": member.user_id,
@@ -407,6 +425,8 @@ async def variant_estimate(
         )
     ).one()
     per_language = family.token_estimate.get("per_language") or {"low": 0, "high": approved.high_micro_usd}
+    if config.translate and family.token_estimate.get("per_translation"):
+        per_language = family.token_estimate["per_translation"]
     tokens = {**family.token_estimate, "languages": 1}
     digest = config_digest(
         config,
@@ -473,6 +493,7 @@ async def get_estimate(
         "per_language_micro_usd": tokens.get(
             "per_language", {"low": row.low_micro_usd, "high": row.high_micro_usd}
         ),
+        "per_translation_micro_usd": tokens.get("per_translation"),
         "created_at": row.created_at,
         "expires_at": row.expires_at,
         "expired": row.expired,

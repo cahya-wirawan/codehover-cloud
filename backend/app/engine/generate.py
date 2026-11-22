@@ -592,6 +592,82 @@ def validate_guide(
     return problems[:20]
 
 
+# ---------------------------------------------------------------- translation (P07)
+LINK_TARGET = re.compile(r"\]\((guide:[a-z0-9-]+|https://[^)\s]+)\)")
+TRANSLATION_SCHEMAS = {"explanation": "explanation", "overview": "overview", "page": "guide-page"}
+TRANSLATION_FORMATS = {
+    "explanation": "Explanation JSON",
+    "overview": "Overview JSON",
+    "page": "guide page JSON whose `markdown` is the translated page",
+}
+
+
+def translate_request(
+    *,
+    workspace_id: str,
+    preset: str,
+    model: Model,
+    role: Role,
+    prompt_version: str,
+    audience: str,
+    kind: str,
+    source: dict[str, Any],
+    source_language: str,
+) -> Prepared:
+    """A language variant's unit translated from its base build's validated output (P07, prompt sets from
+    0.6.0): `kind` is explanation (one chunk's Explanation JSON), overview, or page ({markdown}). The
+    audience instruction names the target language; the answer has the source's schema."""
+    name = TRANSLATION_SCHEMAS[kind]
+    user = prompts.render(
+        prompt_version,
+        "translate",
+        SOURCE_LANGUAGE=prompts.LANGUAGES[source_language],
+        FORMAT=TRANSLATION_FORMATS[kind],
+        SOURCE_TEXT=prompts.json_block("SOURCE_TEXT", source),
+    )
+    request = GenerationRequest(
+        model=model,
+        role=role,
+        purpose="translate",
+        prompt_version=prompt_version,
+        system=prompts.system(prompt_version, audience),
+        user=user,
+        schema=schema(name),
+        evidence={"kind": kind, "source": source},
+    )
+    inputs = {"kind": kind, "source": digest(source), "from": source_language, "schema": schema(name)["$id"]}
+    return Prepared(request, _cache_key(workspace_id, "translate", preset, prompt_version, inputs, audience))
+
+
+def translation_problems(kind: str, output: dict[str, Any], source: dict[str, Any]) -> list[str]:
+    """What a translation changed besides prose: structure, identifiers, ranges and citation markers
+    must equal the source's exactly (19 P07). Run after the unit's own validation."""
+    problems: list[str] = []
+    if kind == "explanation":
+        theirs = {c["symbol_key"]: [p["name"] for p in c["params"]] for c in source["symbols"]}
+        ours = {c["symbol_key"]: [p["name"] for p in c["params"]] for c in output.get("symbols", [])}
+        if ours != theirs:
+            problems.append("keep every symbol_key and parameter name of SOURCE_TEXT, in the same order")
+        ranges = [(n["start_line"], n["end_line"]) for n in source["notes"]]
+        if [(n["start_line"], n["end_line"]) for n in output.get("notes", [])] != ranges:
+            problems.append("keep the same notes with the same line ranges, in the same order")
+    elif kind == "overview":
+        if [i["file_id"] for i in output.get("reading_order", [])] != [
+            i["file_id"] for i in source["reading_order"]
+        ]:
+            problems.append("keep the reading_order's file_ids in the same order")
+        if len(output.get("key_concepts", [])) != len(source["key_concepts"]):
+            problems.append("keep the same number of key_concepts")
+    else:
+        markdown = normalize_citations(str(output.get("markdown", "")))
+        if sorted(CITATION.findall(markdown)) != sorted(CITATION.findall(source["markdown"])):
+            problems.append("keep every citation marker of SOURCE_TEXT exactly once, unchanged")
+        # In-page anchors follow the translated headings; links to pages and sites stay as they are.
+        if sorted(LINK_TARGET.findall(markdown)) != sorted(LINK_TARGET.findall(source["markdown"])):
+            problems.append("keep every guide: and https link target of SOURCE_TEXT unchanged")
+    return problems
+
+
 # ---------------------------------------------------------------- repair
 def repair_request(prepared: Prepared, previous: dict[str, Any], problems: list[str]) -> GenerationRequest:
     original = prepared.request
