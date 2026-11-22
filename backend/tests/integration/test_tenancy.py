@@ -936,3 +936,30 @@ def test_organizations_are_seen_by_their_members_and_changed_only_in_their_conte
     runtime.context(user=world.a.user)
     assert runtime.one("SELECT name FROM organizations WHERE id = :o", o=org) == "Org A"
     assert runtime.one("SELECT role FROM organization_members WHERE organization_id = :o", o=org) == "owner"
+
+
+def test_an_owners_workspaces_share_billing_rows_and_totals_but_no_one_else_does(
+    world: World, runtime: Db
+) -> None:
+    """0040: billing rows carry their owner's namespace; every workspace of that owner reads them, writes
+    stay in the workspace they belong to, and the owner's totals count across its workspaces only."""
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    runtime.run(
+        "INSERT INTO billing_customers(workspace_id, provider_customer_id) VALUES (:w, :c)",
+        w=world.a.workspace,
+        c=f"cus_{secrets.token_hex(6)}",
+    )
+    runtime.context(user=world.a.user)
+    second = runtime.one("SELECT app_private.create_workspace('Second', :s)", s=f"t2-{secrets.token_hex(4)}")
+    runtime.context(workspace=second, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM billing_customers") == 1  # the owner's, created elsewhere
+    expect(
+        runtime, DENIED, "UPDATE billing_customers SET disputed_at = now()"
+    )  # written from its own workspace
+    assert runtime.one("SELECT projects FROM app_private.owner_totals()") == 1  # world.a's project counts
+    assert runtime.one("SELECT app_private.manages_billing(:u)", u=world.a.user) is True
+    assert runtime.one("SELECT app_private.manages_billing(:u)", u=world.b.user) is False
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    assert runtime.one("SELECT count(*) FROM billing_customers") == 0
+    assert runtime.one("SELECT projects FROM app_private.owner_totals()") == 1  # only world.b's own
+    assert runtime.one("SELECT app_private.owner_spent_elsewhere(date_trunc('month', now()))") == 0

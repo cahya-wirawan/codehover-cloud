@@ -690,6 +690,7 @@ class EntitlementGrant(Base):
     revoked_at: Mapped[datetime | None] = ts(nullable=True)
     kind: Mapped[str] = mapped_column(Text, server_default=text("'manual'"))
     once: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)  # 0040: the plan's owner
 
 
 class SupportGrant(Base):
@@ -723,6 +724,7 @@ class BillingCustomer(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     open_disputes: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
     dispute_lost_at: Mapped[datetime | None] = ts(nullable=True)
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)  # 0040: the plan's owner
 
 
 class Subscription(Base):
@@ -741,6 +743,7 @@ class Subscription(Base):
     synced_at: Mapped[datetime] = ts(default_now=True)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)  # 0040: the plan's owner
 
 
 # ---------------------------------------------------------------- push rebuilds (0024)

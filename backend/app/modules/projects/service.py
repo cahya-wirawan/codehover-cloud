@@ -424,25 +424,18 @@ async def _admit(
     account = await ledger.current_account(
         db, member.workspace_id, settings.generation_allowance_micro_usd, lock=True
     )
-    active = (
-        await db.execute(
-            # A family (a several-language build: its base and the variants started with it, FR-026) is one
-            # active build here. Only the server sets `family`, on the variants it starts with their base;
-            # a variant started on its own counts by itself.
-            text(
-                "SELECT count(DISTINCT COALESCE(config->>'family', CAST(id AS text))) FROM builds"
-                " WHERE workspace_id = :w AND status IN ('queued', 'running')"
-            ),
-            {"w": member.workspace_id},
-        )
-    ).scalar_one()
+    # Active builds across the owner's workspaces (0040: the limit is the owner's). A family (a
+    # several-language build: its base and the variants started with it, FR-026) is one active build.
+    # Only the server sets `family`, on the variants it starts with their base; a variant started on its
+    # own counts by itself. current_account(lock=True) locked the owner, so this count cannot race.
+    active = (await db.execute(text("SELECT active_builds FROM app_private.owner_totals()"))).scalar_one()
     limit = await billing.active_build_limit(db, settings, member.workspace_id)
     if active >= limit:
         await db.rollback()
         raise ApiError(
             409,
             "WORKSPACE_BUILD_LIMIT",
-            "This workspace already has the maximum number of active builds.",
+            "The owner of this workspace already has the maximum number of active builds.",
             details={"limit": limit},
         )
     return account

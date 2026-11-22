@@ -357,6 +357,11 @@
       },
       "BillingOut": {
         "properties": {
+          "can_manage": {
+            "default": false,
+            "title": "Can Manage",
+            "type": "boolean"
+          },
           "cancel_at_period_end": {
             "title": "Cancel At Period End",
             "type": "boolean"
@@ -387,6 +392,16 @@
           "hosting_suspended": {
             "title": "Hosting Suspended",
             "type": "boolean"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingOwner"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "period_end": {
             "anyOf": [
@@ -461,6 +476,28 @@
           "plans"
         ],
         "title": "BillingOut",
+        "type": "object"
+      },
+      "BillingOwner": {
+        "properties": {
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "user",
+              "organization"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "handle"
+        ],
+        "title": "BillingOwner",
         "type": "object"
       },
       "BuildDiagnostics": {

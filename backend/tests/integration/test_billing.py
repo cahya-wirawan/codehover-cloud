@@ -721,3 +721,91 @@ async def test_meta_is_public_and_names_the_operator(client: httpx.AsyncClient, 
     assert body["operator_name"] == "Example Operator" and body["support_email"] == "help@example.test"
     assert body["billing_available"] is True and body["trial_days"] == 14
     assert [p["key"] for p in body["plans"]] == ["trial", "pro", "team"]
+
+
+async def test_an_organizations_workspaces_share_one_plan_managed_by_its_owners(
+    billing: Billing, new_user: NewUser
+) -> None:
+    """0040: the plan, trial and monthly allowance belong to the owner; every workspace of an organization
+    reads the same plan and spends from the same allowance, and only organization owners manage it."""
+    owner, admin = await new_user(), await new_user()
+    org = (
+        await unsafe(
+            owner,
+            "POST",
+            "/api/v1/organizations",
+            json={"name": "Acme", "handle": f"a{secrets.token_hex(4)}"},
+        )
+    ).json()
+
+    async def org_workspace() -> str:
+        made = await unsafe(
+            owner,
+            "POST",
+            "/api/v1/workspaces",
+            json={"name": "Docs", "slug": f"ws-{secrets.token_hex(4)}", "organization_id": org["id"]},
+        )
+        assert made.status_code == 201, made.text
+        return str(made.json()["id"])
+
+    first, second = await org_workspace(), await org_workspace()
+    their = (await admin.get("/api/v1/me")).json()["handle"]
+    invited = await unsafe(
+        owner,
+        "POST",
+        f"/api/v1/organizations/{org['id']}/invitations",
+        json={"handle": their, "role": "admin"},
+    )
+    await unsafe(admin, "POST", f"/api/v1/organization-invitations/{invited.json()['id']}/accept")
+
+    seen = await state(admin, second)  # an organization admin reads the plan but does not manage it
+    assert seen["owner"] == {"kind": "organization", "handle": org["handle"]} and seen["can_manage"] is False
+    assert (await unsafe(admin, "POST", f"/api/v1/workspaces/{second}/billing/trial")).status_code == 403
+    assert (await checkout(admin, second)).status_code == 403
+    assert (await state(owner, first))["can_manage"] is True
+
+    assert (await unsafe(owner, "POST", f"/api/v1/workspaces/{first}/billing/trial")).status_code == 200
+    other = await state(owner, second)
+    assert other["plan"] == "trial" and other["trial_available"] is False  # one trial for the owner
+    again = await unsafe(owner, "POST", f"/api/v1/workspaces/{second}/billing/trial")
+    assert again.status_code == 409
+
+    # One allowance: what one workspace holds, the other cannot spend.
+    before = (await owner.get(f"/api/v1/workspaces/{second}/usage")).json()["available_micro_usd"]
+    (await owner.get(f"/api/v1/workspaces/{first}/usage")).json()
+    ddl(
+        "UPDATE usage_accounts SET allowance_micro_usd = allowance_micro_usd + 1000,"
+        " reserved_micro_usd = reserved_micro_usd + 1000 WHERE workspace_id = :w",
+        w=first,
+    )
+    after = (await owner.get(f"/api/v1/workspaces/{second}/usage")).json()["available_micro_usd"]
+    assert after == before - 1000
+
+    # One customer: a checkout from the second workspace reuses the first one's and names it to Stripe.
+    customer = billing.customer_for(first)
+    assert ddl(
+        "SELECT namespace_id IS NOT NULL FROM billing_customers WHERE provider_customer_id = :c", c=customer
+    )[0][0]
+    billing.fake.subscribe(customer, plan="team")
+    await billing.reconcile()
+    assert (await state(owner, second))["plan"] == "team"
+
+
+async def test_only_the_person_manages_the_plan_of_their_own_workspaces(
+    billing: Billing, new_user: NewUser
+) -> None:
+    """0040: a co-owner of someone's personal workspace reads its plan but cannot change it."""
+    person, partner = await new_user(), await new_user()
+    ws = (
+        await unsafe(
+            person, "POST", "/api/v1/workspaces", json={"name": "Mine", "slug": f"m-{secrets.token_hex(4)}"}
+        )
+    ).json()["id"]
+    await join(person, ws, partner, "admin")
+    partner_id = (await partner.get("/api/v1/me")).json()["id"]
+    assert (
+        await unsafe(person, "PATCH", f"/api/v1/workspaces/{ws}/members/{partner_id}", json={"role": "owner"})
+    ).status_code == 204
+    assert (await state(partner, ws))["can_manage"] is False
+    assert (await unsafe(partner, "POST", f"/api/v1/workspaces/{ws}/billing/trial")).status_code == 403
+    assert (await unsafe(person, "POST", f"/api/v1/workspaces/{ws}/billing/trial")).status_code == 200

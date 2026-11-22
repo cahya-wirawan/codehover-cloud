@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import exc, text
 
 from app.adapters.billing.stripe import BillingError, SignatureError, StripeBilling, verify_webhook
 from app.core import ratelimit
@@ -29,7 +29,8 @@ from app.modules.billing import service
 from app.modules.billing.plans import PAID, PLANS, TRIAL_DAYS, price_for
 from app.modules.billing.sync import receipt_details
 from app.modules.identity.sessions import Db
-from app.modules.workspaces.access import Member, ReadMember, WriteMember, require_role
+from app.modules.usage import ledger
+from app.modules.workspaces.access import Member, ReadMember, WriteMember
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["billing"])
@@ -47,6 +48,11 @@ class PlanOut(BaseModel):
     available: bool  # a price is configured (paid plans) or the trial can still be started
 
 
+class BillingOwner(BaseModel):
+    kind: Literal["user", "organization"]
+    handle: str
+
+
 class BillingOut(BaseModel):
     configured: bool
     enforced: bool
@@ -60,6 +66,8 @@ class BillingOut(BaseModel):
     hosting_suspended: bool
     has_customer: bool
     plans: list[PlanOut]
+    can_manage: bool = False  # 0040: the caller manages this plan (the person, or an organization owner)
+    owner: BillingOwner | None = None  # whose plan this workspace uses
 
 
 class CheckoutIn(BaseModel):
@@ -83,8 +91,14 @@ def _provider(request: Request) -> StripeBilling:
     return provider
 
 
-def _owner(member: Member) -> None:
-    require_role(member, "owner")
+async def _manager(db: Db, member: Member) -> None:
+    """Only the person (their own workspaces) or an owner of the organization manages its plan (0040)."""
+    if member.support or not await service.manages_billing(db, member.user_id):
+        raise ApiError(
+            403,
+            "FORBIDDEN",
+            "Only the owner of this workspace's plan can change it: you, or an organization owner.",
+        )
 
 
 def _provider_error(error: BillingError) -> ApiError:
@@ -142,12 +156,16 @@ async def meta(request: Request) -> MetaOut:
 async def billing_state(request: Request, db: Db, member: ReadMember) -> BillingOut:
     settings = _settings(request)
     billing = await service.state(db, member.workspace_id, enforced=settings.billing_enforced)
+    owner = await ledger.owner_of(db, member.workspace_id)
     has_customer = (
         await db.execute(
-            text("SELECT EXISTS (SELECT 1 FROM billing_customers WHERE workspace_id = :w)"),
-            {"w": member.workspace_id},
+            text("SELECT EXISTS (SELECT 1 FROM billing_customers WHERE namespace_id = :n)"), {"n": owner}
         )
     ).scalar_one()
+    can_manage = not member.support and await service.manages_billing(db, member.user_id)
+    owner_row = (
+        await db.execute(text("SELECT kind, handle FROM namespaces WHERE id = :n"), {"n": owner})
+    ).one_or_none()
     await db.commit()
     configured = request.app.state.billing is not None and settings.stripe_webhook_secret is not None
     trial_available = not billing.trial_used and not billing.ever_subscribed
@@ -179,38 +197,44 @@ async def billing_state(request: Request, db: Db, member: ReadMember) -> Billing
         hosting_suspended=billing.hosting_suspended,
         has_customer=bool(has_customer),
         plans=plans,
+        can_manage=bool(can_manage),
+        owner=BillingOwner(kind=owner_row.kind, handle=owner_row.handle) if owner_row else None,
     )
 
 
-async def _customer(db: Db, provider: StripeBilling, workspace_id: UUID) -> str:
-    """The workspace's provider customer, created once. The provider call runs with no transaction open;
+async def _customer(db: Db, provider: StripeBilling, workspace_id: UUID) -> tuple[str, UUID]:
+    """The owner's provider customer and its anchor workspace (0040: one customer per owner, created once,
+    through the workspace that first starts a checkout). The provider call runs with no transaction open;
     its idempotency key makes a concurrent second creation return the same customer."""
+    owner = await ledger.owner_of(db, workspace_id)
     existing = (
         await db.execute(
-            text("SELECT provider_customer_id FROM billing_customers WHERE workspace_id = :w"),
-            {"w": workspace_id},
+            text("SELECT provider_customer_id, workspace_id FROM billing_customers WHERE namespace_id = :n"),
+            {"n": owner},
         )
-    ).scalar_one_or_none()
+    ).one_or_none()
     await db.commit()
     if existing is not None:
-        return str(existing)
-    customer = await provider.create_customer(str(workspace_id), idempotency_key=f"customer:{workspace_id}")
+        return str(existing.provider_customer_id), existing.workspace_id
+    customer = await provider.create_customer(str(workspace_id), idempotency_key=f"customer:{owner}")
     await set_context(db, workspace_id=workspace_id)
-    await db.execute(
-        text(
-            "INSERT INTO billing_customers(workspace_id, provider_customer_id) VALUES (:w, :c)"
-            " ON CONFLICT (workspace_id) DO NOTHING"
-        ),
-        {"w": workspace_id, "c": customer},
-    )
+    try:
+        await db.execute(
+            text("INSERT INTO billing_customers(workspace_id, provider_customer_id) VALUES (:w, :c)"),
+            {"w": workspace_id, "c": customer},
+        )
+        await db.commit()
+    except exc.IntegrityError:
+        await db.rollback()  # a concurrent checkout of another of the owner's workspaces stored it first
+    await set_context(db, workspace_id=workspace_id)
     stored = (
         await db.execute(
-            text("SELECT provider_customer_id FROM billing_customers WHERE workspace_id = :w"),
-            {"w": workspace_id},
+            text("SELECT provider_customer_id, workspace_id FROM billing_customers WHERE namespace_id = :n"),
+            {"n": owner},
         )
-    ).scalar_one()
+    ).one()
     await db.commit()
-    return str(stored)
+    return str(stored.provider_customer_id), stored.workspace_id
 
 
 @router.post("/workspaces/{workspace_id}/billing/checkout", response_model=RedirectOut)
@@ -222,7 +246,7 @@ async def checkout(
     member: WriteMember,
     idempotency_key: Annotated[str | None, Header()] = None,
 ) -> RedirectOut:
-    _owner(member)
+    await _manager(db, member)
     settings = _settings(request)
     provider = _provider(request)
     price = price_for(settings, body.plan)
@@ -236,15 +260,15 @@ async def checkout(
             raise ApiError(
                 409,
                 "ALREADY_SUBSCRIBED",
-                "This workspace already has a subscription. Manage it in the portal.",
+                "This workspace's owner already has a subscription. Manage it in the portal.",
             )
         try:
-            customer = await _customer(db, provider, member.workspace_id)
+            customer, anchor = await _customer(db, provider, member.workspace_id)
             base = f"{settings.public_origin}/w/{member.workspace_id}/usage"
             url = await provider.create_checkout(
                 customer=customer,
                 price_id=price,
-                workspace_id=str(member.workspace_id),
+                workspace_id=str(anchor),  # the webhook names the workspace the customer belongs to
                 success_url=f"{base}?checkout=returned",
                 cancel_url=f"{base}?checkout=cancelled",
                 idempotency_key=f"checkout:{member.workspace_id}:{idempotency_key}",
@@ -268,14 +292,14 @@ async def checkout(
 
 @router.post("/workspaces/{workspace_id}/billing/portal", response_model=RedirectOut)
 async def portal(request: Request, db: Db, member: WriteMember) -> RedirectOut:
-    _owner(member)
+    await _manager(db, member)
     settings = _settings(request)
     provider = _provider(request)
     await ratelimit.hit(request.app.state.rate_sessions, settings, "billing", str(member.workspace_id))
     customer = (
         await db.execute(
-            text("SELECT provider_customer_id FROM billing_customers WHERE workspace_id = :w"),
-            {"w": member.workspace_id},
+            text("SELECT provider_customer_id FROM billing_customers WHERE namespace_id = :n"),
+            {"n": await ledger.owner_of(db, member.workspace_id)},
         )
     ).scalar_one_or_none()
     await db.commit()
@@ -294,7 +318,7 @@ async def portal(request: Request, db: Db, member: WriteMember) -> RedirectOut:
 
 @router.post("/workspaces/{workspace_id}/billing/trial", response_model=BillingOut)
 async def start_trial(request: Request, db: Db, member: WriteMember) -> BillingOut:
-    _owner(member)
+    await _manager(db, member)
     granted = (
         await db.execute(
             text("SELECT app_private.start_trial(:w, :a, :d)"),
@@ -306,7 +330,7 @@ async def start_trial(request: Request, db: Db, member: WriteMember) -> BillingO
         raise ApiError(
             409,
             "TRIAL_UNAVAILABLE",
-            "The trial is once per workspace and per person, and never after a subscription.",
+            "The trial is once per plan owner and per person, and never after a subscription.",
         )
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)  # the commit cleared it

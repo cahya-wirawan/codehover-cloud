@@ -150,6 +150,8 @@ export function UsagePage() {
   });
 
   const state = billing.data;
+  // 0040: the plan is the owner's; only the person, or an organization owner, changes it.
+  const manages = state?.can_manage ?? owner;
   const paid = Boolean(state?.plan && PAID.includes(state.plan));
   const confirming = Boolean(returnedAt) && !paid;
   const timedOut = confirming && waitedLong;
@@ -162,9 +164,13 @@ export function UsagePage() {
     <section aria-labelledby="usage-title" className="flex max-w-5xl flex-col gap-8">
       <PageHeader
         title={<span id="usage-title">Plan and usage</span>}
-        description="The workspace's plan, what it includes, and the generation allowance used this month."
+        description={
+          state?.owner?.kind === "organization"
+            ? `This workspace uses the plan of the organization ${state.owner.handle}, shared by all its workspaces: what it includes, and the generation allowance used this month.`
+            : "The plan of your workspaces, what it includes, and the generation allowance used this month."
+        }
         actions={
-          owner && state?.has_customer ? (
+          manages && state?.has_customer ? (
             <Button onClick={() => portal.mutate()} disabled={portal.isPending}>
               <ExternalLink aria-hidden="true" />
               Manage payment and invoices
@@ -196,7 +202,7 @@ export function UsagePage() {
         {state?.generation_blocked === "past_due" ? (
           <Notice tone="warning" title="A payment is overdue">
             New builds are paused until the payment succeeds; reading and published sites continue for 7 days.
-            {owner ? " Update the payment method under Manage payment and invoices." : " Ask a workspace owner to update the payment method."}
+            {manages ? " Update the payment method under Manage payment and invoices." : " Ask the plan's owner to update the payment method."}
           </Notice>
         ) : null}
         {state?.generation_blocked === "disputed" ? (
@@ -255,7 +261,7 @@ export function UsagePage() {
                     <td className="px-4 py-3 font-mono text-[13px]">{plan.projects}</td>
                     <td className="px-4 py-3 font-mono text-[13px]">{plan.active_builds}</td>
                     <td className="px-4 py-3 text-right">
-                      {!owner ? null : plan.key === "trial" ? (
+                      {!manages ? null : plan.key === "trial" ? (
                         state.trial_available ? (
                           <Button size="sm" onClick={() => trial.mutate()} disabled={trial.isPending}>
                             Start the trial
@@ -281,7 +287,13 @@ export function UsagePage() {
               </tbody>
             </table>
           </div>
-          {!owner ? <p className="mt-3 text-muted">Only workspace owners can change the plan.</p> : null}
+          {!manages ? (
+            <p className="mt-3 text-muted">
+              {state?.owner?.kind === "organization"
+                ? "Only owners of the organization can change its plan."
+                : "Only the owner of this plan can change it."}
+            </p>
+          ) : null}
           {checkout.error || trial.error || portal.error ? (
             <p role="alert" className="mt-3 text-destructive">
               {message(checkout.error ?? trial.error ?? portal.error, "That did not work. Try again.")}

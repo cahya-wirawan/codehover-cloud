@@ -186,6 +186,10 @@ export interface BillingState {
   generation_blocked: "past_due" | "disputed" | null;
   hosting_suspended: boolean;
   has_customer: boolean;
+  /** 0040: the caller manages this plan (the person, or an organization owner). */
+  can_manage?: boolean;
+  /** Whose plan the workspace uses: its owner, a person or an organization. */
+  owner?: { kind: "user" | "organization"; handle: string } | null;
   plans: (PlanInfo & { available: boolean })[];
 }
 export type PushPolicyName = "off" | "snapshot" | "build";

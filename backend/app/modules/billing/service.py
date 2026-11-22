@@ -1,5 +1,8 @@
 """A workspace's billing state and the rules it implies (11 "State policy").
 
+From 0040 the plan belongs to the workspace's owner (a person or an organization): every workspace of
+the owner reads the same customer, subscription and trial, and the plan's limits count across them.
+
 - trialing/active: the plan's allowance and limits apply.
 - past_due (or unpaid): the plan's limits remain, new generation is blocked; reading continues for
   PAST_DUE_GRACE_DAYS, then hosting is suspended.
@@ -32,6 +35,7 @@ from app.modules.billing.plans import (
     PLANS,
     Plan,
 )
+from app.modules.usage import ledger
 
 
 @dataclass(frozen=True)
@@ -55,27 +59,28 @@ async def state(
     subscription take sites offline (in the beta a workspace without a plan keeps the defaults); an
     overdue payment does in both modes."""
     now = now or datetime.now(UTC)
+    owner = await ledger.owner_of(db, workspace_id)
     subs = (
         await db.execute(
             text(
                 "SELECT provider_subscription_id, plan_key, status, current_period_end, cancel_at_period_end,"
-                " ended_at, past_due_since, updated_at FROM subscriptions WHERE workspace_id = :w"
+                " ended_at, past_due_since, updated_at FROM subscriptions WHERE namespace_id = :n"
                 " ORDER BY (status IN ('trialing', 'active', 'past_due')) DESC, updated_at DESC"
             ),
-            {"w": workspace_id},
+            {"n": owner},
         )
     ).all()
     customer = (
         await db.execute(
-            text("SELECT disputed_at FROM billing_customers WHERE workspace_id = :w"), {"w": workspace_id}
+            text("SELECT disputed_at FROM billing_customers WHERE namespace_id = :n"), {"n": owner}
         )
     ).one_or_none()
     trial = (
         await db.execute(
             text(
-                "SELECT expires_at, revoked_at FROM entitlement_grants WHERE workspace_id = :w AND kind = 'trial'"
+                "SELECT expires_at, revoked_at FROM entitlement_grants WHERE namespace_id = :n AND kind = 'trial'"
             ),
-            {"w": workspace_id},
+            {"n": owner},
         )
     ).one_or_none()
     current: Any = subs[0] if subs else None
@@ -146,31 +151,17 @@ async def require_capacity(db: AsyncSession, settings: Settings, workspace_id: U
     """Plan limits on new writes (11): `projects` or `seats`. Existing data is never removed."""
     if not settings.billing_enforced:
         return
-    # Serialize concurrent creates of the workspace so two requests cannot both take the last slot.
-    await db.execute(text("SELECT 1 FROM workspaces WHERE id = :w FOR UPDATE"), {"w": workspace_id})
+    # Serialize concurrent creates of the owner (0040: limits count across all its workspaces) so two
+    # requests cannot both take the last slot.
+    await ledger.lock_owner(db, await ledger.owner_of(db, workspace_id))
     billing = await state(db, workspace_id)
     if billing.plan is None:
         raise ApiError(402, "PLAN_REQUIRED", "Choose a plan or start the trial to continue.")
+    totals = (await db.execute(text("SELECT * FROM app_private.owner_totals()"))).one()
     if what == "projects":
-        used = (
-            await db.execute(
-                text("SELECT count(*) FROM projects WHERE workspace_id = :w AND deleted_at IS NULL"),
-                {"w": workspace_id},
-            )
-        ).scalar_one()
-        limit = billing.plan.projects
-    else:
-        used = (
-            await db.execute(
-                text(
-                    "SELECT (SELECT count(*) FROM memberships WHERE workspace_id = :w)"
-                    " + (SELECT count(*) FROM invitations WHERE workspace_id = :w AND accepted_at IS NULL"
-                    "    AND revoked_at IS NULL AND expires_at > now())"
-                ),
-                {"w": workspace_id},
-            )
-        ).scalar_one()
-        limit = billing.plan.seats
+        used, limit = totals.projects, billing.plan.projects
+    else:  # seats: the distinct people across the owner's workspaces, invitations included
+        used, limit = totals.people, billing.plan.seats
     if used >= limit:
         raise ApiError(
             409,
@@ -178,3 +169,12 @@ async def require_capacity(db: AsyncSession, settings: Settings, workspace_id: U
             f"The {billing.plan.name} plan allows {limit} {what}. Upgrade the plan to add more.",
             details={"limit": limit, "kind": what},
         )
+
+
+async def manages_billing(db: AsyncSession, user_id: UUID) -> bool:
+    """Whether the person manages the plan of the workspace in context (0040): the person themselves for
+    their own workspaces, an owner of the organization for its workspaces."""
+    allowed: bool = (
+        await db.execute(text("SELECT app_private.manages_billing(:u)"), {"u": user_id})
+    ).scalar_one()
+    return allowed
