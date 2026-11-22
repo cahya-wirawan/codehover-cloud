@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-22
+
+### Security
+
+- 05, 06: while a renamed project's old address still leads to it, only a project of the same workspace may take that address; another workspace of the same owner gets `SLUG_TAKEN`, so an organization's workspace admins cannot take each other's links.
+
 ## [0.8.1] - 2026-11-22
 
 ### Added

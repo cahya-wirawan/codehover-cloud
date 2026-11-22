@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-22 · Package version 0.8.1
+Date: 2026-11-22 · Package version 0.8.2
+
+0.8.2 keeps a renamed project's old address for its own workspace: `test_tenancy.py` checks that a project of another of the owner's workspaces cannot take it while it lasts and one of the same workspace can. Results: the affected integration suites (tenancy, publication, migration cycle) 49 passed.
 
 0.8.1 lets admins change a project's address (0041). `test_publication.py` checks the new address, the old one still answering with the new `address`, invalid and taken addresses, and that editors cannot change it; `test_tenancy.py` that the runtime cannot read the redirects; the threat sweep covers the new route; a frontend test covers the settings form. Results: unit 297 passed (9 skipped), integration 279 passed, frontend 72 passed, e2e 2 passed.
 

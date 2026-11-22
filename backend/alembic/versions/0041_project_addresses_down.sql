@@ -23,4 +23,5 @@ BEGIN
   NEW.namespace_id := (SELECT w.namespace_id FROM public.workspaces w WHERE w.id = NEW.workspace_id);
   RETURN NEW;
 END $$;
+DROP FUNCTION app_private.slug_held_elsewhere(uuid, text, uuid);
 DROP TABLE project_slug_redirects;

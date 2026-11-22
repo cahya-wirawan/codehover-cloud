@@ -2,10 +2,10 @@
 --
 -- A project's slug is the second half of its site address, /sites/<owner>/<project> (0039). An admin may
 -- change it. The old address keeps leading to the project for 90 days (the three newest per project),
--- like a renamed owner's handle (0038), so links and MCP clients move without breaking. Another live
--- project of the same owner may still take a freed address: a live project always wins over a redirect,
--- and taking one ends it. Redirects stay inside one owner's namespace, so they can never lead to someone
--- else's site.
+-- like a renamed owner's handle (0038), so links and MCP clients move without breaking. While it lasts
+-- only a project of the same workspace may take the old address (which ends the redirect); another
+-- workspace of the same owner gets SLUG_TAKEN, so an organization's workspace admins cannot take each
+-- other's links (security review). Redirects stay inside one owner's namespace.
 
 CREATE TABLE project_slug_redirects (
   namespace_id uuid NOT NULL REFERENCES namespaces(id),
@@ -23,11 +23,24 @@ REVOKE ALL ON project_slug_redirects FROM app_runtime;
 CREATE POLICY resolver ON project_slug_redirects TO app_resolver USING (true) WITH CHECK (true);
 GRANT SELECT, INSERT, UPDATE, DELETE ON project_slug_redirects TO app_resolver;
 
--- A new project taking a slug ends any redirect of that slug of the same owner.
+-- Whether a redirect of the owner still holds `p_slug` for a project of another workspace.
+CREATE FUNCTION app_private.slug_held_elsewhere(p_namespace uuid, p_slug text, p_workspace uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.project_slug_redirects r JOIN public.projects pr ON pr.id = r.project_id
+                  WHERE r.namespace_id = p_namespace AND r.slug = p_slug AND r.reserved_until > now()
+                    AND pr.workspace_id <> p_workspace)
+$$;
+
+-- A new project may take a slug whose redirect belongs to its own workspace (ending it), never one of
+-- another workspace's while it lasts.
 CREATE OR REPLACE FUNCTION app_private.projects_namespace() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
   NEW.namespace_id := (SELECT w.namespace_id FROM public.workspaces w WHERE w.id = NEW.workspace_id);
+  IF app_private.slug_held_elsewhere(NEW.namespace_id, NEW.slug, NEW.workspace_id) THEN
+    RAISE EXCEPTION 'this address was used by another workspace''s project recently' USING ERRCODE = '23505',
+      CONSTRAINT = 'uq_projects_namespace_slug';
+  END IF;
   DELETE FROM public.project_slug_redirects r WHERE r.namespace_id = NEW.namespace_id AND r.slug = NEW.slug;
   RETURN NEW;
 END $$;
@@ -51,6 +64,10 @@ BEGIN
   END IF;
   IF p.slug = p_slug THEN
     RETURN p_slug;
+  END IF;
+  IF app_private.slug_held_elsewhere(p.namespace_id, p_slug, p.workspace_id) THEN
+    RAISE EXCEPTION 'this address was used by another workspace''s project recently' USING ERRCODE = '23505',
+      CONSTRAINT = 'uq_projects_namespace_slug';
   END IF;
   UPDATE public.projects x SET slug = p_slug, updated_at = now() WHERE x.id = p.id;
   DELETE FROM public.project_slug_redirects r WHERE r.namespace_id = p.namespace_id AND r.slug = p_slug;
@@ -104,7 +121,8 @@ END $$;
 DO $$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['rename_project_address(uuid, text)', 'sweep_project_slug_redirects()'] LOOP
+  FOREACH f IN ARRAY ARRAY['rename_project_address(uuid, text)', 'sweep_project_slug_redirects()',
+                           'slug_held_elsewhere(uuid, text, uuid)'] LOOP
     EXECUTE format('ALTER FUNCTION app_private.%s OWNER TO app_resolver', f);
     EXECUTE format('REVOKE EXECUTE ON FUNCTION app_private.%s FROM PUBLIC', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION app_private.%s TO app_runtime', f);
