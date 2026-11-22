@@ -4,6 +4,10 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+### Security
+
+- 05, 06: a released site address stays reserved for its workspace for 90 days (migration 0036 `slug_reservations`). Before, unpublishing, choosing a new address or deleting the project let another workspace publish at the old address at once and receive its readers, links and MCP clients.
+
 ## [0.6.9] - 2026-11-22
 
 ### Added

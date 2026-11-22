@@ -828,3 +828,14 @@ class AccessToken(Base):
     expires_at: Mapped[datetime] = ts()
     last_used_at: Mapped[datetime | None] = ts(nullable=True)
     revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+# ---------------------------------------------------------------- slug reservations (0036)
+class SlugReservation(Base):
+    """A released site address, reserved for the workspace that let it go (no runtime access)."""
+
+    __tablename__ = "slug_reservations"
+    slug: Mapped[str] = mapped_column(Text, primary_key=True)
+    workspace_id: Mapped[UUID] = ref()
+    released_at: Mapped[datetime] = ts(default_now=True)
+    reserved_until: Mapped[datetime] = ts()

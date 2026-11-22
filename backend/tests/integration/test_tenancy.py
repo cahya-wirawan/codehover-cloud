@@ -735,3 +735,73 @@ def test_access_tokens_are_tenant_scoped_and_resolved_by_digest_only(world: Worl
     assert set(found[0]._mapping) == {"token_id", "workspace_id", "user_id", "scope"}
     assert runtime.rows("SELECT * FROM app_private.access_token(:h)", h=b"\x03" * 32) == []
     assert runtime.one("SELECT count(*) FROM access_tokens") == 0  # the resolver exposes no rows
+
+
+PUBLISH = (
+    "INSERT INTO publications(workspace_id, project_id, build_id, visibility, public_slug, published_by)"
+    " VALUES (:w, :p, :b, 'public', :s, :u)"
+)
+
+
+def _publish(db: Db, tenant: Any, address: str) -> None:
+    db.context(workspace=tenant.workspace, user=tenant.user)
+    db.run(PUBLISH, w=tenant.workspace, p=tenant.project, b=tenant.build, s=address, u=tenant.user)
+
+
+def _refused(db: Db, tenant: Any, address: str) -> None:
+    db.context(workspace=tenant.workspace, user=tenant.user)
+    savepoint = db.conn.begin_nested()
+    with pytest.raises(REJECTED, match="released recently and is reserved"):
+        db.run(PUBLISH, w=tenant.workspace, p=tenant.project, b=tenant.build, s=address, u=tenant.user)
+    savepoint.rollback()
+
+
+def test_a_released_site_address_stays_reserved_for_its_workspace(world: World, runtime: Db) -> None:
+    """0036: an address let go by renaming or unpublishing is reserved for its workspace; another
+    workspace cannot take it, the same one can, and the runtime never sees the reservations."""
+    slug, other = f"site-{secrets.token_hex(3)}", f"next-{secrets.token_hex(3)}"
+    rename = "UPDATE publications SET public_slug = :s WHERE workspace_id = :w"
+    _publish(runtime, world.a, slug)
+    runtime.run(rename, s=other, w=world.a.workspace)
+    _refused(runtime, world.b, slug)
+    runtime.context(workspace=world.a.workspace, user=world.a.user)  # its own workspace takes it back
+    runtime.run(rename, s=slug, w=world.a.workspace)
+    _refused(runtime, world.b, other)  # the address it just left is reserved now
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    runtime.run(
+        "UPDATE publications SET visibility = 'private', public_slug = NULL WHERE workspace_id = :w",
+        w=world.a.workspace,
+    )
+    _refused(runtime, world.b, slug)  # a private site without an address lets go of it too
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    runtime.run(rename, s=slug, w=world.a.workspace)
+    runtime.run("DELETE FROM publications WHERE workspace_id = :w", w=world.a.workspace)  # unpublish
+    _refused(runtime, world.b, slug)
+    expect(runtime, DENIED, "SELECT count(*) FROM slug_reservations")
+    expect(runtime, DENIED, "DELETE FROM slug_reservations")
+    _publish(runtime, world.a, slug)  # still its own
+
+
+def test_a_slug_reservation_ends_after_its_period(world: World, ddl: Db) -> None:
+    """0036: once the 90 days have passed, any workspace may take the address; the sweep removes ended
+    reservations."""
+    slug, other = f"site-{secrets.token_hex(3)}", f"next-{secrets.token_hex(3)}"
+    _publish(ddl, world.a, slug)
+    ddl.run("DELETE FROM publications WHERE workspace_id = :w", w=world.a.workspace)
+    row = ddl.rows(
+        "SELECT workspace_id, reserved_until - released_at AS span FROM slug_reservations WHERE slug = :s",
+        s=slug,
+    )
+    assert [(r.workspace_id, r.span.days) for r in row] == [(world.a.workspace, 90)]
+    _refused(ddl, world.b, slug)
+    ended = (
+        "UPDATE slug_reservations SET released_at = now() - interval '91 days',"
+        " reserved_until = now() - interval '1 day' WHERE slug = :s"
+    )
+    ddl.run(ended, s=slug)
+    _publish(ddl, world.b, slug)
+    assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=slug) == 0
+    ddl.run("UPDATE publications SET public_slug = :s WHERE workspace_id = :w", s=other, w=world.b.workspace)
+    ddl.run(ended, s=slug)
+    assert ddl.one("SELECT app_private.sweep_slug_reservations()") >= 1
+    assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=slug) == 0
