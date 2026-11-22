@@ -210,12 +210,15 @@ async def mcp_alias(alias: AliasPath, request: Request, db: Db, protocol: Protoc
     hint, so an old slug names no private site."""
     found = (
         await db.execute(
-            text("SELECT owner, project, visibility FROM app_private.site_alias(:a)"), {"a": alias}
+            text(
+                "SELECT owner, project, workspace_id, project_id, visibility FROM app_private.site_alias(:a)"
+            ),
+            {"a": alias},
         )
     ).one_or_none()
+    if found is not None and found.visibility != "public" and not await _may_read(request, db, found):
+        found = None  # a private site behind an old slug answers only a token that may read it (review)
     await db.commit()
-    if found is not None and found.visibility != "public" and request.headers.get("authorization") is None:
-        found = None
     if found is None:
         raise ApiError(
             401,
@@ -224,6 +227,27 @@ async def mcp_alias(alias: AliasPath, request: Request, db: Db, protocol: Protoc
             headers={"WWW-Authenticate": 'Bearer realm="codehover"'},
         )
     return await _answer(f"{found.owner}/{found.project}", request, db, protocol)
+
+
+async def _may_read(request: Request, db: Db, found: Any) -> bool:
+    """Whether the request's bearer token belongs to someone who may read this private site: a live token
+    of a member allowed on the project (an MCP sign-in token only for that project)."""
+    header = request.headers.get("authorization") or ""
+    scheme, _, value = header.partition(" ")
+    if scheme.lower() != "bearer" or not value.strip():
+        return False
+    principal = await tokens.resolve(db, value.strip())
+    if principal is None or principal.workspace_id != found.workspace_id:
+        return False
+    if principal.project_id is not None and principal.project_id != found.project_id:
+        return False
+    role = (
+        await db.execute(
+            text("SELECT app_private.project_role(:w, :p, :u)"),
+            {"w": found.workspace_id, "p": found.project_id, "u": principal.user_id},
+        )
+    ).scalar_one_or_none()
+    return role is not None
 
 
 async def _answer(slug: str, request: Request, db: Db, protocol: str | None) -> Response:

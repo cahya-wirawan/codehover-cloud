@@ -523,3 +523,9 @@ async def test_an_old_address_of_a_private_site_leads_only_its_members_there(
             headers={"Accept": "application/json"},
         )
         assert legacy.status_code == 401 and "resource_metadata" not in legacy.headers["www-authenticate"]
+        junk = await visitor.post(
+            f"/api/v1/mcp/{alias}",
+            json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            headers={"Accept": "application/json", "Authorization": "Bearer chm_not-a-token"},
+        )
+        assert junk.status_code == 401 and "resource_metadata" not in junk.headers["www-authenticate"]
