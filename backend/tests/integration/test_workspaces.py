@@ -247,7 +247,7 @@ def test_concurrent_removal_of_the_last_two_owners_leaves_one(new_user: NewUser)
             conn.execute(
                 sa.text(
                     "SELECT app_private.create_user_with_identity("
-                    "'github', 'https://github.com', :s, 'O', NULL)"
+                    "'github', 'https://github.com', :s, 'O', NULL, NULL)"
                 ),
                 {"s": f"{run}-{i}"},
             ).scalar_one()

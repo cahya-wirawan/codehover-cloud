@@ -135,7 +135,7 @@ def test_identity_is_found_by_subject_and_subjects_cannot_be_claimed_twice(world
     expect(
         runtime,
         REJECTED,
-        "SELECT app_private.create_user_with_identity('github', 'https://github.com', :s, 'Imposter', NULL)",
+        "SELECT app_private.create_user_with_identity('github', 'https://github.com', :s, 'Imposter', NULL, NULL)",
         s=subject,
     )
 
@@ -918,3 +918,66 @@ def test_mcp_sign_in_rows_are_scoped_and_reached_through_functions(world: World,
     assert runtime.one(
         "SELECT revoked_at IS NOT NULL FROM oauth_grants WHERE refresh_hash = :h", h=b"\x06" * 32
     )
+
+
+def test_organizations_are_seen_by_their_members_and_changed_only_in_their_context(
+    world: World, runtime: Db
+) -> None:
+    """0038: namespaces are public but read-only for the runtime; reservations are unreachable; an
+    organization and its members are visible to its members only, and change only in its context;
+    membership comes only through the functions (owner on creation, accepted invitations)."""
+    runtime.context(user=world.a.user)
+    org = runtime.one("SELECT app_private.create_organization('Org A', :h)", h=f"o{secrets.token_hex(4)}")
+    expect(runtime, DENIED, "UPDATE namespaces SET handle = 'stolen' WHERE user_id = :u", u=world.b.user)
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO namespaces(handle, kind, user_id) VALUES ('x-new', 'user', :u)",
+        u=world.a.user,
+    )
+    expect(runtime, DENIED, "SELECT count(*) FROM handle_reservations")
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO organization_members(organization_id, user_id, role) VALUES (:o, :u, 'owner')",
+        o=org,
+        u=world.b.user,
+    )
+    expect(
+        runtime,
+        DENIED,
+        "SELECT app_private.apply_org_role(:w, :u, 'owner')",
+        w=world.b.workspace,
+        u=world.a.user,
+    )
+    expect(runtime, DENIED, "SELECT app_private.sync_org_access(:o, :u)", o=org, u=world.a.user)
+    runtime.context(user=world.b.user)  # not a member: sees nothing, changes nothing
+    assert runtime.one("SELECT count(*) FROM organizations WHERE id = :o", o=org) == 0
+    assert runtime.one("SELECT count(*) FROM organization_members WHERE organization_id = :o", o=org) == 0
+    runtime.run("UPDATE organizations SET name = 'Hijacked' WHERE id = :o", o=org)
+    runtime.run("DELETE FROM organization_members WHERE organization_id = :o", o=org)
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO organization_invitations(organization_id, user_id, role, invited_by) VALUES (:o, :u, 'owner', :u)",
+        o=org,
+        u=world.b.user,
+    )
+    # Someone else's organization context does not let them in either: functions check the caller.
+    runtime.run("SELECT set_config('app.organization_id', :o, true)", o=str(org))
+    expect(
+        runtime,
+        DENIED,
+        "SELECT app_private.create_workspace('In', :s, :o)",
+        s=f"in-{secrets.token_hex(3)}",
+        o=org,
+    )
+    expect(
+        runtime,
+        DENIED,
+        "SELECT app_private.rename_namespace((SELECT id FROM namespaces WHERE organization_id = :o), 'taken-x')",
+        o=org,
+    )
+    runtime.context(user=world.a.user)
+    assert runtime.one("SELECT name FROM organizations WHERE id = :o", o=org) == "Org A"
+    assert runtime.one("SELECT role FROM organization_members WHERE organization_id = :o", o=org) == "owner"

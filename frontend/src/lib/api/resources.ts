@@ -5,11 +5,51 @@ export interface Page<T> {
   items: T[];
   next_cursor: string | null;
 }
+/** Who a workspace belongs to (0038): a person's namespace or an organization. */
+export interface WorkspaceOwner {
+  kind: "user" | "organization";
+  handle: string;
+  organization_id: string | null;
+}
 export interface Workspace {
   id: string;
   name: string;
   slug: string;
   role: Role;
+  owner?: WorkspaceOwner | null;
+}
+export type OrgRole = "owner" | "admin" | "member";
+export interface Organization {
+  id: string;
+  name: string;
+  handle: string;
+  role: OrgRole;
+  created_at?: string;
+}
+export interface MyOrgInvitation {
+  id: string;
+  role: OrgRole;
+  expires_at: string;
+  organization: { id: string; name: string; handle: string };
+}
+export interface OrgMember {
+  user_id: string;
+  display_name: string;
+  handle: string;
+  role: OrgRole;
+  created_at: string;
+}
+export interface OrgInvitation {
+  id: string;
+  handle: string;
+  role: OrgRole;
+  created_at: string;
+  expires_at: string;
+}
+export interface HandleCheck {
+  handle: string;
+  available: boolean;
+  reason: "invalid" | "taken" | "reserved" | null;
 }
 export interface Connection {
   id: string;
@@ -676,7 +716,41 @@ export const api = {
   revokeSupport: async (wid: string, id: string) => {
     await apiSend("DELETE", `/workspaces/${wid}/support-access/${id}`);
   },
-  createWorkspace: async (name: string, slug: string) => json<Workspace>(await apiSend("POST", "/workspaces", { name, slug })),
+  createWorkspace: async (name: string, slug: string, organizationId?: string | null) =>
+    json<Workspace>(
+      await apiSend("POST", "/workspaces", { name, slug, ...(organizationId ? { organization_id: organizationId } : {}) }),
+    ),
+  setHandle: async (handle: string) => json<{ handle: string }>(await apiSend("PUT", "/me/handle", { handle })),
+  checkHandle: (handle: string) => apiJson<HandleCheck>(`/handles/${encodeURIComponent(handle)}`),
+  organizations: () => apiJson<{ items: Organization[]; invitations: MyOrgInvitation[] }>("/organizations"),
+  organization: (oid: string) => apiJson<Organization>(`/organizations/${oid}`),
+  createOrganization: async (name: string, handle: string) =>
+    json<Organization>(await apiSend("POST", "/organizations", { name, handle })),
+  renameOrganization: async (oid: string, name: string) =>
+    json<Organization>(await apiSend("PATCH", `/organizations/${oid}`, { name })),
+  setOrganizationHandle: async (oid: string, handle: string) =>
+    json<{ handle: string }>(await apiSend("PUT", `/organizations/${oid}/handle`, { handle })),
+  deleteOrganization: async (oid: string) => {
+    await apiSend("DELETE", `/organizations/${oid}`);
+  },
+  organizationWorkspaces: (oid: string) => apiJson<Page<Workspace>>(`/organizations/${oid}/workspaces`),
+  organizationMembers: (oid: string) => apiJson<Page<OrgMember>>(`/organizations/${oid}/members`),
+  changeOrgRole: async (oid: string, userId: string, role: OrgRole) => {
+    await apiSend("PATCH", `/organizations/${oid}/members/${userId}`, { role });
+  },
+  removeOrgMember: async (oid: string, userId: string) => {
+    await apiSend("DELETE", `/organizations/${oid}/members/${userId}`);
+  },
+  organizationInvitations: (oid: string) => apiJson<Page<OrgInvitation>>(`/organizations/${oid}/invitations`),
+  inviteToOrganization: async (oid: string, handle: string, role: OrgRole) =>
+    json<OrgInvitation>(await apiSend("POST", `/organizations/${oid}/invitations`, { handle, role })),
+  revokeOrgInvitation: async (oid: string, invitationId: string) => {
+    await apiSend("DELETE", `/organizations/${oid}/invitations/${invitationId}`);
+  },
+  answerOrgInvitation: async (invitationId: string, accept: boolean) =>
+    json<{ organization_id: string }>(
+      await apiSend("POST", `/organization-invitations/${invitationId}/${accept ? "accept" : "decline"}`),
+    ),
   connections: (wid: string) => apiJson<Page<Connection>>(`/workspaces/${wid}/connections`),
   startInstall: async (wid: string) =>
     json<{ install_url: string }>(await apiSend("POST", `/workspaces/${wid}/github/install`)),

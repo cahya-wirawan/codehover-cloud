@@ -92,6 +92,7 @@ class GoogleProvider:
             subject=str(claims["sub"]),
             display_name=(name or email or "Google user")[:120],
             verified_email=email,
+            handle_hint=email.split("@", 1)[0] if email else name,
         )
 
     async def _verify(self, id_token: str, nonce: str) -> dict[str, object]:

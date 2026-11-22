@@ -29,6 +29,12 @@ async function signIn(page: Page, baseURL: string) {
   await accessible(page, "login");
   await page.getByRole("link", { name: "Continue with Google" }).click();
   await expect(page.getByRole("heading", { name: /Understand any repository/ })).toBeVisible();
+  // 0038: a new person confirms the suggested name once before any signed-in page.
+  await page.goto("/w");
+  await expect(page.getByRole("heading", { name: "Choose your name" })).toBeVisible();
+  await accessible(page, "welcome");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Workspaces" })).toBeVisible();
 }
 
 /** Another person: a fresh browser context signed in as a new user (each fake sign-in is a new subject). */
@@ -217,6 +223,7 @@ test("plan and usage: the trial, then the privacy, terms and support pages", asy
   const base = baseURL ?? "";
   const run = Math.random().toString(36).slice(2, 8);
   await signIn(page, base);
+  await page.goto("/");
   await expect(page.getByRole("heading", { name: "Plans" })).toBeVisible();
   await accessible(page, "start page with plans");
   await page.goto("/w");

@@ -89,4 +89,5 @@ class GitHubProvider:
             subject=str(user["id"]),
             display_name=str(name or "GitHub user")[:120],
             verified_email=email,
+            handle_hint=str(user["login"])[:39] if isinstance(user.get("login"), str) else None,
         )

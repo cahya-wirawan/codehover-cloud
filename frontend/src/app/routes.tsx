@@ -1,9 +1,11 @@
 import type { RouteObject } from "react-router";
 
 import { AccountPage } from "../features/account/AccountPage";
+import { WelcomePage } from "../features/account/WelcomePage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { PrivacyPage, SupportPage, TermsPage } from "../features/legal/LegalPages";
 import { OAuthConsentPage } from "../features/mcp/OAuthConsentPage";
+import { OrganizationPage } from "../features/organizations/OrganizationPage";
 import { OpsPage } from "../features/ops/OpsPage";
 import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
@@ -41,6 +43,8 @@ export const routes: RouteObject[] = [
         element: <RequireSignIn />,
         children: [
           { path: "account", element: <AccountPage /> },
+          { path: "welcome", element: <WelcomePage /> },
+          { path: "o/:oid", element: <OrganizationPage /> },
           { path: "ops", element: <OpsPage /> },
           { path: "oauth/authorize", element: <OAuthConsentPage /> },
           { path: "w", element: <WorkspacesPage /> },

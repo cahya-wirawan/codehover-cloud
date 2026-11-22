@@ -52,6 +52,10 @@ UNSCOPED = {
     ("GET", "/api/v1/ops/summary"),
     ("GET", "/api/v1/ops/events"),
     ("POST", "/api/v1/ops/builds-paused"),
+    ("PUT", "/api/v1/me/handle"),  # 0038: the caller's own handle
+    ("GET", "/api/v1/handles/{handle}"),  # availability of a public name
+    ("GET", "/api/v1/organizations"),  # the caller's own organizations and invitations
+    ("POST", "/api/v1/organizations"),
 }
 
 
@@ -80,6 +84,14 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
     )
     me = (await owner.get("/api/v1/me")).json()
     one = lambda sql, **kw: str(ddl(sql, **kw)[0][0])  # noqa: E731
+    # 0038: an organization the victim owns, with a pending invitation of someone else.
+    organization = await unsafe(
+        owner,
+        "POST",
+        "/api/v1/organizations",
+        json={"name": "Victim org", "handle": f"v{secrets.token_hex(4)}"},
+    )
+    assert organization.status_code == 201, organization.text
     # MCP sign-in (0037): a grant the owner gave a client, and a sign-in request still waiting for them.
     client_row = one(
         "INSERT INTO oauth_clients(client_id, client_name, redirect_uris)"
@@ -125,6 +137,7 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
         "grant_id": grant.json()["id"],
         "token_id": token.json()["id"],
         "oauth_grant_id": oauth_grant,
+        "organization_id": organization.json()["id"],
         "request_id": request_id,
         "session_id": one(
             "SELECT id FROM sessions WHERE user_id = :u AND revoked_at IS NULL LIMIT 1", u=me["id"]
@@ -144,6 +157,17 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
     """A valid body per unsafe route, so authorization (not validation) decides."""
     return {
         ("POST", "/api/v1/builds/{build_id}/cancel"): {},
+        ("PATCH", "/api/v1/organizations/{organization_id}"): {"name": "Hijacked"},
+        ("POST", "/api/v1/organization-invitations/{invitation_id}/accept"): {},
+        ("POST", "/api/v1/organization-invitations/{invitation_id}/decline"): {},
+        ("PUT", "/api/v1/organizations/{organization_id}/handle"): {
+            "handle": f"x{ids['organization_id'][:8]}"
+        },
+        ("PATCH", "/api/v1/organizations/{organization_id}/members/{user_id}"): {"role": "member"},
+        ("POST", "/api/v1/organizations/{organization_id}/invitations"): {
+            "handle": "anyone",
+            "role": "owner",
+        },
         ("POST", "/api/v1/builds/{build_id}/exports"): {"format": "kb_json"},
         ("POST", "/api/v1/builds/{build_id}/quality/waivers"): {
             "claim_keys": ["0" * 32],
@@ -290,6 +314,17 @@ async def test_another_tenant_is_refused_on_every_route_and_changes_nothing(
     assert ddl("SELECT revoked_at IS NULL FROM sessions WHERE id = :s", s=ids["session_id"])[0][0]
     assert ddl("SELECT revoked_at IS NULL FROM access_tokens WHERE id = :t", t=ids["token_id"])[0][0]
     assert ddl("SELECT revoked_at IS NULL FROM oauth_grants WHERE id = :g", g=ids["oauth_grant_id"])[0][0]
+    assert ddl(
+        "SELECT o.status, o.name, n.handle FROM organizations o JOIN namespaces n ON n.organization_id = o.id"
+        " WHERE o.id = :o",
+        o=ids["organization_id"],
+    )[0][:2] == ("active", "Victim org")
+    assert (
+        ddl("SELECT count(*) FROM organization_members WHERE organization_id = :o", o=ids["organization_id"])[
+            0
+        ][0]
+        == 1
+    )
     assert ddl("SELECT decided_at IS NULL FROM oauth_authorizations WHERE id = :i", i=ids["request_id"])[0][0]
 
 

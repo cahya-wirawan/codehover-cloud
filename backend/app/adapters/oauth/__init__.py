@@ -15,6 +15,7 @@ class VerifiedIdentity:
     subject: str
     display_name: str
     verified_email: str | None  # only an address the provider marks as verified
+    handle_hint: str | None = None  # suggests the person's handle (0038), e.g. the GitHub login
 
 
 @dataclass(frozen=True)

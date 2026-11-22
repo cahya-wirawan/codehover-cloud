@@ -34,6 +34,8 @@ A public GitHub repository (FR-028) needs no App installation and no grant: any 
 
 ¹ Open projects only, plus restricted projects they were granted.
 
+Organizations (0038): an organization owns workspaces. Its owners are owners, and its admins admins, of every workspace it holds, for as long as they keep that organization role; its plain members have only the workspace roles given to them in each workspace. Organization owners change organization roles, rename its handle and delete it; admins rename it, invite plain members and remove plain members; everyone may leave; the last owner stays. Only owners and admins create workspaces in it. A person's own workspaces live in their personal namespace and go with their account; deleting an account needs another owner for every organization the person owns alone.
+
 Per-project access (0027):
 - A project is open to every member (the default) or restricted.
 - A restricted project is visible to workspace admins and owners, and to the members granted access to it. The grant (viewer or editor) is the member's role on that project, below or above their workspace role.

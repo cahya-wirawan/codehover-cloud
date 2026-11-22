@@ -35,6 +35,7 @@ from app.modules.identity import router as identity
 from app.modules.mcp import oauth as mcp_oauth
 from app.modules.mcp import router as mcp
 from app.modules.ops import router as ops
+from app.modules.organizations import router as organizations
 from app.modules.projects import router as projects
 from app.modules.providers import keys as provider_keys
 from app.modules.providers import router as providers
@@ -176,6 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(health.router)
     api.include_router(identity.router)
     api.include_router(workspaces.router)
+    api.include_router(organizations.router)
     api.include_router(github.router)
     api.include_router(projects.router)
     api.include_router(published.router)

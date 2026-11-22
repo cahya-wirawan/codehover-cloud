@@ -6,6 +6,9 @@ import { ConfirmDeletion } from "../../components/ConfirmDeletion";
 import { authKeys, fetchCurrentUser } from "../../lib/api/auth";
 import { ApiError, resetCsrfToken } from "../../lib/api/client";
 import { ACCOUNT_CONFIRMATION, api } from "../../lib/api/resources";
+import { Button } from "../../components/ui/button";
+import { Field, Input } from "../../components/ui/input";
+import { HANDLE_HINT, HANDLE_PATTERN } from "./WelcomePage";
 
 interface SoleWorkspace {
   id: string;
@@ -69,6 +72,8 @@ export function AccountPage() {
         </p>
       ) : null}
 
+      {user.data?.handle ? <HandleSettings current={user.data.handle} /> : null}
+
       <section aria-labelledby="data-title" className="page-section">
         <h2 id="data-title" className="section-title">Your data</h2>
         <p className="mt-1">
@@ -113,6 +118,44 @@ export function AccountPage() {
           </fieldset>
         ) : null}
       </ConfirmDeletion>
+    </section>
+  );
+}
+
+/** The person's name in site addresses (0038). A changed name stays reserved for them for 90 days. */
+function HandleSettings({ current }: { current: string }) {
+  const client = useQueryClient();
+  const [value, setValue] = useState(current);
+  const save = useMutation({
+    mutationFn: () => api.setHandle(value.trim()),
+    onSuccess: () => void client.invalidateQueries({ queryKey: authKeys.me }),
+  });
+  return (
+    <section aria-labelledby="handle-title" className="page-section">
+      <h2 id="handle-title" className="section-title">Your name</h2>
+      <p className="mt-1">
+        Your sites are published at <span className="font-mono">/sites/{current}/…</span>. After a change, the old name stays
+        reserved for you for 90 days.
+      </p>
+      <form
+        className="mt-3 flex max-w-xl flex-col gap-4 sm:flex-row sm:items-end"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Field label="Name" hint={HANDLE_HINT} className="flex-1">
+          <Input required maxLength={39} pattern={HANDLE_PATTERN} value={value} onChange={(e) => setValue(e.target.value.toLowerCase())} />
+        </Field>
+        <Button type="submit" disabled={save.isPending || value === current}>
+          Change name
+        </Button>
+      </form>
+      {save.error ? (
+        <p role="alert" className="mt-3 text-destructive">
+          {save.error instanceof ApiError ? save.error.message : "That did not work. Try again."}
+        </p>
+      ) : null}
     </section>
   );
 }
