@@ -18,7 +18,7 @@
 CREATE FUNCTION app_private.handle_reserved(p_handle text) RETURNS boolean
   LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
   SELECT p_handle = ANY (ARRAY[
-    'about', 'account', 'accounts', 'admin', 'api', 'app', 'assets', 'auth', 'billing', 'codehover',
+    'about', 'account', 'accounts', 'admin', 'deleted', 'api', 'app', 'assets', 'auth', 'billing', 'codehover',
     'docs', 'help', 'invitations', 'login', 'logout', 'me', 'mcp', 'new', 'o', 'oauth', 'ops', 'org',
     'orgs', 'organization', 'organizations', 'p', 'privacy', 'published', 'root', 'settings', 'signin',
     'signup', 'site', 'sites', 'static', 'support', 'system', 'terms', 'w', 'welcome', 'workspace',
@@ -29,9 +29,11 @@ CREATE FUNCTION app_private.valid_handle(p_handle text) RETURNS boolean
   LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
   SELECT p_handle IS NOT NULL AND char_length(p_handle) BETWEEN 1 AND 39
      AND p_handle ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND NOT app_private.handle_reserved(p_handle)
+     AND p_handle !~ '^deleted-'  -- the shape of a deleted owner's tombstone, never chosen
 $$;
 
--- A handle derived from free text (a GitHub login, an email's local part, a name), free in the namespace.
+-- A free handle from a hint (the GitHub login, which is public already), or a random one: never from an
+-- email address or a name, since a handle is public (security review).
 CREATE FUNCTION app_private.free_handle(p_hint text) RETURNS text
   LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, public AS $$
 DECLARE
@@ -41,7 +43,7 @@ DECLARE
 BEGIN
   base := btrim(base, '-');
   IF NOT app_private.valid_handle(base) THEN
-    base := 'user';
+    base := 'user-' || substr(md5(random()::text || clock_timestamp()::text), 1, 8);
   END IF;
   candidate := base;
   WHILE EXISTS (SELECT 1 FROM public.namespaces x WHERE x.handle = candidate)
@@ -94,7 +96,7 @@ CREATE INDEX ix_organization_invitations_user ON organization_invitations(user_i
 -- ---------------------------------------------------------------- namespaces
 CREATE TABLE namespaces (
   id uuid PRIMARY KEY DEFAULT uuidv7(),
-  handle text NOT NULL UNIQUE CHECK (app_private.valid_handle(handle) OR handle ~ '^deleted-[0-9a-f]{12}$'),
+  handle text NOT NULL UNIQUE CHECK (app_private.valid_handle(handle) OR handle ~ '^deleted-[0-9a-f]{32}$'),
   kind text NOT NULL CHECK (kind IN ('user', 'organization')),
   user_id uuid UNIQUE REFERENCES users(id),
   organization_id uuid UNIQUE REFERENCES organizations(id),
@@ -114,15 +116,15 @@ CREATE TABLE handle_reservations (
 );
 CREATE INDEX ix_handle_reservations_namespace ON handle_reservations(namespace_id, released_at DESC);
 
--- Every person gets a personal namespace with a suggested handle (from the email or name; new accounts
--- from the GitHub login), to confirm in the app.
+-- Every person gets a personal namespace with a random suggested handle (new accounts: their GitHub
+-- login when they sign in with GitHub), to confirm or change in the app.
 DO $$
 DECLARE u record;
 BEGIN
   FOR u IN SELECT id, display_name, primary_email, status FROM public.users ORDER BY created_at, id LOOP
     INSERT INTO public.namespaces(handle, kind, user_id)
-    VALUES (CASE WHEN u.status = 'deleted' THEN 'deleted-' || left(replace(u.id::text, '-', ''), 12)
-                 ELSE app_private.free_handle(COALESCE(split_part(u.primary_email, '@', 1), u.display_name)) END,
+    VALUES (CASE WHEN u.status = 'deleted' THEN 'deleted-' || replace(u.id::text, '-', '')
+                 ELSE app_private.free_handle(NULL) END,
             'user', u.id);
   END LOOP;
 END $$;
@@ -293,7 +295,7 @@ BEGIN
     VALUES (uid, p_provider, p_issuer, p_subject, p_verified_email);
   PERFORM pg_advisory_xact_lock(hashtextextended('namespace-handles', 0));
   INSERT INTO public.namespaces(handle, kind, user_id)
-    VALUES (app_private.free_handle(COALESCE(p_handle_hint, split_part(p_verified_email, '@', 1), p_display_name)), 'user', uid);
+    VALUES (app_private.free_handle(p_handle_hint), 'user', uid);
   RETURN uid;
 END $$;
 
@@ -397,7 +399,7 @@ BEGIN
     RAISE EXCEPTION 'not allowed to retire this namespace' USING ERRCODE = '42501';
   END IF;
   old := n.handle;
-  UPDATE public.namespaces x SET handle = 'deleted-' || left(replace(x.id::text, '-', ''), 12), updated_at = now()
+  UPDATE public.namespaces x SET handle = 'deleted-' || replace(x.id::text, '-', ''), updated_at = now()
    WHERE x.id = p_namespace;
   INSERT INTO public.handle_reservations(handle, namespace_id, released_at, reserved_until)
   VALUES (old, NULL, clock_timestamp(), clock_timestamp() + interval '90 days')

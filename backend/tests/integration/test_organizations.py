@@ -60,13 +60,14 @@ async def add_member(owner: httpx.AsyncClient, org: str, person: httpx.AsyncClie
 async def test_a_person_gets_a_suggested_handle_and_confirms_or_changes_it(new_user: NewUser) -> None:
     person = await new_user()
     profile = (await person.get("/api/v1/me")).json()
-    local = person.email.split("@")[0]  # type: ignore[attr-defined]
-    assert profile["handle"] == local and profile["handle_confirmed"] is False  # suggested from the email
+    # Suggested at random for a Google sign-in: never from the email address (public in site addresses).
+    assert profile["handle"].startswith("user-") and profile["handle_confirmed"] is False
+    assert person.email.split("@")[0] not in profile["handle"]  # type: ignore[attr-defined]
     confirmed = await set_handle(person, profile["handle"])
     assert (
         confirmed.status_code == 200 and (await person.get("/api/v1/me")).json()["handle_confirmed"] is True
     )
-    for bad in ("b_d", "-x", "x-", "a--b", "api", "sites", "x" * 40):
+    for bad in ("b_d", "-x", "x-", "a--b", "api", "sites", "deleted", "deleted-0123456789ab", "x" * 40):
         refused = await set_handle(person, bad)
         assert refused.status_code == 422, bad
     other = await new_user()
