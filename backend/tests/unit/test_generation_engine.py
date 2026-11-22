@@ -211,6 +211,12 @@ EVIDENCE = [
             ),
             "mermaid",
         ),
+        (
+            "# T\n\n```mermaid\n---\nconfig:\n  securityLevel: loose\n---\ngraph TD\nA --> B\n```\n[[FID:1-2]]".replace(
+                "FID", FILE_ID
+            ),
+            "frontmatter",
+        ),
         ("## Not h1\n\nx [[FID:1-2]]".replace("FID", FILE_ID), "level-one heading"),
         # A single line is accepted (stored as N-N); other malformed markers are repaired, not stored.
         ("# T\n\nRuns [[FID:3]].".replace("FID", FILE_ID), None),

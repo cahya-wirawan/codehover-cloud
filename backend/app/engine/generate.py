@@ -536,8 +536,8 @@ def markdown_problems(markdown: str, pages: frozenset[str] = frozenset()) -> lis
                 elif not (href.startswith("https://") or href.startswith("#")):
                     problems.append(f"link target {href[:80]!r} is not an https URL")
             elif token.type == "fence" and token.info.strip().lower().startswith("mermaid"):
-                if MERMAID_FORBIDDEN.search(token.content):
-                    problems.append("mermaid diagrams may not use click, style, init or HTML")
+                if MERMAID_FORBIDDEN.search(token.content) or token.content.lstrip().startswith("---"):
+                    problems.append("mermaid diagrams may not use click, style, init, frontmatter or HTML")
                 if len(set(MERMAID_NODE.findall(token.content))) > 30:
                     problems.append("mermaid diagrams may have at most 30 nodes")
             if token.children:

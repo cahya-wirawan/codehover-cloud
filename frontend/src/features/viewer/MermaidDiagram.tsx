@@ -1,5 +1,7 @@
 import { useEffect, useId, useState } from "react";
 
+import { drawable } from "./mermaidPolicy";
+
 /**
  * A guide page's Mermaid block, drawn as a picture (19 P04). The backend already refuses click, style,
  * init and HTML directives; here Mermaid runs with `securityLevel: "strict"` and SVG text labels, and its
@@ -44,8 +46,10 @@ export function MermaidDiagram({ code }: { code: string }) {
   const id = `mmd-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const [src, setSrc] = useState<string | null>(null);
   const [width, setWidth] = useState<number | null>(null);
-  const [failed, setFailed] = useState(false);
+  const allowed = drawable(code);
+  const [failed, setFailed] = useState(!allowed);
   useEffect(() => {
+    if (!allowed) return;
     let live = true;
     const job = queue.then(async () => {
       try {
@@ -66,7 +70,7 @@ export function MermaidDiagram({ code }: { code: string }) {
     return () => {
       live = false;
     };
-  }, [code, id]);
+  }, [allowed, code, id]);
   return (
     <figure className="diagram" data-state={src ? "drawn" : failed ? "failed" : "pending"}>
       {src ? (

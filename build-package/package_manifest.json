@@ -121,7 +121,7 @@
     },
     "19_PROMPT_LIBRARY.md": {
       "status": "complete specification",
-      "sha256": "3d4136c999ec9f518afea44cbe6218c232ca7abac36824bad99e31cbd48dc316"
+      "sha256": "822f9f5a741810216214bbe1be35fcf1ddcdb2139791610003233625782cb2dd"
     },
     "20_ACCEPTANCE_CRITERIA.md": {
       "status": "complete specification",
@@ -141,7 +141,7 @@
     },
     "CHANGELOG.md": {
       "status": "revision history",
-      "sha256": "3c14caabe1757dae9930f628dbfcfc2f03cd9cb4ba2a7cd94b8f35c61132d702"
+      "sha256": "edd4fa343cd787252e267c8363507597c5959df3c3ee358903cc1ea89e9ec9f9"
     },
     "README.md": {
       "status": "complete specification",
@@ -260,5 +260,5 @@
       "sha256": "a8fdb46eb2162ca834f5ce39488450c13d73adfce63c7682ed3e186a26eecbe6"
     }
   },
-  "master_spec_sha256": "8eb4c87ea72ffb631831b86afac47043c3966e2ac780ed0503b313a1d7f5dcd4"
+  "master_spec_sha256": "463e37d3db87296c47043201d7636a751c4d6f342f7c38f560b4a40eb82e7043"
 }
