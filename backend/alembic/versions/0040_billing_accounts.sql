@@ -46,6 +46,7 @@ BEGIN
     NEW.namespace_id := (SELECT w.namespace_id FROM public.workspaces w WHERE w.id = NEW.workspace_id);
   ELSE
     NEW.namespace_id := OLD.namespace_id;  -- never moves to another owner
+    NEW.workspace_id := OLD.workspace_id;  -- nor to another of its workspaces (security review)
   END IF;
   RETURN NEW;
 END $$;
@@ -65,13 +66,19 @@ GRANT SELECT (id, namespace_id) ON workspaces TO app_resolver;
 DROP POLICY tenant ON billing_customers;
 DROP POLICY tenant ON subscriptions;
 DROP POLICY tenant ON entitlement_grants;
+-- Reads match the owner; inserts and updates only the row's own workspace (security review: a combined
+-- policy would let another of the owner's workspaces update a row and claim it).
 DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['billing_customers', 'subscriptions'] LOOP
-    EXECUTE format('CREATE POLICY tenant ON %I TO app_runtime
+    EXECUTE format('CREATE POLICY tenant ON %I FOR SELECT TO app_runtime
       USING (namespace_id = (SELECT w.namespace_id FROM public.workspaces w
-                              WHERE w.id = NULLIF(current_setting(''app.workspace_id'', true), '''')::uuid))
+                              WHERE w.id = NULLIF(current_setting(''app.workspace_id'', true), '''')::uuid))', t);
+    EXECUTE format('CREATE POLICY tenant_insert ON %I FOR INSERT TO app_runtime
+      WITH CHECK (workspace_id = NULLIF(current_setting(''app.workspace_id'', true), '''')::uuid)', t);
+    EXECUTE format('CREATE POLICY tenant_update ON %I FOR UPDATE TO app_runtime
+      USING (workspace_id = NULLIF(current_setting(''app.workspace_id'', true), '''')::uuid)
       WITH CHECK (workspace_id = NULLIF(current_setting(''app.workspace_id'', true), '''')::uuid)', t);
   END LOOP;
 END $$;

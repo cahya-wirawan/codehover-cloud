@@ -953,9 +953,20 @@ def test_an_owners_workspaces_share_billing_rows_and_totals_but_no_one_else_does
     second = runtime.one("SELECT app_private.create_workspace('Second', :s)", s=f"t2-{secrets.token_hex(4)}")
     runtime.context(workspace=second, user=world.a.user)
     assert runtime.one("SELECT count(*) FROM billing_customers") == 1  # the owner's, created elsewhere
-    expect(
-        runtime, DENIED, "UPDATE billing_customers SET disputed_at = now()"
-    )  # written from its own workspace
+    # Only its own workspace writes it: elsewhere an update matches nothing, and no row can be re-anchored.
+    runtime.run("UPDATE billing_customers SET disputed_at = now()")
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT disputed_at IS NULL FROM billing_customers")
+    expect(runtime, DENIED, "UPDATE billing_customers SET workspace_id = :s", s=second)  # no privilege
+    runtime.run(  # subscriptions may be updated in their workspace, but never re-anchored (trigger)
+        "INSERT INTO subscriptions(workspace_id, provider_subscription_id, provider_customer_id, plan_key, status)"
+        " VALUES (:w, :s, 'cus_x', 'pro', 'active')",
+        w=world.a.workspace,
+        s=f"sub_{secrets.token_hex(6)}",
+    )
+    runtime.run("UPDATE subscriptions SET workspace_id = :s", s=second)
+    assert runtime.one("SELECT workspace_id FROM subscriptions") == world.a.workspace
+    runtime.context(workspace=second, user=world.a.user)
     assert runtime.one("SELECT projects FROM app_private.owner_totals()") == 1  # world.a's project counts
     assert runtime.one("SELECT app_private.manages_billing(:u)", u=world.a.user) is True
     assert runtime.one("SELECT app_private.manages_billing(:u)", u=world.b.user) is False

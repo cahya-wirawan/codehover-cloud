@@ -7,7 +7,11 @@ DROP FUNCTION app_private.context_namespace();
 DROP POLICY resolver_totals ON builds;
 DROP POLICY resolver_totals ON usage_accounts;
 DROP POLICY tenant ON billing_customers;
+DROP POLICY tenant_insert ON billing_customers;
+DROP POLICY tenant_update ON billing_customers;
 DROP POLICY tenant ON subscriptions;
+DROP POLICY tenant_insert ON subscriptions;
+DROP POLICY tenant_update ON subscriptions;
 DROP POLICY tenant ON entitlement_grants;
 DO $$
 DECLARE t text;
