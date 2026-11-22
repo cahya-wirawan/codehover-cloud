@@ -23,9 +23,10 @@ REVOKE ALL ON project_slug_redirects FROM app_runtime;
 CREATE POLICY resolver ON project_slug_redirects TO app_resolver USING (true) WITH CHECK (true);
 GRANT SELECT, INSERT, UPDATE, DELETE ON project_slug_redirects TO app_resolver;
 
--- Whether a redirect of the owner still holds `p_slug` for a project of another workspace.
+-- Whether a redirect of the owner still holds `p_slug` for a project of another workspace. VOLATILE: it
+-- runs after the caller waited for the address's lock, and must see what committed meanwhile.
 CREATE FUNCTION app_private.slug_held_elsewhere(p_namespace uuid, p_slug text, p_workspace uuid) RETURNS boolean
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+  LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   SELECT EXISTS (SELECT 1 FROM public.project_slug_redirects r JOIN public.projects pr ON pr.id = r.project_id
                   WHERE r.namespace_id = p_namespace AND r.slug = p_slug AND r.reserved_until > now()
                     AND pr.workspace_id <> p_workspace)
@@ -37,6 +38,8 @@ CREATE OR REPLACE FUNCTION app_private.projects_namespace() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
   NEW.namespace_id := (SELECT w.namespace_id FROM public.workspaces w WHERE w.id = NEW.workspace_id);
+  -- Serialized with renames of the same address (security review: no check-then-take race).
+  PERFORM pg_advisory_xact_lock(hashtextextended('project-slug:' || NEW.namespace_id::text || '/' || NEW.slug, 0));
   IF app_private.slug_held_elsewhere(NEW.namespace_id, NEW.slug, NEW.workspace_id) THEN
     RAISE EXCEPTION 'this address was used by another workspace''s project recently' USING ERRCODE = '23505',
       CONSTRAINT = 'uq_projects_namespace_slug';
@@ -65,6 +68,9 @@ BEGIN
   IF p.slug = p_slug THEN
     RETURN p_slug;
   END IF;
+  -- Lock both addresses, in a fixed order, against concurrent renames and new projects.
+  PERFORM pg_advisory_xact_lock(hashtextextended('project-slug:' || p.namespace_id::text || '/' || LEAST(p.slug, p_slug), 0));
+  PERFORM pg_advisory_xact_lock(hashtextextended('project-slug:' || p.namespace_id::text || '/' || GREATEST(p.slug, p_slug), 0));
   IF app_private.slug_held_elsewhere(p.namespace_id, p_slug, p.workspace_id) THEN
     RAISE EXCEPTION 'this address was used by another workspace''s project recently' USING ERRCODE = '23505',
       CONSTRAINT = 'uq_projects_namespace_slug';
