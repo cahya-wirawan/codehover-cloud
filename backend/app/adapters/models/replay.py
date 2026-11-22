@@ -8,6 +8,7 @@ nothing. Replay preset builds exercise the full pipeline (budgets, attempts, cac
 
 from __future__ import annotations
 
+import copy
 import re
 from collections import OrderedDict
 from pathlib import PurePosixPath
@@ -153,6 +154,11 @@ class ReplayGateway:
                 parts.append(f"- `{e['path']}` defines `{name}` [[{e['file_id']}:{line}-{line}]].")
         parts += ["", "Behavior beyond these definitions is not described by this replay page."]
         return {"markdown": "\n".join(parts)[:20000]}
+
+    # P07: the replay "translation" returns the source unchanged, so the structure checks always hold.
+    def _translate(self, evidence: dict[str, Any]) -> dict[str, Any]:
+        source: dict[str, Any] = copy.deepcopy(evidence["source"])
+        return source
 
     # P05: supported when every code identifier the claim names appears in its cited lines.
     def _check(self, evidence: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,29 @@
+Explain SOURCE_CHUNK, whose lines are numbered, for a code-browsing website: when a reader hovers a definition or a line, your text appears next to it, so it must be short, concrete and correct. The reader is a competent programmer who has never seen this repository. Use the known SYMBOLS and RELATED_CONTEXT. Return Explanation JSON.
+
+How to write:
+- Explain intent and mechanism: why the code exists and how it achieves it. Do not restate the code in English ("increments i by 1").
+- Mention non-obvious consequences: side effects, mutation, invariants, complexity, numerical or concurrency pitfalls, and why an unusual construct is used.
+- Only claim what the source (or the supplied context) supports. If something depends on code you cannot see, say so briefly instead of guessing. Empty fields are preferable to guesses.
+- Use `backticks` for identifiers and expressions; **bold** sparingly. No headings, bullet lists or HTML.
+
+Symbols:
+- Include exactly the symbols listed in SYMBOLS, using their symbol_key values unchanged, and document every one.
+- `summary`: one or two sentences on what it does and why it exists. `details` (optional): at most four sentences on how it works, the algorithm or the data flow. `returns` and `notes` (gotchas, invariants, side effects) only when they say something.
+- Parameter names must be exact identifiers from the source; describe only parameters the symbol has, never `self`, `this` or `cls`; give each one's meaning and expected type or shape. A parameterless symbol has no parameters.
+
+Line notes:
+- Pick the lines a newcomer would actually wonder about: core logic, tricky expressions, important constants, non-obvious control flow. Skip blank lines, imports (unless surprising), trivial returns, and lines a symbol's explanation already covers.
+- Aim for roughly one note per 3 to 8 lines of real logic. Give a block of related lines one note with an inclusive range.
+- Note ranges must lie within lines $START_LINE to $END_LINE of this chunk.
+
+`summary` (top level): two to four sentences on what this chunk of `$PATH` is for and how it fits into the repository. Limits: symbol summary 600 characters, details 3000, each note 1000, at most 50 notes.
+Do not state that code is safe, fast or correct unless the source shows it.
+$INCOMPLETE
+
+$SOURCE_CHUNK
+
+$SYMBOLS
+
+$RELATED_CONTEXT
+
+$REPO_MAP

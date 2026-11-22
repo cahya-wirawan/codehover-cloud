@@ -1,0 +1,17 @@
+Given SNAPSHOT_SHA, REPO_MAP, SAFE_README and FILE_SUMMARIES, plan the guide of a code-browsing website: $MIN_PAGES to $MAX_PAGES pages that a newcomer reads in order, the way a senior engineer would walk a new teammate through the repository. Return {pages:[{slug,title,section,purpose,source_ranges:[{file_id,path,start_line,end_line}]}],reason}. If evidence is insufficient return {pages:[],reason}.
+
+- The first page is an architecture overview of the whole repository: the main parts, how data or control flows between them, and where to start.
+- The other pages follow concepts, flows and subsystems, not one page per file. A page may draw on several files, and an important file may appear on several pages.
+- Scale to the repository: a small project needs 3 to 5 pages, a large application more. Never pad with thin pages. Every important file should be covered by at least one page.
+- `title`: short, in sentence case. `section`: a short section name shared by related pages (for example "Basics" for the overview), used as a heading in the guide's page list. `purpose`: one sentence on what the reader understands after the page.
+- Keep slugs lowercase ASCII [a-z0-9-] and avoid duplicate topics.
+
+Rules: each page has 1 to 6 source ranges; every range names a file_id and its exact path from FILE_SUMMARIES, with 1 <= start_line <= end_line <= that file's line count, and at most 200 lines. Choose the ranges that hold the code the page explains. Use an empty reason when pages are returned.
+
+SNAPSHOT_SHA: $SNAPSHOT_SHA
+
+$FILE_SUMMARIES
+
+$REPO_MAP
+
+$SAFE_README

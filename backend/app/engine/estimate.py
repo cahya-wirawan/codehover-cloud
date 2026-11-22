@@ -80,6 +80,9 @@ class GenerationConfig(BaseModel):
     variant_of: Annotated[str | None, Field(pattern=r"^[0-9a-f-]{36}$")] = None
     # Explain files through the provider's batch interface at the catalog batch price (M6, T24).
     batch: bool = False
+    # Language variants translate their base build's validated text (P07, prompt sets from 0.6.0) instead
+    # of writing from the source: cheaper, and every language says the same. Reader level is unchanged.
+    translate: bool = False
 
     @field_validator("languages")
     @classmethod
@@ -94,6 +97,8 @@ class GenerationConfig(BaseModel):
     def _one_language_per_variant(self) -> GenerationConfig:
         if self.variant_of is not None and len(self.languages) != 1:
             raise ValueError("a variant build writes one language")
+        if self.translate and self.variant_of is None and len(self.languages) < 2:
+            raise ValueError("translation needs a further language or a base build")
         return self
 
     @property
@@ -122,6 +127,8 @@ class GenerationConfig(BaseModel):
             del data["variant_of"]  # configs approved before variants keep their digests
         if not data["batch"]:
             del data["batch"]
+        if not data["translate"]:
+            del data["translate"]
         return data
 
 
@@ -173,6 +180,9 @@ class Estimate:
     tokens: dict[str, dict[str, int]]
     low_micro_usd: int
     high_micro_usd: int
+    # One language variant translated from the base (P07): no plan, the base's output as input.
+    translated_low_micro_usd: int = 0
+    translated_high_micro_usd: int = 0
 
 
 def estimate(
@@ -207,6 +217,34 @@ def estimate(
                 + pages * writer.max_output_tokens
             )
             # One repair cycle per page (19 P06): the writer's repair, then the changed claims checked again.
+            writer_in += pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS)
+            writer_out += pages * high_output(writer, REPAIR_OUTPUT)
+            checker_in *= 2
+            checker_out = pages * checker.max_output_tokens * 2
+        return {
+            "writer": {"input": writer_in, "output": writer_out},
+            "checker": {"input": checker_in, "output": checker_out},
+        }
+
+    def translated(bytes_per_token: int, high: bool) -> dict[str, dict[str, int]]:
+        """A translated variant reads the base's answers instead of the source (19 P07) and writes as much;
+        the checker still checks every page, and a page may still need its repair cycle."""
+        writer, checker = preset.writer, preset.checker
+        pages = most if high else fewest
+        explain_out = high_output(writer, EXPLAIN_OUTPUT_HIGH) if high else EXPLAIN_OUTPUT_LOW
+        overview_out = high_output(writer, OVERVIEW_OUTPUT) if high else OVERVIEW_OUTPUT
+        page_out = writer.max_output_tokens if high else GUIDE_OUTPUT_LOW
+        writer_in = (
+            chunks * (EXPLAIN_OUTPUT_HIGH if high else EXPLAIN_OUTPUT_LOW)
+            + chunks * PROMPT_OVERHEAD_TOKENS
+            + OVERVIEW_OUTPUT
+            + PROMPT_OVERHEAD_TOKENS
+            + pages * (page_out + PROMPT_OVERHEAD_TOKENS)
+        )
+        writer_out = chunks * explain_out + overview_out + pages * page_out
+        checker_in = pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS)
+        checker_out = pages * CHECK_OUTPUT_LOW
+        if high:
             writer_in += pages * (GUIDE_EVIDENCE_TOKENS + PROMPT_OVERHEAD_TOKENS)
             writer_out += pages * high_output(writer, REPAIR_OUTPUT)
             checker_in *= 2
@@ -258,4 +296,6 @@ def estimate(
         },
         low_micro_usd=max(0, priced(low) - batch_saving(BYTES_PER_TOKEN_LOW, EXPLAIN_OUTPUT_LOW)),
         high_micro_usd=priced(high),
+        translated_low_micro_usd=priced(translated(BYTES_PER_TOKEN_LOW, high=False)),
+        translated_high_micro_usd=priced(translated(BYTES_PER_TOKEN_HIGH, high=True)),
     )

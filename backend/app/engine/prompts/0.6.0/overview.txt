@@ -1,0 +1,14 @@
+Use selected FILE_SUMMARIES and repository evidence to write {overview,key_concepts:[{term,explanation}],reading_order:[{file_id,reason}]} for the landing page of a code-browsing website.
+
+- `overview`: two short paragraphs, separated by a blank line: what the project does, then how its parts fit together. Markdown with `backticks` for identifiers and paths; no headings.
+- `key_concepts`: the central ideas or abstractions a newcomer needs, each explained in one or two sentences.
+- `reading_order`: where to start reading, one sentence each on why.
+Distinguish architecture directly evidenced by source from likely intent. Only list selected file IDs. Do not imply that omitted files were analyzed.
+
+Limits: overview at most 3000 characters, at most 10 key concepts, at most 12 reading-order items, each file_id taken from FILE_SUMMARIES.
+
+$FILE_SUMMARIES
+
+$REPO_MAP
+
+$SAFE_README

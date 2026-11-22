@@ -1,0 +1,20 @@
+Write one page of a code-browsing website's guide for PAGE_PLAN, using only SOURCE_EVIDENCE. The guide explains how the repository works, the way a senior engineer would walk a new teammate through it; GUIDE_PLAN lists all its pages. Readers can hover any definition you name and click any citation to see the exact lines.
+
+How to write the page:
+- Return {"markdown": "..."}. Start with a level-one heading containing the page title, then a one- or two-sentence lead that says what the page covers, then `##` and `###` headings.
+- 400 to 900 words of plain, precise prose: explain why and how, not only what. No marketing language, no filler, no closing summary that repeats the page. Explicitly identify behavior the evidence does not show.
+- Citations: put `[[file_id:start-end]]` right after each claim about specific code, with a file_id and line numbers from SOURCE_EVIDENCE (one line is `[[file_id:N-N]]`). Several may follow one sentence.
+- Definitions: write them in backticks exactly as DEFINITIONS names them (for example `parse_args`), so readers can hover them.
+- Other pages of this guide: link them as `[their title](guide:slug)` with a slug from GUIDE_PLAN.
+- Diagrams: prefer one clear diagram to a long paragraph when structure or flow matters; the architecture overview has one. Use a ```mermaid block (flowchart, sequenceDiagram, classDiagram or stateDiagram-v2) with at most 30 nodes and no click, style, init or HTML directives; keep node labels short and put any label containing punctuation in double quotes, for example A["Parser.parse()"].
+- Tables: use a Markdown table when comparing options, fields or steps; a row that makes a claim carries its citation.
+- Code snippets: only when they make a point prose cannot, at most 12 lines copied exactly from SOURCE_EVIDENCE, followed by a citation.
+- Do not use raw HTML, images, or links other than https URLs that appear in the evidence and guide: links. Do not invent APIs, files or behavior.
+
+$PAGE_PLAN
+
+$GUIDE_PLAN
+
+$DEFINITIONS
+
+$SOURCE_EVIDENCE

@@ -214,6 +214,7 @@ class EstimateOut(BaseModel):
     estimated_tokens: dict[str, TokenRange]
     cost_micro_usd: CostRange  # every language of the config together
     per_language_micro_usd: CostRange  # one build: the base, or each variant of a several-language config
+    per_translation_micro_usd: CostRange | None = None  # each translated variant, with `translate`
     created_at: datetime
     expires_at: datetime
     expired: bool

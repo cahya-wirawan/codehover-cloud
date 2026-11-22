@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-21 · Package version 0.6.7
+Date: 2026-11-22 · Package version 0.6.8
+
+0.6.8 adds translated language variants (prompt set 0.6.0). `test_variants.py` checks that a translated family's estimate prices the translation below a written language and adds them up, that the cap is shared in proportion, that the variant waits for each base stage, calls only the translator (no explain, overview, plan or guide calls), keeps the base's pages and explanation structure with `translated_from` provenance and carries the same claim checks, and that a translation of a ready build must keep its reader level. `test_generation_engine.py` covers the translate request (source as a data block, audience, cache key), the structure checks (renamed parameters, moved or dropped notes, a reordered reading order, lost citations or links are refused; translated headings and anchors are allowed) and the config rule. The frontend test covers the option and the split estimate. Results: unit 286 passed (8 skipped), integration 259 passed, frontend 60 passed.
 
 0.6.7 fixes cancelling a several-language build: cancelling the base also cancels its active language variants, which had kept running and calling models until they failed at the plan stage. `test_variants.py` checks that cancelling one variant stops only it, that cancelling the base then cancels the remaining variant with `with_base: true` on its event and leaves no runnable task, and that a base failing before planning still fails its variant with `base_unavailable`. Results: unit 283 passed (8 skipped), integration 257 passed.
 

@@ -47,6 +47,9 @@ export function GenerationPanel({
   const others = variantOf ? [] : extra.filter((code) => code !== language);
   const presets = useQuery({ queryKey: ["presets", workspaceId], queryFn: () => api.presets(workspaceId) });
   const [batch, setBatch] = useState(false);
+  // P07: further languages translate the first build's text instead of being written from the source.
+  const [translate, setTranslate] = useState(false);
+  const canTranslate = others.length > 0 || variantOf !== null;
   const [ownKey, setOwnKey] = useState(false);
   const usage = useQuery({ queryKey: ["usage", workspaceId], queryFn: () => api.usage(workspaceId) });
   const scanned = useQuery({
@@ -73,6 +76,7 @@ export function GenerationPanel({
         levels: [level],
         ...(variantOf ? { variant_of: variantOf } : {}),
         ...(batch && chosen?.batch ? { batch: true } : {}),
+        ...(translate && canTranslate ? { translate: true } : {}),
       }),
     onSuccess: (value) => {
       setEstimate(value);
@@ -226,6 +230,19 @@ export function GenerationPanel({
               </>
             )}
           </div>
+          {canTranslate ? (
+            <label className="mt-3 flex items-start gap-2">
+              <input type="checkbox" className="mt-1" checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
+              <span>
+                {variantOf ? "Translate the base build's text (cheaper)" : "Translate the other languages from the first (cheaper)"}
+                <span className="block text-sm text-muted">
+                  The explanations, overview and guide pages are translated from the {variantOf ? "base build" : "first language"} instead
+                  of written from the source again, so every language says the same and its mistakes too. Translated pages are
+                  still checked against the source. The reader level stays the same.
+                </span>
+              </span>
+            </label>
+          ) : null}
           {chosen?.batch ? (
             <label className="mt-3 flex items-start gap-2">
               <input type="checkbox" className="mt-1" checked={batch} onChange={(e) => setBatch(e.target.checked)} />
@@ -263,9 +280,21 @@ export function GenerationPanel({
                 <>
                   <dt className="text-muted">Languages</dt>
                   <dd>
-                    {estimate.config.languages.map((code) => LANGUAGES[code] ?? code).join(", ")}:{" "}
-                    {formatUsd(estimate.per_language_micro_usd.low)} – {formatUsd(estimate.per_language_micro_usd.high)} each.
-                    The cap is shared equally among them.
+                    {estimate.per_translation_micro_usd ? (
+                      <>
+                        {LANGUAGES[estimate.config.languages[0] ?? ""] ?? estimate.config.languages[0]}:{" "}
+                        {formatUsd(estimate.per_language_micro_usd.low)} – {formatUsd(estimate.per_language_micro_usd.high)};{" "}
+                        {estimate.config.languages.slice(1).map((code) => LANGUAGES[code] ?? code).join(", ")}, translated:{" "}
+                        {formatUsd(estimate.per_translation_micro_usd.low)} – {formatUsd(estimate.per_translation_micro_usd.high)} each.
+                        The cap is shared in proportion to these estimates.
+                      </>
+                    ) : (
+                      <>
+                        {estimate.config.languages.map((code) => LANGUAGES[code] ?? code).join(", ")}:{" "}
+                        {formatUsd(estimate.per_language_micro_usd.low)} – {formatUsd(estimate.per_language_micro_usd.high)} each.
+                        The cap is shared equally among them.
+                      </>
+                    )}
                   </dd>
                 </>
               ) : null}
