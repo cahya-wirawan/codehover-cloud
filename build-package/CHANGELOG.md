@@ -4,6 +4,8 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-22
+
 ### Added
 
 - 02, 05, 06: admins change a project's address (`PUT /projects/{pid}/address`, migration 0041), the <project> of `/sites/<owner>/<project>`. The old address keeps leading to the site for 90 days, inside the owner's namespace only.
