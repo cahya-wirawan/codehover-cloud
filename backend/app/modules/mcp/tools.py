@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.storage import ObjectStore
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
+from app.engine.prompts import LANGUAGE_PATTERN, LANGUAGES
 from app.modules.projects import service
 from app.modules.published.router import Site, site_variants
 
@@ -63,7 +64,7 @@ class Context:
 # ---------------------------------------------------------------- arguments
 class _Args(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    language: str | None = Field(default=None, pattern=r"^(en|de|id)$")
+    language: str | None = Field(default=None, pattern=LANGUAGE_PATTERN)
 
 
 class NoArgs(_Args):
@@ -100,7 +101,7 @@ class GuideArgs(_Args):
 
 _LANGUAGE = {
     "type": "string",
-    "enum": ["en", "de", "id"],
+    "enum": list(LANGUAGES),
     "description": "read the site's variant in this language, when it has one",
 }
 

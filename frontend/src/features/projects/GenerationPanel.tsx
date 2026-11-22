@@ -3,7 +3,10 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import { ApiError } from "../../lib/api/client";
-import { api, type Estimate, formatUsd, LANGUAGES, LEVELS, type Snapshot } from "../../lib/api/resources";
+import { api, type Estimate, formatUsd, languageLabel, LANGUAGES, LEVELS, type Snapshot } from "../../lib/api/resources";
+
+/** A build writes up to three languages (06): English and two more. */
+const MAX_FURTHER_LANGUAGES = 2;
 import { ownKeysLabel } from "../workspaces/providers";
 
 const lines = (text: string) =>
@@ -40,15 +43,18 @@ export function GenerationPanel({
   const [search] = useSearchParams();
   const variantOf = search.get("variant_of");
   const variantSnapshot = search.get("snapshot");
-  const [language, setLanguage] = useState(variantOf ? "de" : "en");
+  // A new build's first language is English; a variant of a ready build chooses its own.
+  const [variantLanguage, setVariantLanguage] = useState("de");
+  const language = variantOf ? variantLanguage : "en";
   const [level, setLevel] = useState("standard");
   // Several languages (FR-026): the base language plus these, each a variant build started beside the base.
   const [extra, setExtra] = useState<string[]>([]);
   const others = variantOf ? [] : extra.filter((code) => code !== language);
   const presets = useQuery({ queryKey: ["presets", workspaceId], queryFn: () => api.presets(workspaceId) });
   const [batch, setBatch] = useState(false);
-  // P07: further languages translate the first build's text instead of being written from the source.
-  const [translate, setTranslate] = useState(false);
+  // P07: further languages translate the first build's text instead of being written from the source
+  // (the default; untick to write each language from the source).
+  const [translate, setTranslate] = useState(true);
   const canTranslate = others.length > 0 || variantOf !== null;
   const [ownKey, setOwnKey] = useState(false);
   const usage = useQuery({ queryKey: ["usage", workspaceId], queryFn: () => api.usage(workspaceId) });
@@ -153,38 +159,57 @@ export function GenerationPanel({
             </p>
           ) : null}
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1">
-              Language
-              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="field">
-                {Object.entries(LANGUAGES).map(([code, name]) => (
-                  <option key={code} value={code}>{name}</option>
-                ))}
-              </select>
-            </label>
-            {variantOf ? null : (
+            {variantOf ? (
+              <label className="flex flex-col gap-1">
+                Language
+                <select value={variantLanguage} onChange={(e) => setVariantLanguage(e.target.value)} className="field">
+                  {Object.keys(LANGUAGES).map((code) => (
+                    <option key={code} value={code}>{languageLabel(code)}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
               <fieldset className="flex flex-col gap-1">
-                <legend>Also write in</legend>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {Object.entries(LANGUAGES)
-                    .filter(([code]) => code !== language)
-                    .map(([code, name]) => (
-                      <label key={code} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={extra.includes(code)}
-                          onChange={(e) =>
-                            setExtra((current) =>
-                              e.target.checked ? [...current, code] : current.filter((c) => c !== code),
-                            )
-                          }
-                        />
-                        {name}
-                      </label>
+                <legend>Languages</legend>
+                <p>English first{others.length ? ", then:" : "."}</p>
+                {others.length ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {others.map((code) => (
+                      <li key={code} className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5">
+                        {languageLabel(code)}
+                        <button
+                          type="button"
+                          className="text-muted hover:text-foreground"
+                          aria-label={`Remove ${LANGUAGES[code] ?? code}`}
+                          onClick={() => setExtra((current) => current.filter((c) => c !== code))}
+                        >
+                          ×
+                        </button>
+                      </li>
                     ))}
-                </div>
+                  </ul>
+                ) : null}
+                {others.length < MAX_FURTHER_LANGUAGES ? (
+                  <select
+                    aria-label="Add a language"
+                    value=""
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      if (code) setExtra((current) => [...current, code]);
+                    }}
+                    className="field"
+                  >
+                    <option value="">Add a language…</option>
+                    {Object.keys(LANGUAGES)
+                      .filter((code) => code !== "en" && !others.includes(code))
+                      .map((code) => (
+                        <option key={code} value={code}>{languageLabel(code)}</option>
+                      ))}
+                  </select>
+                ) : null}
                 <span className="text-sm text-muted">
-                  Each further language is its own build, started beside the first: the same files and guide pages,
-                  written in that language.
+                  Up to {MAX_FURTHER_LANGUAGES} more, from the 30 most spoken languages. Each is its own build, started
+                  beside the English one: the same files and guide pages.
                 </span>
               </fieldset>
             )}

@@ -38,9 +38,7 @@ function serve(sent: unknown[]) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-test("several languages go into one estimate, which shows the cost of each", async () => {
-  const sent: { config: { languages: string[] } }[] = [];
-  serve(sent);
+function panel() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={["/?snapshot=s1"]}>
@@ -48,36 +46,43 @@ test("several languages go into one estimate, which shows the cost of each", asy
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  const also = await screen.findByRole("group", { name: "Also write in" });
-  expect(also).not.toHaveTextContent("English"); // the base language is not offered twice
-  fireEvent.click(screen.getByRole("checkbox", { name: "Bahasa Indonesia" }));
-  fireEvent.click(screen.getByRole("checkbox", { name: "Deutsch" }));
+}
+
+test("English comes first; further languages come from the list of 30, translated by default", async () => {
+  const sent: { config: { languages: string[]; translate?: boolean } }[] = [];
+  serve(sent);
+  panel();
+  const add = await screen.findByRole("combobox", { name: "Add a language" });
+  expect(screen.getByRole("group", { name: "Languages" })).toHaveTextContent("English first.");
+  const options = Array.from((add as HTMLSelectElement).options).map((o) => o.value).filter(Boolean);
+  expect(options).toHaveLength(29); // the 30 most spoken languages, English already first
+  expect(options).not.toContain("en");
+  fireEvent.change(add, { target: { value: "id" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Add a language" }), { target: { value: "de" } });
+  expect(screen.queryByRole("combobox", { name: "Add a language" })).toBeNull(); // English and two more
+  expect(screen.getByRole("checkbox", { name: /Translate the other languages from the first/ })).toBeChecked();
   await waitFor(() => expect(screen.getByRole("button", { name: "Estimate" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Estimate" }));
   await waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0]?.config.languages).toEqual(["en", "id", "de"]);
-  expect(await screen.findByText(/English, Bahasa Indonesia, Deutsch: \$0\.10 – \$0\.30 each/)).toBeInTheDocument();
-  expect(screen.getByText("$0.20 – $0.60")).toBeInTheDocument(); // every language together
+  expect(sent[0]?.config).toMatchObject({ languages: ["en", "id", "de"], translate: true });
+  expect(await screen.findByText(/Bahasa Indonesia, Deutsch, translated: \$0\.04 – \$0\.09 each/)).toBeInTheDocument();
+  expect(screen.getByText(/in proportion to these estimates/)).toBeInTheDocument();
 });
 
-test("further languages can be translated from the first, which the estimate prices on its own", async () => {
+test("unticking translation writes every language from the source, at one build's cost each", async () => {
   const sent: { config: { languages: string[]; translate?: boolean } }[] = [];
   serve(sent);
-  render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <MemoryRouter initialEntries={["/?snapshot=s1"]}>
-        <GenerationPanel projectId="p1" workspaceId="w1" />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-  await screen.findByRole("group", { name: "Also write in" });
-  expect(screen.queryByRole("checkbox", { name: /Translate the other languages/ })).toBeNull(); // one language
-  fireEvent.click(screen.getByRole("checkbox", { name: "Deutsch" }));
+  panel();
+  fireEvent.change(await screen.findByRole("combobox", { name: "Add a language" }), { target: { value: "ar" } });
+  fireEvent.click(screen.getByRole("button", { name: "Remove العربية" }));
+  expect(screen.getByRole("group", { name: "Languages" })).toHaveTextContent("English first.");
+  fireEvent.change(screen.getByRole("combobox", { name: "Add a language" }), { target: { value: "ja" } });
   fireEvent.click(screen.getByRole("checkbox", { name: /Translate the other languages from the first/ }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Estimate" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Estimate" }));
   await waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0]?.config).toMatchObject({ languages: ["en", "de"], translate: true });
-  expect(await screen.findByText(/Deutsch, translated: \$0\.04 – \$0\.09 each/)).toBeInTheDocument();
-  expect(screen.getByText(/in proportion to these estimates/)).toBeInTheDocument();
+  expect(sent[0]?.config.languages).toEqual(["en", "ja"]);
+  expect(sent[0]?.config.translate).toBeUndefined();
+  expect(await screen.findByText(/English, 日本語: \$0\.10 – \$0\.30 each/)).toBeInTheDocument();
+  expect(screen.getByText("$0.20 – $0.60")).toBeInTheDocument(); // every language together
 });

@@ -245,6 +245,16 @@
 .prose a.sym-link:hover code { box-shadow: inset 0 -1px 0 var(--kc); }
 .prose li::marker { color: var(--muted); }
 .prose blockquote { color: var(--muted); border-left: 3px solid var(--hl); }
+/* Prose in right-to-left languages (Arabic, Urdu, Persian, Punjabi) takes each paragraph's own direction;
+   code, paths and line numbers stay left to right. */
+.prose :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th),
+.file-about p, .gloss-sum, .gloss-note, .gloss-params li, .inl { unicode-bidi: plaintext; text-align: start; }
+
+/* A repository Markdown file shown formatted in the code view. */
+.md-file { max-width: calc(72ch + 56px); padding: 8px 28px 28px; }
+.md-file h1 { font: 500 34px/1.15 var(--serif); letter-spacing: -0.01em; }
+.md-file pre { overflow-x: auto; padding: 12px 14px; border-radius: 6px; background: var(--tint); font-size: 14px; }
+.md-file pre code { padding: 0; background: none; font-size: inherit; }
 
 .guide-table { overflow-x: auto; margin: 18px 0 24px; }
 .guide-table table { min-width: 60%; border-collapse: collapse; font-size: 16px; line-height: 1.45; }
@@ -296,6 +306,7 @@ figure.diagram .diagram-source pre { margin: 6px 0 0; white-space: pre-wrap; fon
   .concepts dd { margin-bottom: 12px; }
   .file-head, .file-tools { padding-left: 16px; padding-right: 16px; }
   .file-about { padding: 0 16px; }
+  .md-file { padding: 8px 16px 20px; }
 }
 
 .card-guides { font-size: 14.5px; color: var(--muted); }

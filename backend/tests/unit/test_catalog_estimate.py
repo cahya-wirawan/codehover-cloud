@@ -121,7 +121,7 @@ def test_scope_selection_is_deterministic_and_prefers_source_over_tests() -> Non
     [
         {"include": ["../etc/**"]},
         {"include": ["/abs/**"]},
-        {"languages": ["fr"]},  # FR-026 offers en, de and id
+        {"languages": ["tlh"]},  # FR-026 offers the 30 most spoken languages
         {"levels": ["casual"]},
         {"languages": ["de", "de"]},  # each language once (several are a family, FR-026)
         {"languages": ["en", "de", "id", "en"]},

@@ -193,7 +193,7 @@ async def test_estimate_is_immutable_scoped_and_expires(
     assert unknown.status_code == 422 and unknown.json()["error"]["code"] == "PRESET_UNKNOWN"
     empty = await make_estimate(owner, project, requested.json()["id"], include=["docs/**"])
     assert empty.status_code == 422 and empty.json()["error"]["code"] == "SCOPE_EMPTY"
-    invalid = await make_estimate(owner, project, requested.json()["id"], languages=["fr"])
+    invalid = await make_estimate(owner, project, requested.json()["id"], languages=["tlh"])
     assert invalid.status_code == 422
 
     ddl(

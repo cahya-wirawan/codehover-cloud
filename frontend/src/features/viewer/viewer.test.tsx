@@ -136,3 +136,38 @@ test("connection errors from the GitHub callback are explained", async () => {
   renderAt("/w/w1/connections?error=installation_not_accessible");
   expect(await screen.findByRole("alert")).toHaveTextContent("cannot access that installation");
 });
+
+test("a Markdown file reads formatted, safely, with its source one click away", async () => {
+  const readme = [
+    "# Fixture",
+    "",
+    "A **small** app. See [docs](https://example.test/docs) or [local](docs/x.md).",
+    "",
+    "![tracker](https://tracker.example/pixel.png)",
+    "",
+    "<script>alert(1)</script>",
+    "",
+    "| a | b |",
+    "|---|---|",
+    "| 1 | 2 |",
+  ];
+  fakeApi({
+    "/api/v1/builds/b1": BUILD,
+    "/api/v1/builds/b1/tree?path=": { items: [], next_cursor: null },
+    "/api/v1/builds/b1/files/f9?start_line=1": {
+      id: "f9", path: "README.md", start_line: 1, line_count: readme.length, lines: readme, symbols: [], references: [],
+    },
+  });
+  renderAt("/p/p1/builds/b1/code?file=f9");
+  expect(await screen.findByRole("heading", { level: 3, name: "Fixture" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Formatted" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("link", { name: "docs" })).toHaveAttribute("href", "https://example.test/docs");
+  expect(screen.queryByRole("link", { name: "local" })).toBeNull(); // only https links are links
+  expect(screen.getByRole("table")).toHaveTextContent("12");
+  expect(document.querySelector(".md-file img")).toBeNull(); // images are their alt text: nothing is fetched
+  expect(document.querySelector(".md-file script")).toBeNull();
+  expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument(); // HTML arrives as text
+  fireEvent.click(screen.getByRole("button", { name: "Source" }));
+  await waitFor(() => expect(document.getElementById("L1")).toHaveTextContent(/^1# Fixture$/));
+  expect(screen.queryByRole("heading", { level: 3, name: "Fixture" })).toBeNull();
+});

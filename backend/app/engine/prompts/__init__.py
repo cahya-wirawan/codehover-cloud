@@ -34,7 +34,43 @@ def digest(version: str) -> str:
 
 
 DEFAULT_VARIANT = "en-standard"
-LANGUAGES = {"en": "English", "de": "German", "id": "Indonesian"}  # FR-026
+# FR-026: the 30 most spoken languages by total speakers (Ethnologue 2026, as listed by Wikipedia's "List of
+# languages by total number of speakers"), keyed by ISO 639-1 where one exists, else ISO 639-3. The names are
+# what the audience instruction tells the writer; English, German and Indonesian keep the names of earlier
+# releases, so their cached outputs stay valid.
+LANGUAGES = {
+    "en": "English",
+    "zh": "Mandarin Chinese (Simplified Chinese characters)",
+    "hi": "Hindi",
+    "es": "Spanish",
+    "ar": "Modern Standard Arabic",
+    "fr": "French",
+    "bn": "Bengali",
+    "pt": "Portuguese",
+    "id": "Indonesian",
+    "ur": "Urdu",
+    "ru": "Russian",
+    "de": "German",
+    "ja": "Japanese",
+    "pcm": "Nigerian Pidgin",
+    "arz": "Egyptian Arabic",
+    "mr": "Marathi",
+    "vi": "Vietnamese",
+    "te": "Telugu",
+    "sw": "Swahili",
+    "ha": "Hausa",
+    "tr": "Turkish",
+    "pnb": "Western Punjabi (Shahmukhi script)",
+    "tl": "Tagalog",
+    "ta": "Tamil",
+    "yue": "Cantonese (Traditional Chinese characters)",
+    "wuu": "Wu Chinese (Shanghainese, Simplified Chinese characters)",
+    "fa": "Persian",
+    "ko": "Korean",
+    "am": "Amharic",
+    "th": "Thai",
+}
+LANGUAGE_PATTERN = "^(" + "|".join(LANGUAGES) + ")$"
 LEVELS = ("standard", "beginner", "expert")
 
 

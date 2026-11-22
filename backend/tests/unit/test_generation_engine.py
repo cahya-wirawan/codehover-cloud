@@ -4,6 +4,7 @@ Anthropic adapter against a mocked transport (T11; 07, 19). No provider is calle
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -209,6 +210,12 @@ EVIDENCE = [
                 "FID", FILE_ID
             ),
             "mermaid",
+        ),
+        (
+            "# T\n\n```mermaid\n---\nconfig:\n  securityLevel: loose\n---\ngraph TD\nA --> B\n```\n[[FID:1-2]]".replace(
+                "FID", FILE_ID
+            ),
+            "frontmatter",
         ),
         ("## Not h1\n\nx [[FID:1-2]]".replace("FID", FILE_ID), "level-one heading"),
         # A single line is accepted (stored as N-N); other malformed markers are repaired, not stored.
@@ -454,7 +461,7 @@ def test_the_audience_is_added_only_for_variants_and_only_from_the_prompt_set() 
     assert german.startswith(base) and "in German for beginner readers" in german
     assert "define each technical term" in german and "[[file_id:start-end]]" in german
     assert "focus on design decisions" in prompts.system("0.4.0", "id-expert")
-    for bad in ("fr-standard", "de-casual", "de"):
+    for bad in ("tlh-standard", "de-casual", "de"):
         with pytest.raises(ValueError):
             prompts.system("0.4.0", bad)
     with pytest.raises(ValueError):
@@ -698,3 +705,16 @@ def test_translation_needs_a_further_language_or_a_base() -> None:
     family = GenerationConfig(model_preset="p", languages=["en", "de"], translate=True)
     assert family.for_language("de", "0" * 8 + "-0000-7000-8000-" + "0" * 12).translate
     assert "translate" not in GenerationConfig(model_preset="p").canonical()  # older digests are unchanged
+
+
+def test_the_thirty_languages_reach_the_writer_by_name() -> None:
+    assert len(prompts.LANGUAGES) == 30 and next(iter(prompts.LANGUAGES)) == "en"
+    assert all(re.fullmatch(prompts.LANGUAGE_PATTERN, code) for code in prompts.LANGUAGES)
+    assert not re.fullmatch(prompts.LANGUAGE_PATTERN, "tlh")
+    assert "Modern Standard Arabic" in prompts.system("0.6.0", "ar-standard")
+    # Earlier languages keep their names, so their audience text (and cached outputs) are unchanged.
+    assert {k: prompts.LANGUAGES[k] for k in ("en", "de", "id")} == {
+        "en": "English",
+        "de": "German",
+        "id": "Indonesian",
+    }
