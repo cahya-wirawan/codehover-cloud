@@ -90,6 +90,7 @@ Creation requests for builds, estimates, exports, checkout and publish require `
 | GET `/ops/summary`, `/ops/builds/{bid}`, `/ops/events` | none → aggregates, build diagnostics (IDs, states, codes, money), operator log | Operators only; anyone else 404; no names, paths or content |
 | POST `/ops/builds-paused` | paused, reason → summary | Operators; new builds then get 503 `BUILDS_PAUSED` (retryable); reads continue |
 | POST/DELETE `/ops/projects/{pid}/suspension` | reason → 204 | Operators; takedown or reinstatement of the project's publication; audited in the workspace |
+| DELETE `/ops/slug-reservations/{slug}` | reason (query) → 204 | Operators; ends a released address's reservation early (0036) so any workspace may publish at it; 404 when the address is not reserved; recorded as `slug.released` (operator event, and an audit event in the releasing workspace while it exists) |
 | GET/POST `/ops/workspaces/{wid}/entitlements`, DELETE `/ops/entitlements/{id}` | allowance_micro_usd, days (≤366), reason → grant | Operators; adds allowance to every usage period the grant overlaps; audited in the workspace |
 | GET `/health/live` / `/health/ready` | none → status, application `version` | Live process only; readiness DB/schema, essential dependencies |
 

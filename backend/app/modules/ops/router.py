@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -255,3 +255,20 @@ async def events(
     return OperatorEventList(
         items=rows, next_cursor=rows[-1].created_at.isoformat() if len(rows) == limit else None
     )
+
+
+@router.delete("/slug-reservations/{slug}", status_code=204)
+async def release_slug(
+    slug: Annotated[str, Path(pattern=r"^[a-z0-9][a-z0-9-]{2,62}$")],
+    db: Db,
+    _: OperatorWriter,
+    reason: Annotated[str, Query(min_length=3, max_length=500)],
+) -> None:
+    """End a released address's reservation early (0036), so any workspace may publish at it."""
+    workspace = (
+        await db.execute(text("SELECT app_private.ops_release_slug(:s, :r)"), {"s": slug, "r": reason})
+    ).scalar_one()
+    if workspace is None:
+        await db.rollback()
+        raise ApiError(404, "NOT_FOUND", "That address is not reserved.")
+    await db.commit()

@@ -7427,6 +7427,54 @@
         ]
       }
     },
+    "/api/v1/ops/slug-reservations/{slug}": {
+      "delete": {
+        "description": "End a released address's reservation early (0036), so any workspace may publish at it.",
+        "operationId": "release_slug_api_v1_ops_slug_reservations__slug__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 3,
+              "title": "Reason",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Slug",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
     "/api/v1/ops/summary": {
       "get": {
         "operationId": "summary_api_v1_ops_summary_get",

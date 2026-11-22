@@ -805,3 +805,29 @@ def test_a_slug_reservation_ends_after_its_period(world: World, ddl: Db) -> None
     ddl.run(ended, s=slug)
     assert ddl.one("SELECT app_private.sweep_slug_reservations()") >= 1
     assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=slug) == 0
+
+
+def test_a_workspace_holds_at_most_ten_slug_reservations(world: World, ddl: Db) -> None:
+    """0036 security review: renaming a site through many addresses cannot reserve them all; a release
+    beyond ten ends the workspace's oldest reservations."""
+    run = secrets.token_hex(3)
+    _publish(ddl, world.a, f"r{run}-00")
+    for n in range(1, 13):  # each rename releases the previous address
+        ddl.run(
+            "UPDATE slug_reservations SET released_at = released_at - interval '1 minute',"
+            " reserved_until = reserved_until - interval '1 minute' WHERE workspace_id = :w",
+            w=world.a.workspace,
+        )
+        ddl.run(
+            "UPDATE publications SET public_slug = :s WHERE workspace_id = :w",
+            s=f"r{run}-{n:02}",
+            w=world.a.workspace,
+        )
+    held = [
+        r[0]
+        for r in ddl.rows(
+            "SELECT slug FROM slug_reservations WHERE workspace_id = :w ORDER BY slug", w=world.a.workspace
+        )
+    ]
+    assert held == [f"r{run}-{n:02}" for n in range(2, 12)]  # the newest ten; 00 and 01 ended
+    _publish(ddl, world.b, f"r{run}-00")

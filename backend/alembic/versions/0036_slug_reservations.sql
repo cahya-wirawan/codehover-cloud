@@ -4,7 +4,8 @@
 -- again the moment its publication let go of it (unpublish, a new address, a private site without one,
 -- a project or workspace purge), so another workspace could publish its own site at the same address and
 -- receive the old site's readers and agents. Now the address is reserved for the releasing workspace for
--- 90 days: that workspace may take it back at any time, every other workspace gets SLUG_TAKEN. A purged
+-- 90 days: that workspace may take it back at any time, every other workspace gets SLUG_TAKEN. A workspace
+-- holds at most 10 reservations; a further release ends its oldest one. A purged
 -- workspace's addresses stay reserved for nobody until the period ends. Operator takedowns already keep
 -- their address forever (0012, 0016: the row cannot be deleted).
 --
@@ -71,6 +72,12 @@ BEGIN
     VALUES (OLD.public_slug, OLD.workspace_id, now() + interval '90 days')
     ON CONFLICT (slug) DO UPDATE
       SET workspace_id = EXCLUDED.workspace_id, released_at = now(), reserved_until = EXCLUDED.reserved_until;
+    -- At most 10 at a time per workspace, so renaming a site through many addresses cannot hold them all:
+    -- the oldest reservations end first.
+    DELETE FROM public.slug_reservations r
+     WHERE r.workspace_id = OLD.workspace_id
+       AND r.slug IN (SELECT x.slug FROM public.slug_reservations x WHERE x.workspace_id = OLD.workspace_id
+                       ORDER BY x.released_at DESC, x.slug OFFSET 10);
   END IF;
   RETURN NULL;
 END $$;
@@ -92,3 +99,22 @@ END $$;
 ALTER FUNCTION app_private.sweep_slug_reservations() OWNER TO app_resolver;
 REVOKE EXECUTE ON FUNCTION app_private.sweep_slug_reservations() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app_private.sweep_slug_reservations() TO app_runtime;
+
+-- An operator may end a reservation early (a squatted or disputed address), recorded like every operator
+-- action (0018 ops_event: an operator event, and an audit event in the releasing workspace if it exists).
+CREATE FUNCTION app_private.ops_release_slug(p_slug text, p_reason text) RETURNS uuid
+  LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE
+  w uuid;
+BEGIN
+  PERFORM app_private.require_operator();
+  DELETE FROM public.slug_reservations r WHERE r.slug = p_slug RETURNING r.workspace_id INTO w;
+  IF w IS NOT NULL THEN
+    PERFORM app_private.ops_event('slug.released',
+      CASE WHEN EXISTS (SELECT 1 FROM public.workspaces x WHERE x.id = w) THEN w END, NULL, p_reason);
+  END IF;
+  RETURN w;
+END $$;
+ALTER FUNCTION app_private.ops_release_slug(text, text) OWNER TO app_resolver;
+REVOKE EXECUTE ON FUNCTION app_private.ops_release_slug(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_private.ops_release_slug(text, text) TO app_runtime;
