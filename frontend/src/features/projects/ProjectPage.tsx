@@ -14,6 +14,7 @@ import { GenerationPanel } from "./GenerationPanel";
 import { StatusBadge } from "../viewer/StatusBadge";
 import { PublicationPanel } from "./PublicationPanel";
 import { AccessPanel } from "./AccessPanel";
+import { AddressPanel } from "./AddressPanel";
 import { PushPanel } from "./PushPanel";
 
 const FRESHNESS: Record<string, string> = {
@@ -148,6 +149,7 @@ export function ProjectPage() {
       {project.data && (role === "admin" || role === "owner") ? (
         <AccessPanel projectId={pid} workspaceId={project.data.workspace_id} />
       ) : null}
+      {project.data && (role === "admin" || role === "owner") ? <AddressPanel key={project.data.slug} project={project.data} /> : null}
       {project.data && (role === "admin" || role === "owner") ? (
         <ConfirmDeletion
           title="Delete project"

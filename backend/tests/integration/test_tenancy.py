@@ -781,6 +781,7 @@ def test_project_addresses_are_unique_per_owner_and_aliases_are_unreachable(
         p=world.a.project,
     )
     expect(runtime, DENIED, "SELECT count(*) FROM site_aliases")
+    expect(runtime, DENIED, "SELECT count(*) FROM project_slug_redirects")  # 0041
     expect(runtime, DENIED, "DELETE FROM site_aliases")
 
 
@@ -974,3 +975,32 @@ def test_an_owners_workspaces_share_billing_rows_and_totals_but_no_one_else_does
     assert runtime.one("SELECT count(*) FROM billing_customers") == 0
     assert runtime.one("SELECT projects FROM app_private.owner_totals()") == 1  # only world.b's own
     assert runtime.one("SELECT app_private.owner_spent_elsewhere(date_trunc('month', now()))") == 0
+
+
+def test_an_old_project_address_is_taken_only_by_its_own_workspace(world: World, runtime: Db) -> None:
+    """0041 security review: while a renamed project's old address still leads to it, a project of
+    another of the owner's workspaces cannot take it; one of the same workspace can (ending the redirect)."""
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    old = runtime.one("SELECT slug FROM projects WHERE id = :p", p=world.a.project)
+    runtime.one("SELECT app_private.rename_project_address(:p, :s)", p=world.a.project, s=f"{old}-new")
+    runtime.context(user=world.a.user)
+    second = runtime.one("SELECT app_private.create_workspace('Second', :s)", s=f"t2-{secrets.token_hex(4)}")
+    runtime.context(workspace=second, user=world.a.user)
+    connection = runtime.one(
+        "INSERT INTO repository_connections(workspace_id, installation_id, github_account_id, github_account_login,"
+        " connected_by) VALUES (:w, :i, 77, 'octo', :u) RETURNING id",
+        w=second,
+        i=secrets.randbelow(10**12) + 1,
+        u=world.a.user,
+    )
+    repo = runtime.one(
+        "INSERT INTO repositories(workspace_id, connection_id, provider_repo_id, owner, name, visibility,"
+        " default_branch) VALUES (:w, :c, :r, 'o', 'n', 'private', 'main') RETURNING id",
+        w=second,
+        c=connection,
+        r=secrets.randbelow(10**9),
+    )
+    take = "INSERT INTO projects(workspace_id, repository_id, name, slug, tracked_ref) VALUES (:w, :r, 'X', :s, 'main')"
+    expect(runtime, REJECTED, take, w=second, r=repo, s=old)
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    runtime.run(take, w=world.a.workspace, r=world.a.repository, s=old)  # its own workspace may

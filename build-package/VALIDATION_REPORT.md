@@ -1,6 +1,10 @@
 # Package validation
 
-Date: 2026-11-22 · Package version 0.8.0
+Date: 2026-11-22 · Package version 0.8.2
+
+0.8.2 keeps a renamed project's old address for its own workspace: `test_tenancy.py` checks that a project of another of the owner's workspaces cannot take it while it lasts and one of the same workspace can. Results: the affected integration suites (tenancy, publication, migration cycle) 49 passed.
+
+0.8.1 lets admins change a project's address (0041). `test_publication.py` checks the new address, the old one still answering with the new `address`, invalid and taken addresses, and that editors cannot change it; `test_tenancy.py` that the runtime cannot read the redirects; the threat sweep covers the new route; a frontend test covers the settings form. Results: unit 297 passed (9 skipped), integration 279 passed, frontend 72 passed, e2e 2 passed.
 
 0.8.0 adds people and organizations (0038), sites under their owner (0039) and one plan per owner (0040). `test_organizations.py` checks suggested and confirmed handles (random for Google sign-ins, never from an email), invalid, reserved and tombstone-shaped names, reservations after a rename, organization owners' and admins' access to every organization workspace (also ones created later), plain members' workspace roles, promotion and demotion falling back to the person's own role, removal taking tokens with it, role and invitation rules, organization deletion and account deletion with organizations owned alone. `test_publication.py` checks `/sites/<owner>/<project>`, a renamed owner's old handle answering while reserved, aliases leading anyone to a public site and only members to a private one, and the legacy MCP path answering only a token that may read a private site. `test_billing.py` checks that an organization's workspaces share one trial, plan, customer and allowance, that only organization owners (or the person) manage it, and that a co-owner of someone's own workspace does not. `test_tenancy.py` covers the new tables, functions and policies; the threat sweep covers every new route. Results: unit 297 passed (9 skipped), integration 278 passed, frontend 71 passed, e2e 2 passed.
 

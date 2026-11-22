@@ -74,6 +74,8 @@ export interface Project {
   source?: "github" | "upload" | "public";
   access?: "workspace" | "restricted";
   my_role?: Role | null;
+  /** "<owner>/<slug>": the site's address once published (0039). */
+  address?: string | null;
 }
 export interface BuildSummary {
   id: string;
@@ -728,6 +730,8 @@ export const api = {
     json<Workspace>(
       await apiSend("POST", "/workspaces", { name, slug, ...(organizationId ? { organization_id: organizationId } : {}) }),
     ),
+  changeProjectAddress: async (pid: string, slug: string) =>
+    json<Project>(await apiSend("PUT", `/projects/${pid}/address`, { slug })),
   setHandle: async (handle: string) => json<{ handle: string }>(await apiSend("PUT", "/me/handle", { handle })),
   checkHandle: (handle: string) => apiJson<HandleCheck>(`/handles/${encodeURIComponent(handle)}`),
   organizations: () => apiJson<{ items: Organization[]; invitations: MyOrgInvitation[] }>("/organizations"),

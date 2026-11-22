@@ -117,10 +117,11 @@ async def get_project(db: AsyncSession, member: Member, project_id: UUID) -> dic
         await db.execute(
             text(
                 "SELECT p.id, p.workspace_id, p.name, p.slug, p.tracked_ref, r.owner, r.name AS repository,"
-                " c.provider AS source, p.access,"
+                " c.provider AS source, p.access, n.handle || '/' || p.slug AS address,"
                 " COALESCE(app_private.project_role(p.workspace_id, p.id, :u), 'viewer') AS my_role"
                 " FROM projects p JOIN repositories r ON r.workspace_id = p.workspace_id AND r.id = p.repository_id"
                 " JOIN repository_connections c ON c.workspace_id = r.workspace_id AND c.id = r.connection_id"
+                " LEFT JOIN namespaces n ON n.id = p.namespace_id"
                 " WHERE p.workspace_id = :w AND p.id = :p AND p.deleted_at IS NULL"
             ),
             {"w": member.workspace_id, "p": project_id, "u": member.user_id},
@@ -129,6 +130,41 @@ async def get_project(db: AsyncSession, member: Member, project_id: UUID) -> dic
     if row is None:
         raise ApiError(404, "NOT_FOUND", "Project not found.")
     return dict(row._mapping)
+
+
+async def change_address(db: AsyncSession, member: Member, project_id: UUID, slug: str) -> dict[str, Any]:
+    """An admin renames the project's address (0041); the old one keeps leading here for 90 days. A slug
+    another live project of the same owner uses is 409."""
+    current = await get_project(db, member, project_id)
+    try:
+        await db.execute(
+            text("SELECT app_private.rename_project_address(:p, :s)"), {"p": project_id, "s": slug}
+        )
+    except exc.IntegrityError as error:
+        await db.rollback()
+        raise ApiError(
+            409,
+            "SLUG_TAKEN",
+            "This owner already has a project with this address.",
+            details={"field": "slug"},
+        ) from error
+    except exc.DBAPIError as error:
+        await db.rollback()
+        if getattr(error.orig, "sqlstate", "") == "42501":
+            raise ApiError(403, "FORBIDDEN", "Only workspace admins change a project's address.") from error
+        raise
+    if current["slug"] != slug:
+        await audit(
+            db,
+            member,
+            "project.address_changed",
+            "project",
+            project_id,
+            {"from": current["slug"], "to": slug},
+        )
+    await db.commit()
+    await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
+    return await get_project(db, member, project_id)
 
 
 # ---------------------------------------------------------------- builds

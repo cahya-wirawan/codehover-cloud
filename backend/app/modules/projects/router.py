@@ -106,6 +106,11 @@ class ProjectOut(BaseModel):
     source: Literal["github", "upload", "public"] = "github"
     access: Literal["workspace", "restricted"] = "workspace"
     my_role: Role | None = None  # the caller's role on this project (0027); set on single-project reads
+    address: str | None = None  # "<owner>/<slug>": the site's address once published (0039), single reads
+
+
+class AddressIn(BaseModel):
+    slug: Annotated[str, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$")]
 
 
 class ProjectList(BaseModel):
@@ -675,6 +680,14 @@ async def push_requests(project_id: UUID, db: Db, member: ProjectReader) -> Push
 @router.get("/projects/{project_id}", response_model=ProjectOut)
 async def get_project(project_id: UUID, db: Db, member: ProjectReader) -> ProjectOut:
     return ProjectOut(**await service.get_project(db, member, project_id))
+
+
+@router.put("/projects/{project_id}/address", response_model=ProjectOut)
+async def change_address(project_id: UUID, body: AddressIn, db: Db, member: ProjectWriter) -> ProjectOut:
+    """Admins change the project's address, the <project> in /sites/<owner>/<project> (0041); the old
+    address keeps leading to the site for 90 days."""
+    require_role(member, "admin")
+    return ProjectOut(**await service.change_address(db, member, project_id, body.slug))
 
 
 # ---------------------------------------------------------------- builds

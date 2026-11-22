@@ -953,3 +953,17 @@ class HandleReservation(Base):
     namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)
     released_at: Mapped[datetime] = ts()
     reserved_until: Mapped[datetime] = ts()
+
+
+# ---------------------------------------------------------------- project address redirects (0041)
+class ProjectSlugRedirect(Base):
+    """An old project address of an owner, leading to the renamed project for 90 days."""
+
+    __tablename__ = "project_slug_redirects"
+    namespace_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("namespaces.id"), primary_key=True
+    )
+    slug: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_id: Mapped[UUID] = ref("projects.id")
+    released_at: Mapped[datetime] = ts()
+    reserved_until: Mapped[datetime] = ts()
