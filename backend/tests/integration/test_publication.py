@@ -529,3 +529,42 @@ async def test_an_old_address_of_a_private_site_leads_only_its_members_there(
             headers={"Accept": "application/json", "Authorization": "Bearer chm_not-a-token"},
         )
         assert junk.status_code == 401 and "resource_metadata" not in junk.headers["www-authenticate"]
+
+
+async def test_an_admin_changes_a_projects_address_and_the_old_one_still_leads_there(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
+) -> None:
+    """0041: the <project> of /sites/<owner>/<project> can change; the old address keeps leading to the
+    site (and naming the new one) for 90 days; an address in use is refused; only admins change it."""
+    owner, ws, project, build, app = await ready_build(client, idp, github)
+    assert (
+        await publish(owner, project, build_id=build, visibility="public", confirmation="API")
+    ).status_code == 200
+    old = await address(owner, project)
+    handle = old.split("/")[0]
+    new_slug = f"renamed-{secrets.token_hex(3)}"
+    changed = await unsafe(owner, "PUT", f"/api/v1/projects/{project}/address", json={"slug": new_slug})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["address"] == f"{handle}/{new_slug}"
+    async with browser(app) as visitor:
+        assert (await visitor.get(f"/api/v1/published/{handle}/{new_slug}")).status_code == 200
+        at_old = await visitor.get(f"/api/v1/published/{old}")
+        assert at_old.status_code == 200 and at_old.json()["address"] == f"{handle}/{new_slug}"
+    assert ddl(
+        "SELECT action FROM audit_events WHERE workspace_id = :w AND action = 'project.address_changed'", w=ws
+    ) == [("project.address_changed",)]
+    for bad in ("Bad!", "-x", "x" * 49):
+        refused = await unsafe(owner, "PUT", f"/api/v1/projects/{project}/address", json={"slug": bad})
+        assert refused.status_code == 422, bad
+    editor = await new_user()
+    await join(owner, ws, editor, "editor")
+    denied = await unsafe(editor, "PUT", f"/api/v1/projects/{project}/address", json={"slug": "mine"})
+    assert denied.status_code == 403
+    # Another project of the same owner cannot take an address in use.
+    other = ddl(
+        "INSERT INTO projects(workspace_id, repository_id, name, slug, tracked_ref)"
+        " SELECT workspace_id, repository_id, 'Other', 'other-one', tracked_ref FROM projects WHERE id = :p RETURNING id",
+        p=project,
+    )[0][0]
+    taken = await unsafe(owner, "PUT", f"/api/v1/projects/{other}/address", json={"slug": new_slug})
+    assert taken.status_code == 409 and taken.json()["error"]["code"] == "SLUG_TAKEN"

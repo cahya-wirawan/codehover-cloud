@@ -173,6 +173,20 @@
         "title": "AccountDeletionOut",
         "type": "object"
       },
+      "AddressIn": {
+        "properties": {
+          "slug": {
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "title": "AddressIn",
+        "type": "object"
+      },
       "AliasOut": {
         "properties": {
           "owner": {
@@ -4028,6 +4042,17 @@
             ],
             "title": "Access",
             "type": "string"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
           },
           "id": {
             "format": "uuid",
@@ -9384,6 +9409,60 @@
           }
         },
         "summary": "Put Project Member",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/address": {
+      "put": {
+        "description": "Admins change the project's address, the <project> in /sites/<owner>/<project> (0041); the old\naddress keeps leading to the site for 90 days.",
+        "operationId": "change_address_api_v1_projects__project_id__address_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddressIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Address",
         "tags": [
           "projects"
         ]

@@ -781,6 +781,7 @@ def test_project_addresses_are_unique_per_owner_and_aliases_are_unreachable(
         p=world.a.project,
     )
     expect(runtime, DENIED, "SELECT count(*) FROM site_aliases")
+    expect(runtime, DENIED, "SELECT count(*) FROM project_slug_redirects")  # 0041
     expect(runtime, DENIED, "DELETE FROM site_aliases")
 
 

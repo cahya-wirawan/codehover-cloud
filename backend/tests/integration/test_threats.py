@@ -197,6 +197,7 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
             "api_key": "sk-ant-" + "x" * 40
         },
         ("PUT", "/api/v1/projects/{project_id}/access"): {"mode": "workspace"},
+        ("PUT", "/api/v1/projects/{project_id}/address"): {"slug": "hijacked"},
         ("PUT", "/api/v1/projects/{project_id}/access/members/{user_id}"): {"role": "editor"},
         ("PATCH", "/api/v1/workspaces/{workspace_id}"): {"name": "Hijacked"},
         ("POST", "/api/v1/workspaces/{workspace_id}/deletion"): {"confirmation": workspace_slug},

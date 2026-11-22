@@ -63,6 +63,8 @@ async def test_sign_in_starts_are_limited_per_client_address(client: httpx.Async
     limits(app, rate_limit_signin_per_minute=3)
     await fresh_window()
     mine, other = address(), address()
+    while other == mine:  # two random IPv4 addresses collide one time in 250
+        other = address()
     async with browser(app) as person:
         starts = [
             await person.get("/api/v1/auth/google/start", headers={"X-Forwarded-For": mine}) for _ in range(4)
@@ -89,6 +91,8 @@ async def test_public_delivery_is_limited_per_client_address(
     limits(app, rate_limit_public_per_minute=3)
     await fresh_window()
     reader, other = address(), address()
+    while other == reader:  # two random IPv4 addresses collide one time in 250
+        other = address()
     async with browser(app) as visitor:
         codes = [
             (await visitor.get(f"/api/v1/published/{slug}", headers={"X-Forwarded-For": reader})).status_code

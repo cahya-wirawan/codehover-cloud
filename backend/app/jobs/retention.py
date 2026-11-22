@@ -282,6 +282,7 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
         audit = (await db.execute(text("SELECT app_private.sweep_audit()"))).scalar_one()
         oauth = (await db.execute(text("SELECT app_private.sweep_oauth()"))).scalar_one()
         handles = (await db.execute(text("SELECT app_private.sweep_handle_reservations()"))).scalar_one()
+        handles += (await db.execute(text("SELECT app_private.sweep_project_slug_redirects()"))).scalar_one()
         windows: Any = await db.execute(  # rate-limit counters (0019): no tenant data, kept two days
             text("DELETE FROM rate_limits WHERE window_start < now() - interval '2 days'")
         )
