@@ -18,7 +18,7 @@ from tests.integration.auth_support import ORIGIN, FakeIdP, browser, ddl, unsafe
 from tests.integration.conftest import needs_db
 from tests.integration.test_github import FakeGitHub, github  # noqa: F401
 from tests.integration.test_mcp import Mcp
-from tests.integration.test_publication import publish, ready_build
+from tests.integration.test_publication import address, publish, ready_build
 from tests.integration.test_workspaces import NewUser, new_user  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
@@ -110,9 +110,11 @@ async def test_discovery_and_registration(
         assert server["code_challenge_methods_supported"] == ["S256"]
         assert server["token_endpoint"] == f"{ORIGIN}/api/v1/oauth/token"
         assert server["registration_endpoint"] == f"{ORIGIN}/api/v1/oauth/register"
-        resource = (await mcp_client.get("/.well-known/oauth-protected-resource/api/v1/mcp/any-site")).json()
+        resource = (
+            await mcp_client.get("/.well-known/oauth-protected-resource/api/v1/mcp/anyone/any-site")
+        ).json()
         assert resource == {
-            "resource": f"{ORIGIN}/api/v1/mcp/any-site",
+            "resource": f"{ORIGIN}/api/v1/mcp/anyone/any-site",
             "authorization_servers": [ORIGIN],
             "scopes_supported": ["mcp:read"],
             "bearer_methods_supported": ["header"],
@@ -144,7 +146,7 @@ async def test_a_member_signs_an_mcp_client_in_to_a_private_site(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
 ) -> None:
     owner, ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"team-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (
         await publish(owner, project, build_id=build, visibility="private", public_slug=slug)
     ).status_code == 200
@@ -188,7 +190,7 @@ async def test_a_member_signs_an_mcp_client_in_to_a_private_site(
         assert shown == {
             "client_name": "Claude Code",
             "redirect_host": "http://127.0.0.1:33418",
-            "slug": slug,
+            "site": slug,
             "project": "API",
             "workspace": shown["workspace"],
             "visibility": "private",
@@ -234,8 +236,8 @@ async def test_a_member_signs_an_mcp_client_in_to_a_private_site(
         assert not failed and overview.startswith("# API")
 
         # Bound to this site: another published site of the workspace refuses it.
-        other_slug = f"pub-{secrets.token_hex(3)}"
         _o2, _w2, other_project, other_build, _a2 = await ready_build(client, idp, github)
+        other_slug = await address(_o2, other_project)
         assert (
             await publish(
                 _o2,
@@ -316,7 +318,7 @@ async def test_losing_access_ends_mcp_sign_in(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
     owner, ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"team-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (
         await publish(owner, project, build_id=build, visibility="private", public_slug=slug)
     ).status_code == 200

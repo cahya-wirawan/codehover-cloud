@@ -1102,7 +1102,6 @@ async def search_build(
 class PublicationIn(BaseModel):
     build_id: UUID
     visibility: Literal["private", "public"] = "private"
-    public_slug: Annotated[str | None, Field(max_length=63)] = None
     confirmation: Annotated[str | None, Field(max_length=200)] = None
     acknowledge_partial: bool = False
 
@@ -1110,7 +1109,9 @@ class PublicationIn(BaseModel):
 class PublicationOut(BaseModel):
     build_id: UUID
     visibility: str
-    public_slug: str | None
+    address: (
+        str  # 0039: "<owner>/<project>"; the site is /sites/<address>, its MCP endpoint /api/v1/mcp/<address>
+    )
     version: int
     acknowledged_partial: bool
     suspended_at: datetime | None
@@ -1155,7 +1156,6 @@ async def publish(
             project_id,
             build_id=body.build_id,
             visibility=body.visibility,
-            public_slug=body.public_slug,
             confirmation=body.confirmation,
             acknowledge_partial=body.acknowledge_partial,
             if_match=if_match,

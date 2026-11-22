@@ -135,7 +135,7 @@ def test_identity_is_found_by_subject_and_subjects_cannot_be_claimed_twice(world
     expect(
         runtime,
         REJECTED,
-        "SELECT app_private.create_user_with_identity('github', 'https://github.com', :s, 'Imposter', NULL)",
+        "SELECT app_private.create_user_with_identity('github', 'https://github.com', :s, 'Imposter', NULL, NULL)",
         s=subject,
     )
 
@@ -737,98 +737,51 @@ def test_access_tokens_are_tenant_scoped_and_resolved_by_digest_only(world: Worl
     assert runtime.one("SELECT count(*) FROM access_tokens") == 0  # the resolver exposes no rows
 
 
-PUBLISH = (
-    "INSERT INTO publications(workspace_id, project_id, build_id, visibility, public_slug, published_by)"
-    " VALUES (:w, :p, :b, 'public', :s, :u)"
-)
-
-
-def _publish(db: Db, tenant: Any, address: str) -> None:
-    db.context(workspace=tenant.workspace, user=tenant.user)
-    db.run(PUBLISH, w=tenant.workspace, p=tenant.project, b=tenant.build, s=address, u=tenant.user)
-
-
-def _refused(db: Db, tenant: Any, address: str) -> None:
-    db.context(workspace=tenant.workspace, user=tenant.user)
-    savepoint = db.conn.begin_nested()
-    with pytest.raises(REJECTED, match="released recently and is reserved"):
-        db.run(PUBLISH, w=tenant.workspace, p=tenant.project, b=tenant.build, s=address, u=tenant.user)
-    savepoint.rollback()
-
-
-def test_a_released_site_address_stays_reserved_for_its_workspace(world: World, runtime: Db) -> None:
-    """0036: an address let go by renaming or unpublishing is reserved for its workspace; another
-    workspace cannot take it, the same one can, and the runtime never sees the reservations."""
-    slug, other = f"site-{secrets.token_hex(3)}", f"next-{secrets.token_hex(3)}"
-    rename = "UPDATE publications SET public_slug = :s WHERE workspace_id = :w"
-    _publish(runtime, world.a, slug)
-    runtime.run(rename, s=other, w=world.a.workspace)
-    _refused(runtime, world.b, slug)
-    runtime.context(workspace=world.a.workspace, user=world.a.user)  # its own workspace takes it back
-    runtime.run(rename, s=slug, w=world.a.workspace)
-    _refused(runtime, world.b, other)  # the address it just left is reserved now
+def test_project_addresses_are_unique_per_owner_and_aliases_are_unreachable(
+    world: World, runtime: Db, ddl: Db
+) -> None:
+    """0039: a project slug is unique among one owner's live projects, across all their workspaces; old
+    one-segment addresses (site_aliases) are reached only through the resolver."""
+    runtime.context(user=world.a.user)
+    second = runtime.one("SELECT app_private.create_workspace('Second', :s)", s=f"t2-{secrets.token_hex(4)}")
     runtime.context(workspace=world.a.workspace, user=world.a.user)
-    runtime.run(
-        "UPDATE publications SET visibility = 'private', public_slug = NULL WHERE workspace_id = :w",
-        w=world.a.workspace,
+    slug = runtime.one("SELECT slug FROM projects WHERE id = :p", p=world.a.project)
+    runtime.context(workspace=second, user=world.a.user)
+    repository = runtime.one(
+        "INSERT INTO repository_connections(workspace_id, installation_id, github_account_id, github_account_login,"
+        " connected_by) VALUES (:w, :i, 77, 'octo', :u) RETURNING id",
+        w=second,
+        i=secrets.randbelow(10**12) + 1,
+        u=world.a.user,
     )
-    _refused(runtime, world.b, slug)  # a private site without an address lets go of it too
-    runtime.context(workspace=world.a.workspace, user=world.a.user)
-    runtime.run(rename, s=slug, w=world.a.workspace)
-    runtime.run("DELETE FROM publications WHERE workspace_id = :w", w=world.a.workspace)  # unpublish
-    _refused(runtime, world.b, slug)
-    expect(runtime, DENIED, "SELECT count(*) FROM slug_reservations")
-    expect(runtime, DENIED, "DELETE FROM slug_reservations")
-    _publish(runtime, world.a, slug)  # still its own
-
-
-def test_a_slug_reservation_ends_after_its_period(world: World, ddl: Db) -> None:
-    """0036: once the 90 days have passed, any workspace may take the address; the sweep removes ended
-    reservations."""
-    slug, other = f"site-{secrets.token_hex(3)}", f"next-{secrets.token_hex(3)}"
-    _publish(ddl, world.a, slug)
-    ddl.run("DELETE FROM publications WHERE workspace_id = :w", w=world.a.workspace)
-    row = ddl.rows(
-        "SELECT workspace_id, reserved_until - released_at AS span FROM slug_reservations WHERE slug = :s",
-        s=slug,
+    repo = runtime.one(
+        "INSERT INTO repositories(workspace_id, connection_id, provider_repo_id, owner, name, visibility,"
+        " default_branch) VALUES (:w, :c, :r, 'o', 'n', 'private', 'main') RETURNING id",
+        w=second,
+        c=repository,
+        r=secrets.randbelow(10**9),
     )
-    assert [(r.workspace_id, r.span.days) for r in row] == [(world.a.workspace, 90)]
-    _refused(ddl, world.b, slug)
-    ended = (
-        "UPDATE slug_reservations SET released_at = now() - interval '91 days',"
-        " reserved_until = now() - interval '1 day' WHERE slug = :s"
+    clash = (
+        "INSERT INTO projects(workspace_id, repository_id, name, slug, tracked_ref)"
+        " VALUES (:w, :r, 'Clash', :s, 'main')"
     )
-    ddl.run(ended, s=slug)
-    _publish(ddl, world.b, slug)
-    assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=slug) == 0
-    ddl.run("UPDATE publications SET public_slug = :s WHERE workspace_id = :w", s=other, w=world.b.workspace)
-    ddl.run(ended, s=slug)
-    assert ddl.one("SELECT app_private.sweep_slug_reservations()") >= 1
-    assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=slug) == 0
-
-
-def test_a_project_keeps_its_last_three_released_addresses(world: World, ddl: Db) -> None:
-    """0036 security review: renaming a site through many addresses cannot reserve them all; each project
-    keeps the three it released last, so the address it just let go is never the one that ends."""
-    run = secrets.token_hex(3)
-    _publish(ddl, world.a, f"r{run}-00")
-    for n in range(1, 13):  # each rename releases the previous address
-        ddl.run(
-            "UPDATE publications SET public_slug = :s WHERE workspace_id = :w",
-            s=f"r{run}-{n:02}",
-            w=world.a.workspace,
-        )
-    held = [
-        r[0]
-        for r in ddl.rows(
-            "SELECT slug FROM slug_reservations WHERE project_id = :p ORDER BY slug", p=world.a.project
-        )
-    ]
-    assert held == [f"r{run}-{n:02}" for n in (9, 10, 11)]
-    ddl.run("DELETE FROM publications WHERE workspace_id = :w", w=world.a.workspace)  # unpublish
-    assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=f"r{run}-12") == 1
-    _publish(ddl, world.b, f"r{run}-00")  # long released by now
-    _refused(ddl, world.b, f"r{run}-12")
+    expect(runtime, REJECTED, clash, w=second, r=repo, s=slug)  # the same owner, another workspace
+    runtime.run(clash, w=second, r=repo, s=f"{slug}-two")
+    assert runtime.one(
+        "SELECT namespace_id = (SELECT namespace_id FROM workspaces WHERE id = :w) FROM projects WHERE slug = :s",
+        w=second,
+        s=f"{slug}-two",
+    )
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    b_slug = runtime.one("SELECT slug FROM projects WHERE id = :p", p=world.b.project)
+    assert b_slug  # another owner may use any slug, the same one included
+    ddl.run(
+        "INSERT INTO site_aliases(alias, project_id) VALUES (:a, :p)",
+        a=f"old-{secrets.token_hex(4)}",
+        p=world.a.project,
+    )
+    expect(runtime, DENIED, "SELECT count(*) FROM site_aliases")
+    expect(runtime, DENIED, "DELETE FROM site_aliases")
 
 
 def test_mcp_sign_in_rows_are_scoped_and_reached_through_functions(world: World, runtime: Db) -> None:
@@ -841,11 +794,13 @@ def test_mcp_sign_in_rows_are_scoped_and_reached_through_functions(world: World,
     runtime.one("SELECT app_private.oauth_register_client(:c, 'x', ARRAY['https://x.test/cb'])", c=client_id)
     client = runtime.one("SELECT id FROM app_private.oauth_client(:c)", c=client_id)
     request = runtime.one(
-        "SELECT app_private.oauth_begin(:c, 'https://x.test/cb', :ch, 'r', 'some-site', NULL)",
+        "SELECT app_private.oauth_begin(:c, 'https://x.test/cb', :ch, 'r', 'someone/some-site', NULL)",
         c=client,
         ch="A" * 43,
     )
-    assert runtime.rows("SELECT * FROM app_private.oauth_pending(:i)", i=request)[0].slug == "some-site"
+    assert (
+        runtime.rows("SELECT * FROM app_private.oauth_pending(:i)", i=request)[0].site == "someone/some-site"
+    )
     runtime.context()  # nobody signed in cannot decide
     expect(
         runtime,
@@ -918,3 +873,104 @@ def test_mcp_sign_in_rows_are_scoped_and_reached_through_functions(world: World,
     assert runtime.one(
         "SELECT revoked_at IS NOT NULL FROM oauth_grants WHERE refresh_hash = :h", h=b"\x06" * 32
     )
+
+
+def test_organizations_are_seen_by_their_members_and_changed_only_in_their_context(
+    world: World, runtime: Db
+) -> None:
+    """0038: namespaces are public but read-only for the runtime; reservations are unreachable; an
+    organization and its members are visible to its members only, and change only in its context;
+    membership comes only through the functions (owner on creation, accepted invitations)."""
+    runtime.context(user=world.a.user)
+    org = runtime.one("SELECT app_private.create_organization('Org A', :h)", h=f"o{secrets.token_hex(4)}")
+    expect(runtime, DENIED, "UPDATE namespaces SET handle = 'stolen' WHERE user_id = :u", u=world.b.user)
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO namespaces(handle, kind, user_id) VALUES ('x-new', 'user', :u)",
+        u=world.a.user,
+    )
+    expect(runtime, DENIED, "SELECT count(*) FROM handle_reservations")
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO organization_members(organization_id, user_id, role) VALUES (:o, :u, 'owner')",
+        o=org,
+        u=world.b.user,
+    )
+    expect(
+        runtime,
+        DENIED,
+        "SELECT app_private.apply_org_role(:w, :u, 'owner')",
+        w=world.b.workspace,
+        u=world.a.user,
+    )
+    expect(runtime, DENIED, "SELECT app_private.sync_org_access(:o, :u)", o=org, u=world.a.user)
+    runtime.context(user=world.b.user)  # not a member: sees nothing, changes nothing
+    assert runtime.one("SELECT count(*) FROM organizations WHERE id = :o", o=org) == 0
+    assert runtime.one("SELECT count(*) FROM organization_members WHERE organization_id = :o", o=org) == 0
+    runtime.run("UPDATE organizations SET name = 'Hijacked' WHERE id = :o", o=org)
+    runtime.run("DELETE FROM organization_members WHERE organization_id = :o", o=org)
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO organization_invitations(organization_id, user_id, role, invited_by) VALUES (:o, :u, 'owner', :u)",
+        o=org,
+        u=world.b.user,
+    )
+    # Someone else's organization context does not let them in either: functions check the caller.
+    runtime.run("SELECT set_config('app.organization_id', :o, true)", o=str(org))
+    expect(
+        runtime,
+        DENIED,
+        "SELECT app_private.create_workspace('In', :s, :o)",
+        s=f"in-{secrets.token_hex(3)}",
+        o=org,
+    )
+    expect(
+        runtime,
+        DENIED,
+        "SELECT app_private.rename_namespace((SELECT id FROM namespaces WHERE organization_id = :o), 'taken-x')",
+        o=org,
+    )
+    runtime.context(user=world.a.user)
+    assert runtime.one("SELECT name FROM organizations WHERE id = :o", o=org) == "Org A"
+    assert runtime.one("SELECT role FROM organization_members WHERE organization_id = :o", o=org) == "owner"
+
+
+def test_an_owners_workspaces_share_billing_rows_and_totals_but_no_one_else_does(
+    world: World, runtime: Db
+) -> None:
+    """0040: billing rows carry their owner's namespace; every workspace of that owner reads them, writes
+    stay in the workspace they belong to, and the owner's totals count across its workspaces only."""
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    runtime.run(
+        "INSERT INTO billing_customers(workspace_id, provider_customer_id) VALUES (:w, :c)",
+        w=world.a.workspace,
+        c=f"cus_{secrets.token_hex(6)}",
+    )
+    runtime.context(user=world.a.user)
+    second = runtime.one("SELECT app_private.create_workspace('Second', :s)", s=f"t2-{secrets.token_hex(4)}")
+    runtime.context(workspace=second, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM billing_customers") == 1  # the owner's, created elsewhere
+    # Only its own workspace writes it: elsewhere an update matches nothing, and no row can be re-anchored.
+    runtime.run("UPDATE billing_customers SET disputed_at = now()")
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT disputed_at IS NULL FROM billing_customers")
+    expect(runtime, DENIED, "UPDATE billing_customers SET workspace_id = :s", s=second)  # no privilege
+    runtime.run(  # subscriptions may be updated in their workspace, but never re-anchored (trigger)
+        "INSERT INTO subscriptions(workspace_id, provider_subscription_id, provider_customer_id, plan_key, status)"
+        " VALUES (:w, :s, 'cus_x', 'pro', 'active')",
+        w=world.a.workspace,
+        s=f"sub_{secrets.token_hex(6)}",
+    )
+    runtime.run("UPDATE subscriptions SET workspace_id = :s", s=second)
+    assert runtime.one("SELECT workspace_id FROM subscriptions") == world.a.workspace
+    runtime.context(workspace=second, user=world.a.user)
+    assert runtime.one("SELECT projects FROM app_private.owner_totals()") == 1  # world.a's project counts
+    assert runtime.one("SELECT app_private.manages_billing(:u)", u=world.a.user) is True
+    assert runtime.one("SELECT app_private.manages_billing(:u)", u=world.b.user) is False
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    assert runtime.one("SELECT count(*) FROM billing_customers") == 0
+    assert runtime.one("SELECT projects FROM app_private.owner_totals()") == 1  # only world.b's own
+    assert runtime.one("SELECT app_private.owner_spent_elsewhere(date_trunc('month', now()))") == 0

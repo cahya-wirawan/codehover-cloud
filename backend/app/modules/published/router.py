@@ -38,7 +38,12 @@ from app.modules.projects.router import (
 from app.modules.workspaces.access import PublicReader
 
 router = APIRouter(tags=["published"])
-SlugPath = Annotated[str, Path(pattern=r"^[a-z0-9][a-z0-9-]{2,62}$")]
+# 0039: a site lives at its owner's handle and the project's slug (/sites/<owner>/<project>).
+OWNER = r"^[a-z0-9]+(-[a-z0-9]+)*$"
+PROJECT = r"^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$"
+OwnerPath = Annotated[str, Path(pattern=OWNER, max_length=39)]
+ProjectPath = Annotated[str, Path(pattern=PROJECT)]
+AliasPath = Annotated[str, Path(pattern=r"^[a-z0-9][a-z0-9-]{2,62}$")]  # a pre-0039 one-segment address
 
 
 @dataclass(frozen=True)
@@ -47,21 +52,30 @@ class Site:
     project_id: UUID
     build_id: UUID
     visibility: str
+    address: str = ""  # the canonical "<owner>/<project>" (the owner may have been renamed since a link)
 
 
-async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: OptionalPrincipal) -> Site:
+async def find_site(db: Any, owner: str, project: str) -> Any:
+    """The unsuspended publication at an address, or None (app_private.resolve_site)."""
+    return (
+        await db.execute(
+            text(
+                "SELECT workspace_id, project_id, build_id, visibility, owner, project"
+                " FROM app_private.resolve_site(:o, :p)"
+            ),
+            {"o": owner, "p": project},
+        )
+    ).one_or_none()
+
+
+async def resolve_site(
+    owner: OwnerPath, project: ProjectPath, request: Request, db: Db, principal: OptionalPrincipal
+) -> Site:
     settings = request.app.state.settings
     await ratelimit.hit(
         request.app.state.rate_sessions, settings, "public", ratelimit.client_address(request, settings)
     )
-    found = (
-        await db.execute(
-            text(
-                "SELECT workspace_id, project_id, build_id, visibility FROM app_private.resolve_publication(:s)"
-            ),
-            {"s": slug},
-        )
-    ).one_or_none()
+    found = await find_site(db, owner, project)
     if found is None:
         raise ApiError(404, "NOT_FOUND", "Site not found.")
     if found.visibility != "public":
@@ -79,7 +93,13 @@ async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: Opti
         if member is None:
             raise ApiError(404, "NOT_FOUND", "Site not found.")
     await set_context(db, workspace_id=found.workspace_id)
-    return Site(PublicReader(found.workspace_id), found.project_id, found.build_id, found.visibility)
+    return Site(
+        PublicReader(found.workspace_id),
+        found.project_id,
+        found.build_id,
+        found.visibility,
+        f"{found.owner}/{found.project}",
+    )
 
 
 SiteDep = Annotated[Site, Depends(resolve_site)]
@@ -143,6 +163,7 @@ class SiteLicense(BaseModel):
 
 
 class SiteOut(BaseModel):
+    address: str  # canonical "<owner>/<project>"; differs from the request after an owner was renamed
     project: str
     repository: str
     commit_sha: str
@@ -157,8 +178,8 @@ def _objects(request: Request) -> ObjectStore:
     return store
 
 
-@router.get("/published/{slug}", response_model=SiteOut)
-async def site(slug: SlugPath, db: Db, found: SiteDep) -> SiteOut:
+@router.get("/published/{owner}/{project}", response_model=SiteOut)
+async def site(owner: OwnerPath, project: ProjectPath, db: Db, found: SiteDep) -> SiteOut:
     row = (
         await db.execute(
             text(
@@ -176,6 +197,7 @@ async def site(slug: SlugPath, db: Db, found: SiteDep) -> SiteOut:
         )
     ).one()
     return SiteOut(
+        address=found.address,
         project=row.project,
         repository=row.repository,
         commit_sha=row.commit_sha,
@@ -188,9 +210,10 @@ async def site(slug: SlugPath, db: Db, found: SiteDep) -> SiteOut:
     )
 
 
-@router.get("/published/{slug}/tree", response_model=TreeOut)
+@router.get("/published/{owner}/{project}/tree", response_model=TreeOut)
 async def tree(
-    slug: SlugPath,
+    owner: OwnerPath,
+    project: ProjectPath,
     db: Db,
     found: SiteDep,
     build: SiteBuild,
@@ -199,14 +222,15 @@ async def tree(
     return TreeOut(items=[TreeEntry(**e) for e in await service.tree(db, found.reader, build, path)])
 
 
-@router.get("/published/{slug}/variants", response_model=SiteVariantsOut)
-async def variants(slug: SlugPath, db: Db, found: SiteDep) -> SiteVariantsOut:
+@router.get("/published/{owner}/{project}/variants", response_model=SiteVariantsOut)
+async def variants(owner: OwnerPath, project: ProjectPath, db: Db, found: SiteDep) -> SiteVariantsOut:
     return SiteVariantsOut(items=[SiteVariant(**v) for v in await site_variants(db, found)])
 
 
-@router.get("/published/{slug}/files/{file_id}", response_model=FileOut)
+@router.get("/published/{owner}/{project}/files/{file_id}", response_model=FileOut)
 async def file_view(
-    slug: SlugPath,
+    owner: OwnerPath,
+    project: ProjectPath,
     file_id: UUID,
     request: Request,
     db: Db,
@@ -220,21 +244,24 @@ async def file_view(
     )
 
 
-@router.get("/published/{slug}/symbols/{symbol_id}", response_model=SymbolOut)
-async def symbol_view(slug: SlugPath, symbol_id: UUID, db: Db, found: SiteDep, build: SiteBuild) -> SymbolOut:
+@router.get("/published/{owner}/{project}/symbols/{symbol_id}", response_model=SymbolOut)
+async def symbol_view(
+    owner: OwnerPath, project: ProjectPath, symbol_id: UUID, db: Db, found: SiteDep, build: SiteBuild
+) -> SymbolOut:
     return SymbolOut(**await service.symbol_view(db, found.reader, build, symbol_id))
 
 
-@router.get("/published/{slug}/guide", response_model=GuideIndexOut)
+@router.get("/published/{owner}/{project}/guide", response_model=GuideIndexOut)
 async def guide_index(
-    slug: SlugPath, request: Request, db: Db, found: SiteDep, build: SiteBuild
+    owner: OwnerPath, project: ProjectPath, request: Request, db: Db, found: SiteDep, build: SiteBuild
 ) -> GuideIndexOut:
     return GuideIndexOut(**await service.guide_index(db, _objects(request), found.reader, build))
 
 
-@router.get("/published/{slug}/guide/{page}", response_model=GuidePageOut)
+@router.get("/published/{owner}/{project}/guide/{page}", response_model=GuidePageOut)
 async def guide_page(
-    slug: SlugPath,
+    owner: OwnerPath,
+    project: ProjectPath,
     request: Request,
     db: Db,
     found: SiteDep,
@@ -244,9 +271,10 @@ async def guide_page(
     return GuidePageOut(**await service.guide_page(db, _objects(request), found.reader, build, page))
 
 
-@router.get("/published/{slug}/search", response_model=SearchOut)
+@router.get("/published/{owner}/{project}/search", response_model=SearchOut)
 async def search(
-    slug: SlugPath,
+    owner: OwnerPath,
+    project: ProjectPath,
     db: Db,
     found: SiteDep,
     build: SiteBuild,
@@ -256,3 +284,47 @@ async def search(
 ) -> SearchOut:
     hits = await service.search_build(db, found.reader, build, q, kind, limit)
     return SearchOut(items=[SearchHit(**h) for h in hits])
+
+
+class AliasOut(BaseModel):
+    owner: str
+    project: str
+
+
+async def alias_target(db: Any, alias: str, user_id: UUID | None) -> Any:
+    """The serving site a pre-0039 alias leads to, or None. A private site counts only for a signed-in
+    person who may see its project, so an old members-only slug reveals nothing to anyone else."""
+    found = (
+        await db.execute(
+            text(
+                "SELECT owner, project, workspace_id, project_id, visibility FROM app_private.site_alias(:a)"
+            ),
+            {"a": alias},
+        )
+    ).one_or_none()
+    if found is None or found.visibility == "public":
+        return found
+    if user_id is None:
+        return None
+    role = (
+        await db.execute(
+            text("SELECT app_private.project_role(:w, :p, :u)"),
+            {"w": found.workspace_id, "p": found.project_id, "u": user_id},
+        )
+    ).scalar_one_or_none()
+    return found if role is not None else None
+
+
+@router.get("/site-aliases/{alias}", response_model=AliasOut)
+async def site_alias(alias: AliasPath, request: Request, db: Db, principal: OptionalPrincipal) -> AliasOut:
+    """Where a pre-0039 address (/sites/<slug>) leads now, for a year after the change: a public site for
+    anyone, a private one for its members; 404 otherwise, alike for unknown, private and withdrawn."""
+    settings = request.app.state.settings
+    await ratelimit.hit(
+        request.app.state.rate_sessions, settings, "public", ratelimit.client_address(request, settings)
+    )
+    found = await alias_target(db, alias, principal.user_id if principal else None)
+    await db.commit()
+    if found is None:
+        raise ApiError(404, "NOT_FOUND", "Site not found.")
+    return AliasOut(owner=found.owner, project=found.project)

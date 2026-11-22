@@ -30,7 +30,15 @@ async def publish(
     headers = {"Idempotency-Key": secrets.token_hex(12)}
     if if_match:
         headers["If-Match"] = if_match
+    body.pop("public_slug", None)  # 0039: the address is the owner's handle and the project's slug
     return await unsafe(owner, "POST", f"/api/v1/projects/{project}/publication", json=body, headers=headers)
+
+
+async def address(owner: httpx.AsyncClient, project: str) -> str:
+    """A project's site address, "<owner>/<project>" (0039): the owner's handle and the project's slug."""
+    detail = (await owner.get(f"/api/v1/projects/{project}")).json()
+    workspace = (await owner.get(f"/api/v1/workspaces/{detail['workspace_id']}")).json()
+    return f"{workspace['owner']['handle']}/{detail['slug']}"
 
 
 def project_of(build: str) -> str:
@@ -68,20 +76,17 @@ async def test_private_by_default_then_public_with_confirmation(
     assert (await owner.get(f"/api/v1/projects/{project}/publication")).status_code == 404
     private = await publish(owner, project, build_id=build)
     assert private.status_code == 200, private.text
-    assert private.json()["visibility"] == "private" and private.json()["public_slug"] is None  # A15 default
+    assert private.json()["visibility"] == "private"  # A15 default
+    assert private.json()["address"] == await address(owner, project)  # 0039: /sites/<owner>/<project>
     etag = private.headers["etag"]
     current = await owner.get(f"/api/v1/projects/{project}/publication")
     assert current.headers["etag"] == etag and current.json()["build_id"] == build
 
-    slug = f"site-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     unconfirmed = await publish(
         owner, project, etag, build_id=build, visibility="public", public_slug=slug, confirmation="api"
     )
     assert unconfirmed.status_code == 422 and unconfirmed.json()["error"]["code"] == "CONFIRMATION_REQUIRED"
-    bad_slug = await publish(
-        owner, project, etag, build_id=build, visibility="public", public_slug="A!", confirmation="API"
-    )
-    assert bad_slug.status_code == 422
     public = await publish(
         owner, project, etag, build_id=build, visibility="public", public_slug=slug, confirmation="API"
     )
@@ -123,7 +128,7 @@ async def test_etag_concurrency_rollback_and_unpublish(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
     owner, ws, project, first, app = await ready_build(client, idp, github)
-    slug = f"site-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     v1 = await publish(
         owner, project, build_id=first, visibility="public", public_slug=slug, confirmation="API"
     )
@@ -247,7 +252,7 @@ async def test_revoked_access_suspends_delivery_until_republished(
 ) -> None:
     """A17 / FR-027: removing the installation suspends the site at once; publishing again needs access."""
     owner, ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"site-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     published = await publish(
         owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
     )
@@ -279,7 +284,7 @@ async def test_repository_revocation_also_suspends(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
     owner, _ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"site-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (
         await publish(
             owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
@@ -300,10 +305,10 @@ async def test_a_private_site_address_is_for_members_only(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
 ) -> None:
     owner, ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"team-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     private = await publish(owner, project, build_id=build, visibility="private", public_slug=slug)
     assert (
-        private.status_code == 200 and private.json()["public_slug"] == slug
+        private.status_code == 200 and private.json()["address"] == slug
     )  # no disclosure confirmation needed
     assert (await owner.get(f"/api/v1/published/{slug}")).status_code == 200  # a member reads it
     viewer = await new_user()
@@ -320,7 +325,7 @@ async def test_sites_of_inactive_workspaces_or_deleted_projects_are_not_served(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
     owner, ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"site-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (
         await publish(
             owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
@@ -417,7 +422,7 @@ async def test_a_site_serves_the_ready_language_variants_of_its_build(
         await drive(app, variants[language], runtime=runtime_for(app))
 
     await build_variant("de")
-    slug = f"langs-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     published = await publish(owner, project, build_id=base, visibility="private", public_slug=slug)
     assert published.status_code == 200, published.text
     assert published.json()["variant_build_ids"] == [variants["de"]]
@@ -456,3 +461,71 @@ async def test_a_site_serves_the_ready_language_variants_of_its_build(
     assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "id"})).status_code == 404
     assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "ja"})).status_code == 404
     assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "tlh"})).status_code == 422
+
+
+async def test_a_site_lives_under_its_owner_and_old_addresses_still_lead_there(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """0039: /sites/<owner>/<project>. A renamed owner keeps answering at the old handle while it stays
+    reserved for them; a pre-0039 one-segment address leads to the project's address, and its MCP
+    endpoint keeps answering."""
+    owner, _ws, project, build, app = await ready_build(client, idp, github)
+    published = await publish(owner, project, build_id=build, visibility="public", confirmation="API")
+    assert published.status_code == 200, published.text
+    old = published.json()["address"]
+    handle, slug = old.split("/")
+    renamed = f"r{secrets.token_hex(4)}"
+    assert (await unsafe(owner, "PUT", "/api/v1/me/handle", json={"handle": renamed})).status_code == 200
+    async with browser(app) as visitor:
+        at_old = (await visitor.get(f"/api/v1/published/{old}")).json()
+        assert at_old["address"] == f"{renamed}/{slug}"  # served, and names where it lives now
+        assert (await visitor.get(f"/api/v1/published/{renamed}/{slug}")).status_code == 200
+        assert (await visitor.get(f"/api/v1/published/{renamed}/other")).status_code == 404
+        alias = f"old-{secrets.token_hex(4)}"
+        ddl("INSERT INTO site_aliases(alias, project_id) VALUES (:a, :p)", a=alias, p=project)
+        assert (await visitor.get(f"/api/v1/site-aliases/{alias}")).json() == {
+            "owner": renamed,
+            "project": slug,
+        }
+        assert (await visitor.get(f"/api/v1/site-aliases/nope-{secrets.token_hex(3)}")).status_code == 404
+        ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+        legacy = await visitor.post(f"/api/v1/mcp/{alias}", json=ping, headers={"Accept": "application/json"})
+        assert legacy.status_code == 200 and legacy.json()["result"] == {}
+        ddl("UPDATE site_aliases SET expires_at = now() - interval '1 second' WHERE alias = :a", a=alias)
+        assert (await visitor.get(f"/api/v1/site-aliases/{alias}")).status_code == 404
+    # Nobody else can take the old handle while it is reserved, so the old address cannot change hands.
+    assert (
+        ddl(
+            "SELECT count(*) FROM handle_reservations WHERE handle = :h AND namespace_id IS NOT NULL",
+            h=handle,
+        )[0][0]
+        == 1
+    )
+
+
+async def test_an_old_address_of_a_private_site_leads_only_its_members_there(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
+) -> None:
+    """0039 security review: an old members-only slug names its new address only to members; anyone
+    else gets the same 404 as for an unknown one, and its MCP endpoint gives no hint without a token."""
+    owner, _ws, project, build, app = await ready_build(client, idp, github)
+    assert (await publish(owner, project, build_id=build)).status_code == 200  # private
+    alias = f"old-{secrets.token_hex(4)}"
+    ddl("INSERT INTO site_aliases(alias, project_id) VALUES (:a, :p)", a=alias, p=project)
+    assert (await owner.get(f"/api/v1/site-aliases/{alias}")).json()["owner"]
+    stranger = await new_user()
+    assert (await stranger.get(f"/api/v1/site-aliases/{alias}")).status_code == 404
+    async with browser(app) as visitor:
+        assert (await visitor.get(f"/api/v1/site-aliases/{alias}")).status_code == 404
+        legacy = await visitor.post(
+            f"/api/v1/mcp/{alias}",
+            json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            headers={"Accept": "application/json"},
+        )
+        assert legacy.status_code == 401 and "resource_metadata" not in legacy.headers["www-authenticate"]
+        junk = await visitor.post(
+            f"/api/v1/mcp/{alias}",
+            json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            headers={"Accept": "application/json", "Authorization": "Bearer chm_not-a-token"},
+        )
+        assert junk.status_code == 401 and "resource_metadata" not in junk.headers["www-authenticate"]

@@ -119,6 +119,7 @@ class Workspace(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     deleted_at: Mapped[datetime | None] = ts(nullable=True)
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)  # 0038: its owner
 
 
 class Membership(Base):
@@ -129,6 +130,8 @@ class Membership(Base):
     role: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+    via_organization: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))  # 0038
+    direct_role: Mapped[str | None] = mapped_column(Text)
 
 
 class Invitation(Base):
@@ -199,6 +202,9 @@ class Project(Base):
     push_policy_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     access: Mapped[str] = mapped_column(Text, server_default=text("'workspace'"))  # 0027
     access_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    namespace_id: Mapped[UUID | None] = ref(
+        "namespaces.id", nullable=True
+    )  # 0039: the owner, from the workspace
 
 
 class Snapshot(Base):
@@ -587,7 +593,6 @@ class Publication(Base):
     project_id: Mapped[UUID] = ref()
     build_id: Mapped[UUID] = ref()
     visibility: Mapped[str] = mapped_column(Text)
-    public_slug: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     acknowledged_partial: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     suspended_at: Mapped[datetime | None] = ts(nullable=True)
@@ -685,6 +690,7 @@ class EntitlementGrant(Base):
     revoked_at: Mapped[datetime | None] = ts(nullable=True)
     kind: Mapped[str] = mapped_column(Text, server_default=text("'manual'"))
     once: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)  # 0040: the plan's owner
 
 
 class SupportGrant(Base):
@@ -718,6 +724,7 @@ class BillingCustomer(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     open_disputes: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
     dispute_lost_at: Mapped[datetime | None] = ts(nullable=True)
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)  # 0040: the plan's owner
 
 
 class Subscription(Base):
@@ -736,6 +743,7 @@ class Subscription(Base):
     synced_at: Mapped[datetime] = ts(default_now=True)
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)  # 0040: the plan's owner
 
 
 # ---------------------------------------------------------------- push rebuilds (0024)
@@ -832,16 +840,15 @@ class AccessToken(Base):
     project_id: Mapped[UUID | None] = ref(nullable=True)
 
 
-# ---------------------------------------------------------------- slug reservations (0036)
-class SlugReservation(Base):
-    """A released site address, reserved for the workspace that let it go (no runtime access)."""
+# ---------------------------------------------------------------- site aliases (0039)
+class SiteAlias(Base):
+    """A pre-0039 one-segment site address, leading to its project's /sites/<owner>/<project>."""
 
-    __tablename__ = "slug_reservations"
-    slug: Mapped[str] = mapped_column(Text, primary_key=True)
-    workspace_id: Mapped[UUID] = ref()
-    project_id: Mapped[UUID] = ref()
-    released_at: Mapped[datetime] = ts(default_now=True)
-    reserved_until: Mapped[datetime] = ts()
+    __tablename__ = "site_aliases"
+    alias: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_id: Mapped[UUID] = ref("projects.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts(default_now=True)
 
 
 # ---------------------------------------------------------------- MCP sign-in (0037)
@@ -862,7 +869,7 @@ class OAuthAuthorization(Base):
     redirect_uri: Mapped[str] = mapped_column(Text)
     code_challenge: Mapped[str] = mapped_column(Text)
     resource: Mapped[str] = mapped_column(Text)
-    slug: Mapped[str] = mapped_column(Text)
+    site: Mapped[str] = mapped_column(Text)  # 0039: "<owner>/<project>"
     state: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = ts(default_now=True)
     expires_at: Mapped[datetime] = ts()
@@ -891,3 +898,58 @@ class OAuthGrant(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     last_used_at: Mapped[datetime | None] = ts(nullable=True)
     revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+# ---------------------------------------------------------------- namespaces and organizations (0038)
+class Organization(Base):
+    __tablename__ = "organizations"
+    id: Mapped[UUID] = pk()
+    name: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
+    created_at: Mapped[datetime] = ts(default_now=True)
+    updated_at: Mapped[datetime] = ts(default_now=True)
+    deleted_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class OrganizationMember(Base):
+    __tablename__ = "organization_members"
+    id: Mapped[UUID] = pk()
+    organization_id: Mapped[UUID] = ref("organizations.id")
+    user_id: Mapped[UUID] = ref("users.id")
+    role: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+class OrganizationInvitation(Base):
+    __tablename__ = "organization_invitations"
+    id: Mapped[UUID] = pk()
+    organization_id: Mapped[UUID] = ref("organizations.id")
+    user_id: Mapped[UUID] = ref("users.id")
+    role: Mapped[str] = mapped_column(Text)
+    invited_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts(default_now=True)
+    accepted_at: Mapped[datetime | None] = ts(nullable=True)
+    declined_at: Mapped[datetime | None] = ts(nullable=True)
+    revoked_at: Mapped[datetime | None] = ts(nullable=True)
+
+
+class Namespace(Base):
+    __tablename__ = "namespaces"
+    id: Mapped[UUID] = pk()
+    handle: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[UUID | None] = ref("users.id", nullable=True)
+    organization_id: Mapped[UUID | None] = ref("organizations.id", nullable=True)
+    confirmed_at: Mapped[datetime | None] = ts(nullable=True)
+    created_at: Mapped[datetime] = ts(default_now=True)
+    updated_at: Mapped[datetime] = ts(default_now=True)
+
+
+class HandleReservation(Base):
+    __tablename__ = "handle_reservations"
+    handle: Mapped[str] = mapped_column(Text, primary_key=True)
+    namespace_id: Mapped[UUID | None] = ref("namespaces.id", nullable=True)
+    released_at: Mapped[datetime] = ts()
+    reserved_until: Mapped[datetime] = ts()

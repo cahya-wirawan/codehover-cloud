@@ -173,8 +173,13 @@ async def sign_in(
         try:
             user_id = (
                 await db.execute(
-                    text("SELECT app_private.create_user_with_identity(:p, :i, :s, :name, :email)"),
-                    {**params, "name": identity.display_name, "email": identity.verified_email},
+                    text("SELECT app_private.create_user_with_identity(:p, :i, :s, :name, :email, :hint)"),
+                    {
+                        **params,
+                        "name": identity.display_name,
+                        "email": identity.verified_email,
+                        "hint": identity.handle_hint,
+                    },
                 )
             ).scalar_one()
             created = True
@@ -268,11 +273,18 @@ async def profile(db: AsyncSession, principal: Principal) -> dict[str, Any]:
             {"u": principal.user_id},
         )
     ).all()
+    namespace = (
+        await db.execute(
+            text("SELECT handle, confirmed_at FROM namespaces WHERE user_id = :u"), {"u": principal.user_id}
+        )
+    ).one_or_none()
     return {
         "id": user.id,
         "display_name": user.display_name,
         "primary_email": user.primary_email,
         "identities": [dict(r._mapping) for r in identities],
+        "handle": namespace.handle if namespace else None,
+        "handle_confirmed": bool(namespace and namespace.confirmed_at),
     }
 
 

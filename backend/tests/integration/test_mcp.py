@@ -16,7 +16,7 @@ import pytest
 from tests.integration.auth_support import ORIGIN, FakeIdP, browser, ddl, unsafe
 from tests.integration.conftest import needs_db
 from tests.integration.test_github import FakeGitHub, github, workspace  # noqa: F401
-from tests.integration.test_publication import publish, ready_build
+from tests.integration.test_publication import address, publish, ready_build
 from tests.integration.test_workspaces import NewUser, join, new_user  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
@@ -64,7 +64,7 @@ async def test_a_public_site_serves_every_tool_to_anyone(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
     owner, _ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"mcp-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     published = await publish(
         owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
     )
@@ -141,7 +141,9 @@ async def test_a_public_site_serves_every_tool_to_anyone(
             await mcp.post({"jsonrpc": "2.0", "id": 9, "method": "ping"}, Origin=ORIGIN)
         ).status_code == 200
         assert (await visitor.get(f"/api/v1/mcp/{slug}")).status_code == 405
-        unknown = await Mcp(visitor, "no-such-site").post({"jsonrpc": "2.0", "id": 1, "method": "ping"})
+        unknown = await Mcp(visitor, "nobody-x/no-such-site").post(
+            {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+        )
         assert unknown.status_code == 401  # like a private site: sign in first (0037)
         assert 'resource_metadata="http' in unknown.headers["www-authenticate"]
 
@@ -166,7 +168,7 @@ async def test_a_site_serves_its_overview_guide_and_files_as_resources_and_offer
     """Resources name the site (`codehover://<slug>/...`) and return what the tools return; a URI of
     another site, or a page or file the site does not have, is -32002. Prompts only return text."""
     owner, _ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"mcp-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     published = await publish(
         owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
     )
@@ -211,7 +213,7 @@ async def test_a_private_site_needs_a_live_token_of_a_member_who_may_see_it(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
 ) -> None:
     owner, ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"team-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (
         await publish(owner, project, build_id=build, visibility="private", public_slug=slug)
     ).status_code == 200

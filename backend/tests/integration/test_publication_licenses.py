@@ -68,10 +68,10 @@ async def test_a_permitted_license_at_the_commit_allows_a_public_site_that_names
     assert published.json()["license_spdx"] == "MIT"
     assert public.license_refs == [public.commit_sha]  # asked about the build's exact commit
 
-    site = (await client.get(f"/api/v1/published/{published.json()['public_slug']}")).json()
+    site = (await client.get(f"/api/v1/published/{published.json()['address']}")).json()
     assert site["license"]["spdx_id"] == "MIT" and site["license"]["path"] == "LICENSE"
     shown = await client.get(
-        f"/api/v1/published/{published.json()['public_slug']}/files/{site['license']['file_id']}"
+        f"/api/v1/published/{published.json()['address']}/files/{site['license']['file_id']}"
     )
     assert shown.status_code == 200 and "Permission is hereby granted" in shown.text  # the notice travels
 
@@ -140,8 +140,7 @@ async def test_the_database_refuses_an_unchecked_public_site_of_a_public_source_
     assert private.status_code == 200, private.text
     with pytest.raises(sa.exc.IntegrityError, match="needs a permitted license"):
         ddl(
-            "UPDATE publications SET visibility = 'public', public_slug = :s WHERE project_id = CAST(:p AS uuid)",
-            s=f"raw-{secrets.token_hex(4)}",
+            "UPDATE publications SET visibility = 'public' WHERE project_id = CAST(:p AS uuid)",
             p=project,
         )
     published = await go_public(owner, project, build_id, private.headers["etag"])  # with the check
@@ -166,11 +165,10 @@ async def test_lifting_another_suspension_never_brings_back_an_unchecked_public_
     )
     private = await publish(owner, project, build_id=build_id)
     assert private.status_code == 200, private.text
-    slug = f"legacy-{secrets.token_hex(4)}"
+    slug = private.json()["address"]
     ddl(  # the state of such a site before 0029: public, unlicensed, suspended for another reason
-        "UPDATE publications SET visibility = 'public', public_slug = :s, suspended_at = now(),"
+        "UPDATE publications SET visibility = 'public', suspended_at = now(),"
         " suspended_reason = :r WHERE project_id = CAST(:p AS uuid)",
-        s=slug,
         r=reason,
         p=project,
     )

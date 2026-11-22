@@ -7,7 +7,6 @@ members-only site. Admins and owners always see it; a grant is the member's role
 
 from __future__ import annotations
 
-import secrets
 from typing import Any
 
 import httpx
@@ -18,7 +17,7 @@ from tests.integration.conftest import needs_db
 from tests.integration.test_budgets import make_estimate
 from tests.integration.test_github import FakeGitHub, github  # noqa: F401
 from tests.integration.test_operations import operator  # noqa: F401
-from tests.integration.test_publication import publish, ready_build
+from tests.integration.test_publication import address, publish, ready_build
 from tests.integration.test_workspaces import NewUser, code, join, new_user  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
@@ -69,7 +68,7 @@ async def test_a_restricted_project_is_invisible_without_a_grant_and_a_grant_is_
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
 ) -> None:
     owner, ws, project, build, _app = await ready_build(client, idp, github)
-    slug = f"acl-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (
         await publish(owner, project, build_id=build, public_slug=slug)
     ).status_code == 200  # members only

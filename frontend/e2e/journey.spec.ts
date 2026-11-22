@@ -29,6 +29,12 @@ async function signIn(page: Page, baseURL: string) {
   await accessible(page, "login");
   await page.getByRole("link", { name: "Continue with Google" }).click();
   await expect(page.getByRole("heading", { name: /Understand any repository/ })).toBeVisible();
+  // 0038: a new person confirms the suggested name once before any signed-in page.
+  await page.goto("/w");
+  await expect(page.getByRole("heading", { name: "Choose your name" })).toBeVisible();
+  await accessible(page, "welcome");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Workspaces" })).toBeVisible();
 }
 
 /** Another person: a fresh browser context signed in as a new user (each fake sign-in is a new subject). */
@@ -103,10 +109,12 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   // get the same "not found" as for a site that does not exist (09, 13).
   const projectUrl = buildUrl.replace(/\/builds\/.*$/, "");
   await page.goto(projectUrl);
-  const slug = `e2e-site-${run}`;
-  await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/private to this workspace/)).toBeVisible();
+  // 0039: the site lives under its owner, /sites/<owner>/<project>.
+  const publishedPid = projectUrl.split("/p/")[1] ?? "";
+  const slug = ((await (await page.request.get(`/api/v1/projects/${publishedPid}/publication`)).json()) as { address: string }).address;
+  expect(slug).toMatch(/^[a-z0-9-]+\/api$/);
   await accessible(page, "private publication");
 
   const member = await personPage(browser, base);
@@ -137,7 +145,6 @@ test("sign in, build, read, review, publish to members then the public, withdraw
 
   // Opt in to public with the typed confirmation; the anonymous reader now sees it.
   await page.getByRole("radio", { name: /public/ }).check();
-  await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
   await page.getByRole("region", { name: "Publication" }).getByRole("textbox", { name: /Type the project name/ }).fill("API");
   await page.getByRole("button", { name: "Update publication" }).click();
   await expect(page.getByRole("link", { name: `/sites/${slug}` })).toBeVisible();
@@ -196,7 +203,6 @@ test("sign in, build, read, review, publish to members then the public, withdraw
 
   // Delete the project: delivery stops at once for members, and the project is gone (A22).
   await page.goto(projectUrl);
-  await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/private to this workspace/)).toBeVisible();
   await member.goto(`/sites/${slug}`);
@@ -217,6 +223,7 @@ test("plan and usage: the trial, then the privacy, terms and support pages", asy
   const base = baseURL ?? "";
   const run = Math.random().toString(36).slice(2, 8);
   await signIn(page, base);
+  await page.goto("/");
   await expect(page.getByRole("heading", { name: "Plans" })).toBeVisible();
   await accessible(page, "start page with plans");
   await page.goto("/w");

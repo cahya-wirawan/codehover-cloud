@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 const REQUEST = {
   client_name: "Claude Code",
   redirect_host: "http://127.0.0.1:33418",
-  slug: "team-site",
+  site: "grace/team-site",
   project: "API",
   workspace: "Team",
   visibility: "private",
@@ -102,7 +102,7 @@ test("the consent page names the app, the site and where it returns, and sends t
       name: "Allow Claude Code to read API?",
     }),
   ).toBeInTheDocument();
-  expect(screen.getByText("team-site")).toBeInTheDocument();
+  expect(screen.getByText("grace/team-site")).toBeInTheDocument();
   expect(screen.getByText("http://127.0.0.1:33418")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Allow" }));
   await waitFor(() =>

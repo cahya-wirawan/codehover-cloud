@@ -5,11 +5,51 @@ export interface Page<T> {
   items: T[];
   next_cursor: string | null;
 }
+/** Who a workspace belongs to (0038): a person's namespace or an organization. */
+export interface WorkspaceOwner {
+  kind: "user" | "organization";
+  handle: string;
+  organization_id: string | null;
+}
 export interface Workspace {
   id: string;
   name: string;
   slug: string;
   role: Role;
+  owner?: WorkspaceOwner | null;
+}
+export type OrgRole = "owner" | "admin" | "member";
+export interface Organization {
+  id: string;
+  name: string;
+  handle: string;
+  role: OrgRole;
+  created_at?: string;
+}
+export interface MyOrgInvitation {
+  id: string;
+  role: OrgRole;
+  expires_at: string;
+  organization: { id: string; name: string; handle: string };
+}
+export interface OrgMember {
+  user_id: string;
+  display_name: string;
+  handle: string;
+  role: OrgRole;
+  created_at: string;
+}
+export interface OrgInvitation {
+  id: string;
+  handle: string;
+  role: OrgRole;
+  created_at: string;
+  expires_at: string;
+}
+export interface HandleCheck {
+  handle: string;
+  available: boolean;
+  reason: "invalid" | "taken" | "reserved" | null;
 }
 export interface Connection {
   id: string;
@@ -146,6 +186,10 @@ export interface BillingState {
   generation_blocked: "past_due" | "disputed" | null;
   hosting_suspended: boolean;
   has_customer: boolean;
+  /** 0040: the caller manages this plan (the person, or an organization owner). */
+  can_manage?: boolean;
+  /** Whose plan the workspace uses: its owner, a person or an organization. */
+  owner?: { kind: "user" | "organization"; handle: string } | null;
   plans: (PlanInfo & { available: boolean })[];
 }
 export type PushPolicyName = "off" | "snapshot" | "build";
@@ -199,7 +243,7 @@ export interface OAuthGrant {
 export interface OAuthConsent {
   client_name: string;
   redirect_host: string;
-  slug: string;
+  site: string; // "<owner>/<project>"
   project: string;
   workspace: string;
   visibility: string;
@@ -360,7 +404,8 @@ export interface Quality {
 export interface Publication {
   build_id: string;
   visibility: "private" | "public";
-  public_slug: string | null;
+  /** 0039: "<owner>/<project>"; the site is /sites/<address>, its MCP endpoint /api/v1/mcp/<address>. */
+  address: string;
   version: number;
   acknowledged_partial: boolean;
   suspended_at: string | null;
@@ -373,11 +418,12 @@ export interface Publication {
 export interface PublishRequest {
   build_id: string;
   visibility: "private" | "public";
-  public_slug: string | null;
   confirmation: string | null;
   acknowledge_partial: boolean;
 }
 export interface Site {
+  /** The canonical "<owner>/<project>"; differs from the address asked for after an owner was renamed. */
+  address: string;
   project: string;
   repository: string;
   commit_sha: string;
@@ -459,11 +505,13 @@ function viewerSource(
 
 export const buildSource = (bid: string): ViewerSource =>
   viewerSource(`/builds/${bid}`, `build:${bid}`, () => apiJson<Quality>(`/builds/${bid}/quality`));
+/** A site's path, "<owner>/<project>" (0039), each part encoded. */
+export const sitePath = (owner: string, project: string) => `${encodeURIComponent(owner)}/${encodeURIComponent(project)}`;
 /** A published site, read in one of its languages (FR-026), or as published when `language` is null. */
-export const siteSource = (slug: string, language: string | null = null): ViewerSource =>
+export const siteSource = (site: string, language: string | null = null): ViewerSource =>
   viewerSource(
-    `/published/${encodeURIComponent(slug)}`,
-    `site:${slug}:${language ?? ""}`,
+    `/published/${site}`,
+    `site:${site}:${language ?? ""}`,
     null,
     language ? { language } : {},
   );
@@ -676,7 +724,41 @@ export const api = {
   revokeSupport: async (wid: string, id: string) => {
     await apiSend("DELETE", `/workspaces/${wid}/support-access/${id}`);
   },
-  createWorkspace: async (name: string, slug: string) => json<Workspace>(await apiSend("POST", "/workspaces", { name, slug })),
+  createWorkspace: async (name: string, slug: string, organizationId?: string | null) =>
+    json<Workspace>(
+      await apiSend("POST", "/workspaces", { name, slug, ...(organizationId ? { organization_id: organizationId } : {}) }),
+    ),
+  setHandle: async (handle: string) => json<{ handle: string }>(await apiSend("PUT", "/me/handle", { handle })),
+  checkHandle: (handle: string) => apiJson<HandleCheck>(`/handles/${encodeURIComponent(handle)}`),
+  organizations: () => apiJson<{ items: Organization[]; invitations: MyOrgInvitation[] }>("/organizations"),
+  organization: (oid: string) => apiJson<Organization>(`/organizations/${oid}`),
+  createOrganization: async (name: string, handle: string) =>
+    json<Organization>(await apiSend("POST", "/organizations", { name, handle })),
+  renameOrganization: async (oid: string, name: string) =>
+    json<Organization>(await apiSend("PATCH", `/organizations/${oid}`, { name })),
+  setOrganizationHandle: async (oid: string, handle: string) =>
+    json<{ handle: string }>(await apiSend("PUT", `/organizations/${oid}/handle`, { handle })),
+  deleteOrganization: async (oid: string) => {
+    await apiSend("DELETE", `/organizations/${oid}`);
+  },
+  organizationWorkspaces: (oid: string) => apiJson<Page<Workspace>>(`/organizations/${oid}/workspaces`),
+  organizationMembers: (oid: string) => apiJson<Page<OrgMember>>(`/organizations/${oid}/members`),
+  changeOrgRole: async (oid: string, userId: string, role: OrgRole) => {
+    await apiSend("PATCH", `/organizations/${oid}/members/${userId}`, { role });
+  },
+  removeOrgMember: async (oid: string, userId: string) => {
+    await apiSend("DELETE", `/organizations/${oid}/members/${userId}`);
+  },
+  organizationInvitations: (oid: string) => apiJson<Page<OrgInvitation>>(`/organizations/${oid}/invitations`),
+  inviteToOrganization: async (oid: string, handle: string, role: OrgRole) =>
+    json<OrgInvitation>(await apiSend("POST", `/organizations/${oid}/invitations`, { handle, role })),
+  revokeOrgInvitation: async (oid: string, invitationId: string) => {
+    await apiSend("DELETE", `/organizations/${oid}/invitations/${invitationId}`);
+  },
+  answerOrgInvitation: async (invitationId: string, accept: boolean) =>
+    json<{ organization_id: string }>(
+      await apiSend("POST", `/organization-invitations/${invitationId}/${accept ? "accept" : "decline"}`),
+    ),
   connections: (wid: string) => apiJson<Page<Connection>>(`/workspaces/${wid}/connections`),
   startInstall: async (wid: string) =>
     json<{ install_url: string }>(await apiSend("POST", `/workspaces/${wid}/github/install`)),
@@ -805,8 +887,9 @@ export const api = {
     ),
   unpublish: async (pid: string, ifMatch: string) =>
     apiSend("DELETE", `/projects/${pid}/publication`, undefined, { "If-Match": ifMatch }),
-  site: (slug: string) => apiJson<Site>(`/published/${encodeURIComponent(slug)}`),
-  siteVariants: (slug: string) => apiJson<Page<SiteVariant>>(`/published/${encodeURIComponent(slug)}/variants`),
+  site: (site: string) => apiJson<Site>(`/published/${site}`),
+  siteVariants: (site: string) => apiJson<Page<SiteVariant>>(`/published/${site}/variants`),
+  siteAlias: (alias: string) => apiJson<{ owner: string; project: string }>(`/site-aliases/${encodeURIComponent(alias)}`),
   freshness: (pid: string) => apiJson<Freshness>(`/projects/${pid}/freshness`),
   audit: (wid: string, action: string | null, cursor: string | null) => {
     const params = new URLSearchParams({ limit: "50" });

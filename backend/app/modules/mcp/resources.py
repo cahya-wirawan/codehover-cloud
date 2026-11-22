@@ -1,7 +1,8 @@
 """MCP resources and prompts of a hosted site (06 "/mcp/{slug}"), beside its eight tools.
 
 Resources: the overview, each guide page, and any source file through a template. Their URIs name the
-site (`codehover://<slug>/...`), so a client with several codehover servers never mixes them up; an
+site (`codehover://<owner>/<project>/...`, 0039), so a client with several codehover servers never mixes
+them up; an
 optional `?language=<code>` reads an approved language variant. Contents are the same Markdown the tools
 return, through the same functions, so a resource never shows more than the site does.
 
@@ -82,14 +83,17 @@ def templates(slug: str) -> list[dict[str, Any]]:
 def _parse(uri: str, slug: str) -> tuple[str, str, str | None]:
     """(kind, name, language) of a URI of this site; NotFound otherwise."""
     parts = urlsplit(uri)
-    if parts.scheme != SCHEME or parts.netloc != slug or parts.fragment:
+    owner, _, project = slug.partition("/")
+    if parts.scheme != SCHEME or parts.netloc != owner or parts.fragment:
+        raise NotFound(uri)
+    if not parts.path.startswith(f"/{project}/"):
         raise NotFound(uri)
     query = parse_qs(parts.query, max_num_fields=4)
     languages = query.get("language", [])
     language = languages[0] if languages else None
     if language is not None and not re.fullmatch(LANGUAGE_PATTERN, language):
         raise NotFound(uri)
-    path = unquote(parts.path.lstrip("/"))
+    path = unquote(parts.path[len(project) + 2 :])
     if path == "overview":
         return "overview", "", language
     if path.startswith("guide/") and GUIDE_SLUG.fullmatch(path.removeprefix("guide/")):

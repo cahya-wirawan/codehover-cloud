@@ -101,7 +101,7 @@ test("members see the plan and usage but no billing actions", async () => {
   serve(() => ({ ...NONE, plan: "pro", status: "past_due", generation_blocked: "past_due", has_customer: true }), "editor");
   page();
   expect(await screen.findByRole("alert")).toHaveTextContent("A payment is overdue");
-  expect(screen.getByRole("alert")).toHaveTextContent("Ask a workspace owner");
+  expect(screen.getByRole("alert")).toHaveTextContent("Ask the plan's owner");
   expect(screen.queryByRole("button", { name: "Manage payment and invoices" })).toBeNull();
   expect(await screen.findByText("$3.75")).toBeInTheDocument();
   expect(screen.getByRole("meter", { name: "Allowance used" })).toHaveAttribute("aria-valuenow", "25");

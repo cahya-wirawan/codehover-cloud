@@ -1,11 +1,13 @@
 import type { RouteObject } from "react-router";
 
 import { AccountPage } from "../features/account/AccountPage";
+import { WelcomePage } from "../features/account/WelcomePage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { PrivacyPage, SupportPage, TermsPage } from "../features/legal/LegalPages";
 import { OAuthConsentPage } from "../features/mcp/OAuthConsentPage";
+import { OrganizationPage } from "../features/organizations/OrganizationPage";
 import { OpsPage } from "../features/ops/OpsPage";
-import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
+import { LegacySiteRedirect, SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
 import {
   BuildCode,
@@ -41,6 +43,8 @@ export const routes: RouteObject[] = [
         element: <RequireSignIn />,
         children: [
           { path: "account", element: <AccountPage /> },
+          { path: "welcome", element: <WelcomePage /> },
+          { path: "o/:oid", element: <OrganizationPage /> },
           { path: "ops", element: <OpsPage /> },
           { path: "oauth/authorize", element: <OAuthConsentPage /> },
           { path: "w", element: <WorkspacesPage /> },
@@ -66,7 +70,7 @@ export const routes: RouteObject[] = [
       },
       { path: "invitations/accept", element: <AcceptInvitationPage /> },
       {
-        path: "sites/:site",
+        path: "sites/:owner/:project",
         element: <SitePage />,
         children: [
           { index: true, element: <SiteGuide /> },
@@ -76,6 +80,10 @@ export const routes: RouteObject[] = [
           { path: "search", element: <SiteSearch /> },
         ],
       },
+      // Pre-0039 one-segment addresses (/sites/<slug>, /sites/<slug>/code, …) redirect through their alias.
+      { path: "sites/:alias", element: <LegacySiteRedirect /> },
+      { path: "sites/:alias/code", element: <LegacySiteRedirect /> },
+      { path: "sites/:alias/search", element: <LegacySiteRedirect /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

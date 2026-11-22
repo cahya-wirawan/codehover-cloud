@@ -3,8 +3,10 @@
 Publishing is an admin action with optimistic concurrency: the current pointer's ETag must be sent in
 `If-Match`, so a concurrent change is a conflict the user inspects, never a silent overwrite. The build
 must be ready, belong to the project, pass the quality gate (partly supported claims need an explicit
-acknowledgment), and the repository authority must still be valid. Private is the default (an optional
-slug gives members a site address); public needs a slug and the project name typed as confirmation; a public site of a repository read through the public source
+acknowledgment), and the repository authority must still be valid. Private is the default (a site for
+members); public needs the project name typed as confirmation. Every site lives at
+/sites/<owner>/<project> (0039: the owner's handle and the project's slug). A public site of a repository
+read through the public source
 (FR-028) also needs a license that permits redistribution at the build's commit (FR-029, `licenses`).
 Rollback is publishing an older ready build. Every
 change is audited. A suspended publication (revoked access, 0010 trigger) stops serving until an admin
@@ -13,7 +15,6 @@ publishes again.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 from uuid import UUID
 
@@ -32,8 +33,6 @@ from app.modules.projects.service import TEXT_STATUSES
 from app.modules.workspaces.access import Member
 from app.modules.workspaces.service import audit
 
-SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{2,62}$")
-
 
 def etag(version: int) -> str:
     return f'"publication-{version}"'
@@ -43,10 +42,13 @@ async def current(db: AsyncSession, member: Member, project_id: UUID) -> dict[st
     row = (
         await db.execute(
             text(
-                "SELECT p.build_id, p.visibility, p.public_slug, p.version, p.acknowledged_partial, p.suspended_at,"
-                " p.suspended_reason, p.updated_at, p.license_spdx, s.commit_sha, p.variant_build_ids FROM publications p"
+                "SELECT p.build_id, p.visibility, n.handle || '/' || pr.slug AS address, p.version,"
+                " p.acknowledged_partial, p.suspended_at, p.suspended_reason, p.updated_at, p.license_spdx,"
+                " s.commit_sha, p.variant_build_ids FROM publications p"
                 " JOIN builds b ON b.workspace_id = p.workspace_id AND b.id = p.build_id"
                 " JOIN snapshots s ON s.workspace_id = b.workspace_id AND s.id = b.snapshot_id"
+                " JOIN projects pr ON pr.workspace_id = p.workspace_id AND pr.id = p.project_id"
+                " JOIN namespaces n ON n.id = pr.namespace_id"
                 " WHERE p.workspace_id = :w AND p.project_id = :p"
             ),
             {"w": member.workspace_id, "p": project_id},
@@ -197,7 +199,6 @@ async def publish(
     *,
     build_id: UUID,
     visibility: str,
-    public_slug: str | None,
     confirmation: str | None,
     acknowledge_partial: bool,
     if_match: str | None,
@@ -291,13 +292,8 @@ async def publish(
         raise ApiError(
             409, "BUILD_EXPIRED", "Retention removed this build's content; publish or export a newer build."
         )
-    # A slug gives the site an address. Public sites need one and the typed confirmation; a private site may
-    # have one too, readable only by signed-in members (02 S20).
-    if public_slug is not None and not SLUG.fullmatch(public_slug):
-        raise ApiError(422, "SLUG_INVALID", "Choose an address of 3-63 lowercase letters, digits or hyphens.")
+    # Every site lives at /sites/<owner>/<project> (0039); a public one needs the typed confirmation.
     if visibility == "public":
-        if public_slug is None:
-            raise ApiError(422, "SLUG_INVALID", "A public site needs an address.")
         if confirmation != project.name:
             raise ApiError(
                 422, "CONFIRMATION_REQUIRED", "Type the project name to confirm public disclosure."
@@ -307,14 +303,12 @@ async def publish(
             raise ApiError(409, "VERSION_CONFLICT", "The project changed; publish again.", retryable=True)
     if project.provider != "public" or visibility != "public":
         checked = None  # recorded only for what was checked: public sites of public-source repositories
-    slug = public_slug
     variants = await approved_variants(db, member.workspace_id, project_id, build_id, acknowledge_partial)
     params = {
         "w": member.workspace_id,
         "p": project_id,
         "b": build_id,
         "v": visibility,
-        "s": slug,
         "a": bool(acknowledge_partial and report["requires_acknowledgment"]),
         "u": member.user_id,
         "ls": checked.spdx_id if checked else None,
@@ -325,16 +319,16 @@ async def publish(
         if existing is None:
             await db.execute(
                 text(
-                    "INSERT INTO publications(workspace_id, project_id, build_id, visibility, public_slug,"
+                    "INSERT INTO publications(workspace_id, project_id, build_id, visibility,"
                     " acknowledged_partial, published_by, license_spdx, license_path, variant_build_ids)"
-                    " VALUES (:w, :p, :b, :v, :s, :a, :u, :ls, :lp, CAST(:vb AS uuid[]))"
+                    " VALUES (:w, :p, :b, :v, :a, :u, :ls, :lp, CAST(:vb AS uuid[]))"
                 ),
                 params,
             )
         else:
             await db.execute(
                 text(
-                    "UPDATE publications SET build_id = :b, visibility = :v, public_slug = :s, acknowledged_partial = :a,"
+                    "UPDATE publications SET build_id = :b, visibility = :v, acknowledged_partial = :a,"
                     " published_by = :u, license_spdx = :ls, license_path = :lp, variant_build_ids = CAST(:vb AS uuid[]),"
                     " version = version + 1,"
                     " suspended_at = NULL, suspended_reason = NULL, updated_at = now()"
@@ -343,10 +337,9 @@ async def publish(
                 params,
             )
     except exc.IntegrityError as error:
-        await db.rollback()
-        # Also a recently released address of another workspace (0036 publications_slug_reserved).
+        await db.rollback()  # a concurrent first publish of the same project (UNIQUE project_id)
         raise ApiError(
-            409, "SLUG_TAKEN", "That address is in use or was released recently; choose another."
+            409, "VERSION_CONFLICT", "The publication changed; publish again.", retryable=True
         ) from error
     await audit(
         db,
@@ -357,7 +350,6 @@ async def publish(
         {
             "build_id": str(build_id),
             "visibility": visibility,
-            "public_slug": slug,
             "previous_build_id": str(existing.build_id) if existing else None,
             "previous_visibility": existing.visibility if existing else None,
             "license": checked.spdx_id if checked else None,

@@ -52,11 +52,65 @@ def period_bounds(now: datetime) -> tuple[datetime, datetime]:
     return start, end
 
 
+async def owner_of(db: AsyncSession, workspace_id: UUID) -> UUID | None:
+    """The workspace's owner namespace (0038), whose plan and allowance it uses (0040)."""
+    value = (
+        await db.execute(text("SELECT namespace_id FROM workspaces WHERE id = :w"), {"w": workspace_id})
+    ).scalar_one_or_none()
+    return value if value is None or isinstance(value, UUID) else UUID(str(value))
+
+
+async def lock_owner(db: AsyncSession, namespace_id: UUID | None) -> None:
+    """Serialize spending and limit checks of one owner across all its workspaces (0040)."""
+    if namespace_id is not None:
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended('billing-account:' || :n, 0))"),
+            {"n": str(namespace_id)},
+        )
+
+
+async def owner_allowance(
+    db: AsyncSession, namespace_id: UUID | None, default_allowance: int, start: datetime, end: datetime
+) -> int:
+    """The owner's monthly allowance (0040): the plan held through the provider, or the operator default,
+    plus manual and trial grants. Read in the context of one of the owner's workspaces."""
+    # Manual entitlements (11, 0018) add to every period they overlap; a one-time grant (the trial, 0022)
+    # counts only in the period it starts; revoked grants stop counting.
+    granted = (
+        await db.execute(
+            text(
+                "SELECT COALESCE(sum(allowance_micro_usd), 0) FROM entitlement_grants WHERE namespace_id = :n"
+                " AND revoked_at IS NULL AND starts_at < :e AND expires_at > :s AND (NOT once OR starts_at >= :s)"
+            ),
+            {"n": namespace_id, "s": start, "e": end},
+        )
+    ).scalar_one()
+    # A plan held through the provider replaces the operator default with the plan's monthly allowance
+    # (11). Past due keeps the plan; generation is blocked separately (billing.service).
+    plan_key = (
+        await db.execute(
+            text(
+                "SELECT plan_key FROM subscriptions WHERE namespace_id = :n AND status = ANY(:held)"
+                " ORDER BY updated_at DESC LIMIT 1"
+            ),
+            {"n": namespace_id, "held": list(HOLDS_PLAN)},
+        )
+    ).scalar_one_or_none()
+    base = PLANS[plan_key].allowance_micro_usd if plan_key in PLANS else default_allowance
+    return base + int(granted)
+
+
 async def current_account(
     db: AsyncSession, workspace_id: UUID, default_allowance: int, *, lock: bool
 ) -> Account:
-    """The account of the current calendar month (UTC), created with the operator default allowance."""
+    """The workspace's account of the current calendar month (UTC). Its allowance is the workspace's share
+    of its owner's (0040): the owner's allowance less what the owner's other workspaces have reserved and
+    settled this month, never below what this workspace already holds. With `lock`, the owner is locked
+    first, so concurrent admissions in any of its workspaces cannot both spend the same remainder."""
     start, end = period_bounds(datetime.now(UTC))
+    namespace_id = await owner_of(db, workspace_id)
+    if lock:
+        await lock_owner(db, namespace_id)
     await db.execute(
         text(
             "INSERT INTO usage_accounts(workspace_id, period_start, period_end, allowance_micro_usd)"
@@ -66,30 +120,12 @@ async def current_account(
     )
     query = _ACCOUNT_FOR_UPDATE if lock else _ACCOUNT
     row = (await db.execute(query, {"w": workspace_id, "s": start})).one()
-    # Manual entitlements (11, 0018) add to every period they overlap; a one-time grant (the trial, 0022)
-    # counts only in the period it starts; revoked grants stop counting.
-    granted = (
-        await db.execute(
-            text(
-                "SELECT COALESCE(sum(allowance_micro_usd), 0) FROM entitlement_grants WHERE workspace_id = :w"
-                " AND revoked_at IS NULL AND starts_at < :e AND expires_at > :s AND (NOT once OR starts_at >= :s)"
-            ),
-            {"w": workspace_id, "s": start, "e": end},
-        )
+    total = await owner_allowance(db, namespace_id, default_allowance, start, end)
+    elsewhere = (
+        await db.execute(text("SELECT app_private.owner_spent_elsewhere(:s)"), {"s": start})
     ).scalar_one()
-    # A plan held through the provider replaces the operator default with the plan's monthly allowance
-    # (11). Past due keeps the plan; generation is blocked separately (billing.service).
-    plan_key = (
-        await db.execute(
-            text(
-                "SELECT plan_key FROM subscriptions WHERE workspace_id = :w AND status = ANY(:held)"
-                " ORDER BY updated_at DESC LIMIT 1"
-            ),
-            {"w": workspace_id, "held": list(HOLDS_PLAN)},
-        )
-    ).scalar_one_or_none()
-    base = PLANS[plan_key].allowance_micro_usd if plan_key in PLANS else default_allowance
-    allowance = base + int(granted)
+    held = row.reserved_micro_usd + row.settled_micro_usd
+    allowance = max(held, total - int(elsewhere))
     if lock and allowance != row.allowance_micro_usd:  # persisted under the account lock
         await db.execute(
             text("UPDATE usage_accounts SET allowance_micro_usd = :a, version = version + 1 WHERE id = :id"),

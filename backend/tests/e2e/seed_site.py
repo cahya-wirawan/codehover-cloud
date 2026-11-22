@@ -90,17 +90,17 @@ async def _seed(
         assert time.monotonic() < deadline, f"build still {status}"
         await asyncio.sleep(1)
     assert status == "ready", status
-    slug = f"load-{run}"
-    body = {"build_id": build, "public_slug": slug}
+    body = {"build_id": build}
     if not private:
         body |= {"visibility": "public", "confirmation": "API"}
-    await send(
+    published = await send(
         http,
         "POST",
         f"/api/v1/projects/{project}/publication",
         json=body,
         headers={"Idempotency-Key": secrets.token_hex(12)},
     )
+    slug = published.json()["address"]  # 0039: "<owner>/<project>"
     return {"slug": slug, "workspace_id": ws, "project_id": project, "build_id": build}
 
 

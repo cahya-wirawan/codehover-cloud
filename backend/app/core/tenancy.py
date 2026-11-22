@@ -19,20 +19,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 ResourceKind = Literal["project", "build", "export"]
 
 _SET_CONTEXT = text(
-    "SELECT set_config('app.workspace_id', :workspace_id, true), set_config('app.user_id', :user_id, true)"
+    "SELECT set_config('app.workspace_id', :workspace_id, true), set_config('app.user_id', :user_id, true),"
+    " set_config('app.organization_id', :organization_id, true)"
 )
 _RESOLVE = text("SELECT app_private.resource_workspace(:kind, :resource_id)")
 
 
 async def set_context(
-    session: AsyncSession, *, workspace_id: UUID | None = None, user_id: UUID | None = None
+    session: AsyncSession,
+    *,
+    workspace_id: UUID | None = None,
+    user_id: UUID | None = None,
+    organization_id: UUID | None = None,
 ) -> None:
-    """Set (or clear, with None) the RLS context for the session's current transaction."""
+    """Set (or clear, with None) the RLS context for the session's current transaction. An organization
+    context (0038) is set only after the caller's organization role was checked."""
     await session.execute(
         _SET_CONTEXT,
         {
             "workspace_id": str(workspace_id) if workspace_id else "",
             "user_id": str(user_id) if user_id else "",
+            "organization_id": str(organization_id) if organization_id else "",
         },
     )
 

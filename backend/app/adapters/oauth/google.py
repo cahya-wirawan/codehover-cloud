@@ -92,6 +92,7 @@ class GoogleProvider:
             subject=str(claims["sub"]),
             display_name=(name or email or "Google user")[:120],
             verified_email=email,
+            # No hint: an email address or a name never becomes a public handle (a random one is suggested).
         )
 
     async def _verify(self, id_token: str, nonce: str) -> dict[str, object]:

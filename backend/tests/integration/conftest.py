@@ -92,7 +92,7 @@ class World:
 
 def _make_tenant(db: Db, label: str, run: str) -> Tenant:
     user = db.one(
-        "SELECT app_private.create_user_with_identity('github', 'https://github.com', :sub, :name, :mail)",
+        "SELECT app_private.create_user_with_identity('github', 'https://github.com', :sub, :name, :mail, NULL)",
         sub=f"{run}-{label}",
         name=f"User {label}",
         mail=f"{label}-{run}@example.test",

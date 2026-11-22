@@ -21,7 +21,7 @@ from tests.integration.conftest import needs_db
 from tests.integration.test_builds import drive, setup_project
 from tests.integration.test_generation import runtime_for
 from tests.integration.test_github import FakeGitHub, github  # noqa: F401
-from tests.integration.test_publication import publish, ready_build
+from tests.integration.test_publication import address, publish, ready_build
 from tests.integration.test_workspaces import NewUser, invite, new_user  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
@@ -52,12 +52,17 @@ UNSCOPED = {
     ("GET", "/api/v1/ops/summary"),
     ("GET", "/api/v1/ops/events"),
     ("POST", "/api/v1/ops/builds-paused"),
+    ("PUT", "/api/v1/me/handle"),  # 0038: the caller's own handle
+    ("GET", "/api/v1/site-aliases/{alias}"),  # 0039: where an old public address leads, nothing private
+    ("GET", "/api/v1/handles/{handle}"),  # availability of a public name
+    ("GET", "/api/v1/organizations"),  # the caller's own organizations and invitations
+    ("POST", "/api/v1/organizations"),
 }
 
 
 async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dict[str, Any]:
     owner, ws, project, build, app = await ready_build(client, idp, gh)
-    slug = f"secret-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (await publish(owner, project, build_id=build, public_slug=slug)).status_code == 200  # private
     export = await unsafe(
         owner,
@@ -80,6 +85,14 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
     )
     me = (await owner.get("/api/v1/me")).json()
     one = lambda sql, **kw: str(ddl(sql, **kw)[0][0])  # noqa: E731
+    # 0038: an organization the victim owns, with a pending invitation of someone else.
+    organization = await unsafe(
+        owner,
+        "POST",
+        "/api/v1/organizations",
+        json={"name": "Victim org", "handle": f"v{secrets.token_hex(4)}"},
+    )
+    assert organization.status_code == 201, organization.text
     # MCP sign-in (0037): a grant the owner gave a client, and a sign-in request still waiting for them.
     client_row = one(
         "INSERT INTO oauth_clients(client_id, client_name, redirect_uris)"
@@ -87,7 +100,7 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
         c="chc_" + secrets.token_urlsafe(24),
     )
     request_id = one(
-        "INSERT INTO oauth_authorizations(client, redirect_uri, code_challenge, resource, slug)"
+        "INSERT INTO oauth_authorizations(client, redirect_uri, code_challenge, resource, site)"
         " VALUES (:c, 'https://x.test/cb', :ch, 'r', :s) RETURNING id",
         c=client_row,
         ch="A" * 43,
@@ -116,8 +129,11 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
             b=build,
         ),
         "symbol_id": one("SELECT id FROM symbols WHERE build_id = :b LIMIT 1", b=build),
-        "slug": slug,
+        "site": slug,  # 0039: "<owner>/<project>"; `slug` path parameters are guide pages
+        "owner": slug.split("/")[0],
+        "project": slug.split("/")[1],
         "page": one("SELECT slug FROM guide_pages WHERE build_id = :b LIMIT 1", b=build),
+        "slug": one("SELECT slug FROM guide_pages WHERE build_id = :b LIMIT 1", b=build),
         "connection_id": one("SELECT id FROM repository_connections WHERE workspace_id = :w", w=ws),
         "repository_id": one("SELECT repository_id FROM projects WHERE id = :p", p=project),
         "invitation_id": invitation.json()["id"],
@@ -125,6 +141,7 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
         "grant_id": grant.json()["id"],
         "token_id": token.json()["id"],
         "oauth_grant_id": oauth_grant,
+        "organization_id": organization.json()["id"],
         "request_id": request_id,
         "session_id": one(
             "SELECT id FROM sessions WHERE user_id = :u AND revoked_at IS NULL LIMIT 1", u=me["id"]
@@ -144,6 +161,17 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
     """A valid body per unsafe route, so authorization (not validation) decides."""
     return {
         ("POST", "/api/v1/builds/{build_id}/cancel"): {},
+        ("PATCH", "/api/v1/organizations/{organization_id}"): {"name": "Hijacked"},
+        ("POST", "/api/v1/organization-invitations/{invitation_id}/accept"): {},
+        ("POST", "/api/v1/organization-invitations/{invitation_id}/decline"): {},
+        ("PUT", "/api/v1/organizations/{organization_id}/handle"): {
+            "handle": f"x{ids['organization_id'][:8]}"
+        },
+        ("PATCH", "/api/v1/organizations/{organization_id}/members/{user_id}"): {"role": "member"},
+        ("POST", "/api/v1/organizations/{organization_id}/invitations"): {
+            "handle": "anyone",
+            "role": "owner",
+        },
         ("POST", "/api/v1/builds/{build_id}/exports"): {"format": "kb_json"},
         ("POST", "/api/v1/builds/{build_id}/quality/waivers"): {
             "claim_keys": ["0" * 32],
@@ -160,7 +188,6 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
         ("POST", "/api/v1/projects/{project_id}/publication"): {
             "build_id": ids["build_id"],
             "visibility": "public",
-            "public_slug": f"stolen-{secrets.token_hex(3)}",
             "confirmation": "API",
         },
         ("POST", "/api/v1/projects/{project_id}/snapshots"): {},
@@ -290,6 +317,17 @@ async def test_another_tenant_is_refused_on_every_route_and_changes_nothing(
     assert ddl("SELECT revoked_at IS NULL FROM sessions WHERE id = :s", s=ids["session_id"])[0][0]
     assert ddl("SELECT revoked_at IS NULL FROM access_tokens WHERE id = :t", t=ids["token_id"])[0][0]
     assert ddl("SELECT revoked_at IS NULL FROM oauth_grants WHERE id = :g", g=ids["oauth_grant_id"])[0][0]
+    assert ddl(
+        "SELECT o.status, o.name, n.handle FROM organizations o JOIN namespaces n ON n.organization_id = o.id"
+        " WHERE o.id = :o",
+        o=ids["organization_id"],
+    )[0][:2] == ("active", "Victim org")
+    assert (
+        ddl("SELECT count(*) FROM organization_members WHERE organization_id = :o", o=ids["organization_id"])[
+            0
+        ][0]
+        == 1
+    )
     assert ddl("SELECT decided_at IS NULL FROM oauth_authorizations WHERE id = :i", i=ids["request_id"])[0][0]
 
 
@@ -325,8 +363,8 @@ async def test_tenant_content_is_only_ever_served_as_json_and_never_sniffed(
         f"/api/v1/builds/{ids['build_id']}/files/{ids['file_id']}",
         f"/api/v1/builds/{ids['build_id']}/symbols/{ids['symbol_id']}",
         f"/api/v1/builds/{ids['build_id']}/guide/{ids['page']}",
-        f"/api/v1/published/{ids['slug']}/files/{ids['file_id']}",
-        f"/api/v1/published/{ids['slug']}/guide/{ids['page']}",
+        f"/api/v1/published/{ids['site']}/files/{ids['file_id']}",
+        f"/api/v1/published/{ids['site']}/guide/{ids['page']}",
     ):
         response = await owner.get(path)
         assert response.status_code == 200, path

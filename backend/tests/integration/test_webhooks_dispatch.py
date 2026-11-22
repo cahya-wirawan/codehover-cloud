@@ -55,7 +55,16 @@ def connection_with_installation(status: str = "active") -> tuple[int, str]:
     installation = secrets.randbelow(10**9) + 1
     run = secrets.token_hex(4)
     (user,) = ddl("INSERT INTO users(display_name) VALUES ('w') RETURNING id")[0]
-    (ws,) = ddl("INSERT INTO workspaces(name, slug) VALUES ('Hooks', :s) RETURNING id", s=f"h-{run}")[0]
+    (namespace,) = ddl(
+        "INSERT INTO namespaces(handle, kind, user_id) VALUES (:h, 'user', :u) RETURNING id",
+        h=f"h-{run}",
+        u=user,
+    )[0]
+    (ws,) = ddl(
+        "INSERT INTO workspaces(name, slug, namespace_id) VALUES ('Hooks', :s, :n) RETURNING id",
+        s=f"h-{run}",
+        n=namespace,
+    )[0]
     ddl(
         "INSERT INTO repository_connections(workspace_id, installation_id, github_account_id, github_account_login,"
         " connected_by, status) VALUES (:w, :i, 1, 'org', :u, :s)",

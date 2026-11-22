@@ -59,6 +59,8 @@ class MeResponse(BaseModel):
     primary_email: str | None
     identities: list[IdentityOut]
     operator: bool = False  # platform operations role (09); shows the operations view
+    handle: str | None = None  # the personal namespace (0038), shown in site addresses
+    handle_confirmed: bool = False  # false until the person confirms or changes the suggested handle
 
 
 class SessionOut(BaseModel):

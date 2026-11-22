@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useOutletContext, useParams, useSearchParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
 
 import { FolderGit2, Globe, Lock, Scale } from "lucide-react";
 
@@ -8,7 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { PageHeader } from "../../components/ui/section";
 import { ApiError } from "../../lib/api/client";
 import { cn } from "../../lib/cn";
-import { api, LANGUAGES, siteSource, type ViewerSource } from "../../lib/api/resources";
+import { api, LANGUAGES, sitePath, siteSource, type ViewerSource } from "../../lib/api/resources";
 import { CodeViewer } from "../viewer/CodeViewer";
 import { GuidePanel } from "../viewer/GuidePanel";
 import { SearchPanel } from "../viewer/SearchPanel";
@@ -23,7 +23,10 @@ const useSite = () => useOutletContext<SiteContext>();
 /** A published site (02 S20): the same reading experience, served only through the publication
  * resolver. A withdrawn or private site the reader may not see is simply not found. */
 export function SitePage() {
-  const { site = "" } = useParams();
+  const { owner = "", project = "" } = useParams();
+  const site = sitePath(owner, project); // 0039: /sites/<owner>/<project>
+  const navigate = useNavigate();
+  const location = useLocation();
   // The site's languages (FR-026): the published build and its ready variants. The reader's choice stays
   // while they move around the site and is kept in the address (?lang=) for sharing.
   const [params, setParams] = useSearchParams();
@@ -41,8 +44,17 @@ export function SitePage() {
     merged.delete("symbol"); // definitions are per language; files, lines and pages carry over
     setParams(merged, { replace: true });
   };
-  const base = `/sites/${encodeURIComponent(site)}`;
+  const base = `/sites/${site}`;
   const info = useQuery({ queryKey: ["site", site], queryFn: () => api.site(site), retry: false });
+  const canonical = info.data?.address;
+  useEffect(() => {
+    // An owner renamed since the link was made: move to where the site lives now, keeping the rest.
+    if (canonical && canonical !== `${owner}/${project}`) {
+      const [newOwner = owner, newProject = project] = canonical.split("/");
+      const rest = location.pathname.slice(`/sites/${site}`.length);
+      void navigate(`/sites/${sitePath(newOwner, newProject)}${rest}${location.search}${location.hash}`, { replace: true });
+    }
+  }, [canonical, owner, project, site, location, navigate]);
   const tab = ({ isActive }: { isActive: boolean }) =>
     cn(
       "-mb-px border-b-2 px-1 pb-2.5 text-[13px] font-medium transition-colors duration-150",
@@ -139,4 +151,33 @@ export function SiteCode() {
 export function SiteSearch() {
   const { source, base } = useSite();
   return <SearchPanel source={source} base={base} />;
+}
+
+/** A pre-0039 address, /sites/<slug>: leads to the site's /sites/<owner>/<project> while the alias lasts. */
+export function LegacySiteRedirect() {
+  const { alias = "" } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const found = useQuery({ queryKey: ["site-alias", alias], queryFn: () => api.siteAlias(alias), retry: false });
+  useEffect(() => {
+    if (found.data) {
+      const rest = location.pathname.slice(`/sites/${encodeURIComponent(alias)}`.length);
+      void navigate(`/sites/${sitePath(found.data.owner, found.data.project)}${rest}${location.search}${location.hash}`, {
+        replace: true,
+      });
+    }
+  }, [found.data, alias, location, navigate]);
+  if (found.isError) {
+    return (
+      <section aria-labelledby="site-title" className="mx-auto mt-16 max-w-md text-center">
+        <h1 id="site-title" className="text-[22px] leading-8 font-semibold">Site not found</h1>
+        <p className="mt-2 text-muted">Sites now live at /sites/&lt;owner&gt;/&lt;project&gt;. This old address leads nowhere.</p>
+      </section>
+    );
+  }
+  return (
+    <p role="status" className="mt-16 text-center text-muted">
+      Finding the site…
+    </p>
+  );
 }

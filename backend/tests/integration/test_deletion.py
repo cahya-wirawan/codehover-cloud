@@ -25,7 +25,7 @@ from tests.integration.test_budgets import make_estimate, start_from
 from tests.integration.test_builds import drive, setup_project
 from tests.integration.test_generation import runtime_for
 from tests.integration.test_github import FakeGitHub, github  # noqa: F401
-from tests.integration.test_publication import publish, ready_build
+from tests.integration.test_publication import address, publish, ready_build
 from tests.integration.test_workspaces import NewUser, join, new_user  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
@@ -83,7 +83,7 @@ async def test_project_deletion_stops_serving_fences_work_and_purges(
         confirmation="API",
     )
     assert published.status_code == 200, published.text
-    slug = published.json()["public_slug"]
+    slug = published.json()["address"]
     export = await unsafe(
         owner,
         "POST",
@@ -324,7 +324,7 @@ async def test_an_operator_takedown_survives_project_deletion(
     import sqlalchemy as sa
 
     owner, _ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"takedown-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     published = await publish(
         owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
     )
@@ -337,8 +337,8 @@ async def test_an_operator_takedown_survives_project_deletion(
     make_due(project_id=project)
     await purge_due(runtime_for(app).sessions, app.state.objects)
     assert ddl("SELECT state FROM deletion_requests WHERE project_id = :p", p=project)[0][0] == "completed"
-    kept = ddl("SELECT public_slug, suspended_reason FROM publications WHERE project_id = :p", p=project)
-    assert kept == [(slug, "operator")]  # the takedown and its reserved address remain
+    kept = ddl("SELECT suspended_reason FROM publications WHERE project_id = :p", p=project)
+    assert kept == [("operator",)]  # the takedown remains (its address names this owner's project)
     with pytest.raises(sa.exc.IntegrityError):
         ddl("DELETE FROM publications WHERE project_id = :p", p=project)  # the 0012 trigger, again
     assert (await client.get(f"/api/v1/published/{slug}")).status_code == 404

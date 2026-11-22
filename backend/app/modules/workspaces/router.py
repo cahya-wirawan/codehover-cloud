@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, Response
@@ -27,6 +27,14 @@ SLUG = r"^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$"
 class WorkspaceCreate(BaseModel):
     name: Annotated[str, Field(min_length=2, max_length=80)]
     slug: Annotated[str, Field(pattern=SLUG)]
+    # 0038: the owner; none is the caller's personal namespace, else an organization they own or administer
+    organization_id: UUID | None = None
+
+
+class WorkspaceOwner(BaseModel):
+    kind: Literal["user", "organization"]
+    handle: str
+    organization_id: UUID | None = None
 
 
 class WorkspaceRename(BaseModel):
@@ -38,6 +46,7 @@ class WorkspaceSummary(BaseModel):
     name: str
     slug: str
     role: Role
+    owner: WorkspaceOwner | None = None
 
 
 class WorkspaceList(BaseModel):
@@ -50,6 +59,7 @@ class MemberOut(BaseModel):
     display_name: str
     role: Role
     created_at: datetime
+    via_organization: bool = False  # 0038: the organization gives this role; change it there
 
 
 class MemberList(BaseModel):
@@ -104,8 +114,12 @@ async def list_workspaces(db: Db, principal: CurrentPrincipal) -> WorkspaceList:
 
 @router.post("/workspaces", response_model=WorkspaceSummary, status_code=201)
 async def create_workspace(body: WorkspaceCreate, db: Db, principal: CsrfPrincipal) -> WorkspaceSummary:
-    workspace_id = await service.create_workspace(db, principal, body.name.strip(), body.slug)
-    return WorkspaceSummary(id=workspace_id, name=body.name.strip(), slug=body.slug, role="owner")
+    workspace_id = await service.create_workspace(
+        db, principal, body.name.strip(), body.slug, body.organization_id
+    )
+    created = await service.workspace_summary(db, principal, workspace_id)
+    await db.commit()
+    return WorkspaceSummary(**created)
 
 
 @router.get("/workspaces/{workspace_id}", response_model=WorkspaceSummary)

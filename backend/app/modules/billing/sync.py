@@ -244,31 +244,41 @@ async def sync_customer(
 async def _hosting(
     db: AsyncSession, workspace_id: UUID, now: datetime | None = None, *, enforced: bool
 ) -> int:
-    """Suspend or lift billing suspensions of the workspace's publications from its billing state.
-    Other suspension reasons (operator, connection, repository) are never touched."""
+    """Suspend or lift billing suspensions of the publications of all the owner's workspaces (0040: the
+    plan is the owner's) from its billing state, each in its own workspace context; the context is the
+    given workspace's again afterwards. Other suspension reasons (operator, connection, repository) are
+    never touched."""
     billing = await service.state(db, workspace_id, now, enforced=enforced)
-    if billing.hosting_suspended:
-        result = await db.execute(
-            text(
-                "UPDATE publications SET suspended_at = now(), suspended_reason = 'billing', updated_at = now()"
-                " WHERE workspace_id = :w AND suspended_at IS NULL"
-            ),
-            {"w": workspace_id},
-        )
-        action = "billing.hosting_suspended"
-    else:
-        result = await db.execute(
-            text(
-                "UPDATE publications SET suspended_at = NULL, suspended_reason = NULL, updated_at = now()"
-                " WHERE workspace_id = :w AND suspended_reason = 'billing'"
-            ),
-            {"w": workspace_id},
-        )
-        action = "billing.hosting_restored"
-    count = int(getattr(result, "rowcount", 0) or 0)
-    if count:
-        await _audit(db, workspace_id, action, {"publications": count})
-    return count
+    workspaces = list((await db.execute(text("SELECT app_private.owner_workspaces()"))).scalars()) or [
+        workspace_id
+    ]
+    total = 0
+    for each in workspaces:
+        await set_context(db, workspace_id=each)
+        if billing.hosting_suspended:
+            result = await db.execute(
+                text(
+                    "UPDATE publications SET suspended_at = now(), suspended_reason = 'billing', updated_at = now()"
+                    " WHERE workspace_id = :w AND suspended_at IS NULL"
+                ),
+                {"w": each},
+            )
+            action = "billing.hosting_suspended"
+        else:
+            result = await db.execute(
+                text(
+                    "UPDATE publications SET suspended_at = NULL, suspended_reason = NULL, updated_at = now()"
+                    " WHERE workspace_id = :w AND suspended_reason = 'billing'"
+                ),
+                {"w": each},
+            )
+            action = "billing.hosting_restored"
+        count = int(getattr(result, "rowcount", 0) or 0)
+        if count:
+            await _audit(db, each, action, {"publications": count})
+        total += count
+    await set_context(db, workspace_id=workspace_id)
+    return total
 
 
 async def _refresh_dispute_block(db: AsyncSession, workspace_id: UUID) -> None:

@@ -205,8 +205,8 @@ async def _memberships(db: AsyncSession, user_id: UUID) -> list[Any]:
         (
             await db.execute(
                 text(
-                    "SELECT m.workspace_id, m.role, w.slug, w.name FROM memberships m"
-                    " JOIN workspaces w ON w.id = m.workspace_id"
+                    "SELECT m.workspace_id, m.role, w.slug, w.name, (n.user_id = :u) AS personal FROM memberships m"
+                    " JOIN workspaces w ON w.id = m.workspace_id LEFT JOIN namespaces n ON n.id = w.namespace_id"
                     " WHERE m.user_id = :u AND w.status = 'active' ORDER BY w.created_at, w.id"
                 ),
                 {"u": user_id},
@@ -241,10 +241,46 @@ async def delete_account(
             details={"field": "confirmation"},
         )
     user_id = principal.user_id
+    await set_context(db, user_id=user_id)
+    # 0038: an organization the person owns alone needs another owner, or deleting, first. Other owners
+    # are visible only in each organization's context.
+    owned = (
+        await db.execute(
+            text(
+                "SELECT o.id, o.name, n.handle FROM organization_members m"
+                " JOIN organizations o ON o.id = m.organization_id AND o.status = 'active'"
+                " JOIN namespaces n ON n.organization_id = o.id WHERE m.user_id = :u AND m.role = 'owner'"
+            ),
+            {"u": user_id},
+        )
+    ).all()
+    alone = []
+    for o in owned:
+        await set_context(db, user_id=user_id, organization_id=o.id)
+        others = (
+            await db.execute(
+                text(
+                    "SELECT count(*) FROM organization_members WHERE organization_id = :o AND role = 'owner'"
+                    " AND user_id <> :u"
+                ),
+                {"o": o.id, "u": user_id},
+            )
+        ).scalar_one()
+        if not others:
+            alone.append(o)
+    await set_context(db, user_id=user_id)
+    if alone:
+        raise ApiError(
+            409,
+            "OWNERSHIP_TRANSFER_REQUIRED",
+            "Give these organizations another owner, or delete them, before deleting your account.",
+            details={"organizations": [{"id": str(o.id), "name": o.name, "handle": o.handle} for o in alone]},
+        )
     memberships = await _memberships(db, user_id)
     sole: dict[UUID, Any] = {}
     for m in memberships:
-        if m.role == "owner" and await _owner_count(db, m.workspace_id, user_id) == 1:
+        # Workspaces in the person's own namespace go with the account (0038), like ones they own alone.
+        if m.personal or (m.role == "owner" and await _owner_count(db, m.workspace_id, user_id) == 1):
             sole[m.workspace_id] = m
     listed = set(delete_workspaces)
     if listed - set(sole):
@@ -264,6 +300,23 @@ async def delete_account(
                 "workspaces": [{"id": str(w), "slug": sole[w].slug, "name": sole[w].name} for w in unresolved]
             },
         )
+    # Leave every organization first: the database then removes the memberships they gave.
+    organizations = (
+        (
+            await db.execute(
+                text("SELECT organization_id FROM organization_members WHERE user_id = :u"), {"u": user_id}
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for organization_id in organizations:
+        await set_context(db, user_id=user_id, organization_id=organization_id)
+        await db.execute(
+            text("DELETE FROM organization_members WHERE organization_id = :o AND user_id = :u"),
+            {"o": organization_id, "u": user_id},
+        )
+    memberships = await _memberships(db, user_id)
     removed: list[Tombstone] = []
     for m in memberships:
         await set_context(db, workspace_id=m.workspace_id, user_id=user_id)
@@ -298,6 +351,10 @@ async def delete_account(
         {"u": user_id},
     )
     await db.execute(text("DELETE FROM oauth_identities WHERE user_id = :u"), {"u": user_id})
+    namespace = (
+        await db.execute(text("SELECT id FROM namespaces WHERE user_id = :u"), {"u": user_id})
+    ).scalar_one()
+    await db.execute(text("SELECT app_private.retire_namespace(:n)"), {"n": namespace})
     account = await _insert(db, "account", user_id, user_id=user_id)
     await db.execute(
         text(

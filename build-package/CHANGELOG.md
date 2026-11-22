@@ -4,6 +4,14 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-22
+
+### Added
+
+- 01, 02, 05, 06, 09: people and organizations (FR-030, migration 0038). Every person has a handle, suggested at first sign-in and confirmed once, in one global namespace with organizations; renamed or deleted handles stay reserved for 90 days. Organizations are a level above workspaces: every workspace belongs to a person or an organization, an organization's owners and admins are owners and admins of all its workspaces, and plain members see the workspaces they are added to. Organizations invite people by handle. 
+- 01, 05, 06, 11: one plan per owner (migration 0040). An organization's workspaces, or a person's own, share one Stripe customer, subscription, trial and monthly allowance; project, seat and active-build limits count across them. The organization's owners (or the person) manage the plan, and everyone in a workspace reads it. A billing suspension takes all the owner's sites offline.
+- 01, 02, 05, 06, 09: sites live under their owner, `/sites/<owner>/<project>`, with the MCP endpoint at `/api/v1/mcp/<owner>/<project>` (migration 0039). A project's slug is unique among its owner's projects; publishing no longer asks for an address. Old one-segment addresses become aliases that redirect for a year (`GET /site-aliases/{alias}`), and their MCP endpoints keep answering; a renamed owner keeps answering at the old handle while it stays reserved for them. The free-form `public_slug`, its 0036 reservations and `DELETE /ops/slug-reservations/{slug}` are removed: an address can no longer name another owner's site.
+
 ## [0.7.0] - 2026-11-22
 
 ### Added

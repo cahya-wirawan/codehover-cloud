@@ -10,7 +10,7 @@ the throughput limit. `--users 1 --seconds 10` is the hourly synthetic probe; `-
 check. Only the published site's public endpoints are
 used, so it needs no credentials; point it at a synthetic fixture site only (12), never at tenant data.
 
-    python -m app.ops.loadcheck --base https://example --site synthetic-probe --users 50 --seconds 60
+    python -m app.ops.loadcheck --base https://example --site probe-owner/synthetic-probe --users 50 --seconds 60
 """
 
 from __future__ import annotations
@@ -139,7 +139,7 @@ async def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--base", required=True)
-    parser.add_argument("--site", required=True)
+    parser.add_argument("--site", required=True, help="the site address, <owner>/<project> (0039)")
     parser.add_argument("--users", type=int, default=50)
     parser.add_argument("--seconds", type=float, default=60)
     parser.add_argument(
