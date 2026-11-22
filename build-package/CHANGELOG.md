@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-23
+
+### Added
+
+- 02: a context switcher at the top of the sidebar, like GitHub's: you or one of your organizations, with open invitations counted. The workspace menu, the workspaces page and new workspaces follow the chosen owner; creating an organization has its own page.
+
 ## [0.8.2] - 2026-11-22
 
 ### Security

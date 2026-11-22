@@ -1,19 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  Building2,
   ChevronsUpDown,
   CreditCard,
   FolderGit2,
   GitBranch,
   LayoutGrid,
   Menu,
+  Plus,
   ScrollText,
+  Settings,
+  User,
   Users,
   X,
 } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { type ReactNode, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useParams } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 
 import { Button } from "../components/ui/button";
 import {
@@ -29,6 +33,7 @@ import { AccountMenu } from "../features/auth/AccountMenu";
 import { authKeys, fetchCurrentUser } from "../lib/api/auth";
 import { api } from "../lib/api/resources";
 import { cn } from "../lib/cn";
+import { ownedBy, ownerHome, rememberOwner, useOwnerContext, type OwnerOption } from "./ownerContext";
 
 /** The workspace the current route belongs to: from /w/:wid, or from the project of /p/:pid. */
 function useCurrentWorkspace(): { wid: string | null; projectName: string | null; buildId: string | null } {
@@ -77,15 +82,81 @@ function NavItem({ to, icon, children, end }: { to: string; icon: ReactNode; chi
   );
 }
 
+/** Whose workspaces the app shows: the person or one of their organizations (0038), like GitHub's. */
+function OwnerSwitcher() {
+  const navigate = useNavigate();
+  const { current, options, invitations } = useOwnerContext();
+  const choose = (owner: OwnerOption) => {
+    rememberOwner(owner.handle);
+    void navigate(ownerHome(owner.handle));
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex h-10 w-full items-center gap-2 rounded-[var(--radius-control)] px-2.5 text-left hover:bg-surface-muted"
+        >
+          <span className="grid size-6 place-items-center rounded-full bg-surface-muted text-muted [&_svg]:size-3.5" aria-hidden="true">
+            {current?.kind === "organization" ? <Building2 /> : <User />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-medium">{current?.name ?? "You"}</span>
+            <span className="block truncate font-mono text-xs text-muted">{current?.handle ?? ""}</span>
+          </span>
+          {invitations ? (
+            <span className="rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground" aria-hidden="true">
+              {invitations}
+            </span>
+          ) : null}
+          <ChevronsUpDown aria-hidden="true" className="size-4 text-muted" />
+          <span className="sr-only">
+            Switch between you and your organizations
+            {invitations ? `, ${invitations} open invitation${invitations === 1 ? "" : "s"}` : ""}
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[208px]">
+        <DropdownMenuLabel>Switch to</DropdownMenuLabel>
+        {options.map((o) => (
+          <DropdownMenuItem key={o.handle} onSelect={() => choose(o)} aria-current={o.handle === current?.handle ? "true" : undefined}>
+            {o.kind === "organization" ? <Building2 aria-hidden="true" /> : <User aria-hidden="true" />}
+            <span className="truncate">{o.kind === "user" ? `You (${o.handle})` : o.name}</span>
+            {o.role ? <span className="ml-auto text-xs text-muted capitalize">{o.role}</span> : null}
+          </DropdownMenuItem>
+        ))}
+        {invitations ? (
+          <DropdownMenuItem asChild>
+            <Link to={options[0] ? ownerHome(options[0].handle) : "/w"}>
+              <Users aria-hidden="true" />
+              {invitations} open invitation{invitations === 1 ? "" : "s"}
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/organizations/new">
+            <Plus aria-hidden="true" />
+            New organization
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function Sidebar({ operator }: { operator: boolean }) {
   const { wid } = useCurrentWorkspace();
-  const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces, retry: false });
-  const current = workspaces.data?.items.find((w) => w.id === wid);
+  const { current: owner, workspaces: all } = useOwnerContext();
+  const mine = owner ? all.filter((w) => ownedBy(w, owner)) : all;
+  const current = all.find((w) => w.id === wid);
+  const home = owner ? ownerHome(owner.handle) : "/w";
   return (
-    <div className="flex h-full flex-col gap-6 px-3 py-4">
+    <div className="flex h-full flex-col gap-4 px-3 py-4">
       <div className="px-1.5">
         <Wordmark />
       </div>
+      <OwnerSwitcher />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -104,8 +175,8 @@ function Sidebar({ operator }: { operator: boolean }) {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[208px]">
-          <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-          {workspaces.data?.items.map((w) => (
+          <DropdownMenuLabel>{owner ? `Workspaces of ${owner.kind === "user" ? "you" : owner.name}` : "Workspaces"}</DropdownMenuLabel>
+          {mine.map((w) => (
             <DropdownMenuItem key={w.id} asChild>
               <Link to={`/w/${w.id}`}>
                 <span className="truncate">{w.name}</span>
@@ -113,9 +184,10 @@ function Sidebar({ operator }: { operator: boolean }) {
               </Link>
             </DropdownMenuItem>
           ))}
+          {mine.length ? null : <p className="px-2 py-1.5 text-xs text-muted">No workspaces yet.</p>}
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link to="/w">
+            <Link to={home}>
               <LayoutGrid aria-hidden="true" />
               All workspaces
             </Link>
@@ -142,10 +214,15 @@ function Sidebar({ operator }: { operator: boolean }) {
             </NavItem>
           </>
         ) : (
-          <NavItem to="/w" icon={<LayoutGrid aria-hidden="true" />} end>
+          <NavItem to={home} icon={<LayoutGrid aria-hidden="true" />} end>
             Workspaces
           </NavItem>
         )}
+        {owner?.kind === "organization" && owner.organizationId ? (
+          <NavItem to={`/o/${owner.organizationId}`} icon={<Settings aria-hidden="true" />}>
+            Organization
+          </NavItem>
+        ) : null}
       </nav>
       {operator ? (
         <nav aria-label="Platform" className="mt-auto flex flex-col gap-0.5 border-t border-border pt-4">

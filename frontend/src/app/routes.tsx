@@ -23,7 +23,7 @@ import { ConnectionsPage } from "../features/workspaces/ConnectionsPage";
 import { MembersPage } from "../features/workspaces/MembersPage";
 import { UsagePage } from "../features/workspaces/UsagePage";
 import { WorkspacePage } from "../features/workspaces/WorkspacePage";
-import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
+import { NewOrganizationPage, WorkspacesPage } from "../features/workspaces/WorkspacesPage";
 import { AppShell } from "./AppShell";
 import { HomePage, NotFoundPage, RouteError } from "./pages";
 import { RequireSignIn } from "./RequireSignIn";
@@ -45,6 +45,7 @@ export const routes: RouteObject[] = [
           { path: "account", element: <AccountPage /> },
           { path: "welcome", element: <WelcomePage /> },
           { path: "o/:oid", element: <OrganizationPage /> },
+          { path: "organizations/new", element: <NewOrganizationPage /> },
           { path: "ops", element: <OpsPage /> },
           { path: "oauth/authorize", element: <OAuthConsentPage /> },
           { path: "w", element: <WorkspacesPage /> },
