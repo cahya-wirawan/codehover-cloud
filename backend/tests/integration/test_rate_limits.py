@@ -19,6 +19,7 @@ from tests.integration.conftest import needs_db
 from tests.integration.test_budgets import make_estimate
 from tests.integration.test_builds import setup_project
 from tests.integration.test_github import FakeGitHub, github  # noqa: F401
+from tests.integration.test_publication import address as site_address
 from tests.integration.test_publication import publish, ready_build
 from tests.integration.test_workspaces import NewUser, new_user  # noqa: F401
 
@@ -79,7 +80,7 @@ async def test_public_delivery_is_limited_per_client_address(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
     owner, _ws, project, build, app = await ready_build(client, idp, github)
-    slug = f"busy-{secrets.token_hex(3)}"
+    slug = await site_address(owner, project)
     assert (
         await publish(
             owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"

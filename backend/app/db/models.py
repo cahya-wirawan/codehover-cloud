@@ -202,6 +202,9 @@ class Project(Base):
     push_policy_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     access: Mapped[str] = mapped_column(Text, server_default=text("'workspace'"))  # 0027
     access_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    namespace_id: Mapped[UUID | None] = ref(
+        "namespaces.id", nullable=True
+    )  # 0039: the owner, from the workspace
 
 
 class Snapshot(Base):
@@ -590,7 +593,6 @@ class Publication(Base):
     project_id: Mapped[UUID] = ref()
     build_id: Mapped[UUID] = ref()
     visibility: Mapped[str] = mapped_column(Text)
-    public_slug: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     acknowledged_partial: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     suspended_at: Mapped[datetime | None] = ts(nullable=True)
@@ -835,16 +837,15 @@ class AccessToken(Base):
     project_id: Mapped[UUID | None] = ref(nullable=True)
 
 
-# ---------------------------------------------------------------- slug reservations (0036)
-class SlugReservation(Base):
-    """A released site address, reserved for the workspace that let it go (no runtime access)."""
+# ---------------------------------------------------------------- site aliases (0039)
+class SiteAlias(Base):
+    """A pre-0039 one-segment site address, leading to its project's /sites/<owner>/<project>."""
 
-    __tablename__ = "slug_reservations"
-    slug: Mapped[str] = mapped_column(Text, primary_key=True)
-    workspace_id: Mapped[UUID] = ref()
-    project_id: Mapped[UUID] = ref()
-    released_at: Mapped[datetime] = ts(default_now=True)
-    reserved_until: Mapped[datetime] = ts()
+    __tablename__ = "site_aliases"
+    alias: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_id: Mapped[UUID] = ref("projects.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts(default_now=True)
 
 
 # ---------------------------------------------------------------- MCP sign-in (0037)
@@ -865,7 +866,7 @@ class OAuthAuthorization(Base):
     redirect_uri: Mapped[str] = mapped_column(Text)
     code_challenge: Mapped[str] = mapped_column(Text)
     resource: Mapped[str] = mapped_column(Text)
-    slug: Mapped[str] = mapped_column(Text)
+    site: Mapped[str] = mapped_column(Text)  # 0039: "<owner>/<project>"
     state: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = ts(default_now=True)
     expires_at: Mapped[datetime] = ts()

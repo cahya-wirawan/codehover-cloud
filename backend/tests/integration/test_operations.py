@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from tests.integration.auth_support import FakeIdP, ddl, unsafe
 from tests.integration.conftest import RUNTIME_URL, engine, needs_db
 from tests.integration.test_github import FakeGitHub, github  # noqa: F401
-from tests.integration.test_publication import publish, ready_build
+from tests.integration.test_publication import address, publish, ready_build
 from tests.integration.test_workspaces import NewUser, join, new_user  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
@@ -130,7 +130,7 @@ async def test_operator_takedown_is_audited_in_the_workspace_and_binds_admins(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, operator: httpx.AsyncClient
 ) -> None:
     owner, ws, project, build, _app = await ready_build(client, idp, github)
-    slug = f"ops-{secrets.token_hex(3)}"
+    slug = await address(owner, project)
     assert (
         await publish(
             owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
@@ -151,35 +151,6 @@ async def test_operator_takedown_is_audited_in_the_workspace_and_binds_admins(
     assert (await client.get(f"/api/v1/published/{slug}")).status_code == 200
     missing = await unsafe(operator, "POST", f"/api/v1/ops/projects/{ws}/suspension", json={"reason": "typo"})
     assert missing.status_code == 404
-
-
-async def test_an_operator_can_end_a_slug_reservation_early(
-    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, operator: httpx.AsyncClient
-) -> None:
-    """0036: an unpublished address stays reserved for its workspace until an operator releases it."""
-    owner, ws, project, build, _app = await ready_build(client, idp, github)
-    slug = f"held-{secrets.token_hex(3)}"
-    v1 = await publish(
-        owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
-    )
-    assert v1.status_code == 200
-    removed = await unsafe(
-        owner, "DELETE", f"/api/v1/projects/{project}/publication", headers={"If-Match": v1.headers["etag"]}
-    )
-    assert removed.status_code == 204
-    assert [str(r[0]) for r in ddl("SELECT workspace_id FROM slug_reservations WHERE slug = :s", s=slug)] == [
-        ws
-    ]
-    url = f"/api/v1/ops/slug-reservations/{slug}"
-    assert (
-        await unsafe(owner, "DELETE", url, params={"reason": "mine"})
-    ).status_code == 404  # operators only
-    assert (await unsafe(operator, "DELETE", url, params={"reason": "disputed address"})).status_code == 204
-    assert ddl("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=slug)[0][0] == 0
-    assert (await unsafe(operator, "DELETE", url, params={"reason": "again"})).status_code == 404
-    audit = (await owner.get(f"/api/v1/workspaces/{ws}/audit")).json()["items"]
-    released = next(e for e in audit if e["action"] == "slug.released")
-    assert released["metadata"] == {"operator": True, "reason": "disputed address"}
 
 
 async def test_manual_entitlements_raise_the_allowance_until_revoked(

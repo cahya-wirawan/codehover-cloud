@@ -1,6 +1,6 @@
 """MCP sign-in: the app as the OAuth 2.1 authorization server of its private hosted MCP sites (0037).
 
-An MCP client that gets 401 from `/mcp/{slug}` reads the protected-resource metadata (RFC 9728) named in
+An MCP client that gets 401 from `/mcp/<owner>/<project>` reads the protected-resource metadata (RFC 9728) named in
 `WWW-Authenticate`, then the authorization server metadata (RFC 8414), registers itself (RFC 7591;
 public clients only, no secret), and sends its person to `/oauth/authorize` with PKCE (S256 only) and
 the site's URL as `resource` (RFC 8707). The app's consent page shows who asks for what; approving needs
@@ -36,6 +36,7 @@ from app.core.settings import Settings
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
 from app.modules.mcp.tokens import digest
+from app.modules.published.router import find_site
 from app.modules.workspaces.access import Member, ReadMember, WriteMember
 
 API = "/api/v1"
@@ -46,7 +47,8 @@ CLIENT_PREFIX = "chc_"
 ACCESS_SECONDS = 3600
 REFRESH_DAYS = 30
 CONSENT_PAGE = "/oauth/authorize"
-SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{2,62}$")
+# 0039: a site is "<owner>/<project>".
+SITE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*/[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$")
 VERIFIER = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 CHALLENGE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -65,29 +67,30 @@ def _origin(settings: Settings) -> str:
     return settings.public_origin.rstrip("/")
 
 
-def resource_url(settings: Settings, slug: str) -> str:
-    return f"{_origin(settings)}{API}/mcp/{slug}"
+def resource_url(settings: Settings, site: str) -> str:
+    return f"{_origin(settings)}{API}/mcp/{site}"
 
 
-def metadata_url(settings: Settings, slug: str) -> str:
-    return f"{_origin(settings)}/.well-known/oauth-protected-resource{API}/mcp/{slug}"
+def metadata_url(settings: Settings, site: str) -> str:
+    return f"{_origin(settings)}/.well-known/oauth-protected-resource{API}/mcp/{site}"
 
 
-def challenge_header(settings: Settings, slug: str, error: str | None = None) -> dict[str, str]:
-    """`WWW-Authenticate` for a 401 from `/mcp/{slug}`: where the client learns how to sign in."""
+def challenge_header(settings: Settings, site: str, error: str | None = None) -> dict[str, str]:
+    """`WWW-Authenticate` for a 401 from `/mcp/<owner>/<project>`: where the client learns how to sign in."""
     parts = ['Bearer realm="codehover"']
     if error:
         parts.append(f'error="{error}"')
-    parts += [f'resource_metadata="{metadata_url(settings, slug)}"', f'scope="{SCOPE}"']
+    parts += [f'resource_metadata="{metadata_url(settings, site)}"', f'scope="{SCOPE}"']
     return {"WWW-Authenticate": ", ".join(parts)}
 
 
-def slug_of(settings: Settings, resource: str) -> str | None:
+def site_of(settings: Settings, resource: str) -> str | None:
+    """The "<owner>/<project>" an MCP resource URL names, or None."""
     prefix = f"{_origin(settings)}{API}/mcp/"
     if not resource.startswith(prefix):
         return None
-    slug = resource.removeprefix(prefix).rstrip("/")
-    return slug if SLUG.fullmatch(slug) else None
+    site = resource.removeprefix(prefix).rstrip("/")
+    return site if SITE.fullmatch(site) and len(site.partition("/")[0]) <= 39 else None
 
 
 def valid_redirect(uri: str) -> bool:
@@ -118,10 +121,11 @@ def _oauth_error(error: str, description: str, status: int = 400) -> Response:
 
 
 # ---------------------------------------------------------------- metadata
-@well_known.get("/.well-known/oauth-protected-resource/api/v1/mcp/{slug}", include_in_schema=False)
-async def protected_resource(slug: str, request: Request) -> JSONResponse:
+@well_known.get("/.well-known/oauth-protected-resource/api/v1/mcp/{owner}/{project}", include_in_schema=False)
+async def protected_resource(owner: str, project: str, request: Request) -> JSONResponse:
     """The same answer for every well-formed address, published or not, so it reveals nothing."""
-    if not SLUG.fullmatch(slug):
+    slug = f"{owner}/{project}"
+    if not SITE.fullmatch(slug):
         raise ApiError(404, "NOT_FOUND", "Not found.")
     settings = request.app.state.settings
     return JSONResponse(
@@ -265,7 +269,7 @@ async def authorize(
         return refuse("invalid_request")
     if scope and SCOPE not in scope.split():
         return refuse("invalid_scope")
-    slug = slug_of(settings, resource)
+    slug = site_of(settings, resource)
     if slug is None:
         return refuse("invalid_target")
     request_id = (
@@ -285,13 +289,9 @@ async def authorize(
     return _consent_redirect(request=str(request_id))
 
 
-async def _site(db: AsyncSession, slug: str) -> Any:
-    return (
-        await db.execute(
-            text("SELECT workspace_id, project_id, visibility FROM app_private.resolve_publication(:s)"),
-            {"s": slug},
-        )
-    ).one_or_none()
+async def _site(db: AsyncSession, site: str) -> Any:
+    owner, _, project = site.partition("/")
+    return await find_site(db, owner, project)
 
 
 async def _pending(db: AsyncSession, request_id: UUID, user_id: UUID) -> tuple[Any, Any]:
@@ -300,7 +300,7 @@ async def _pending(db: AsyncSession, request_id: UUID, user_id: UUID) -> tuple[A
     ).one_or_none()
     if pending is None:
         raise ApiError(404, "REQUEST_EXPIRED", "This sign-in request has expired. Start again from your app.")
-    site = await _site(db, pending.slug)
+    site = await _site(db, pending.site)
     allowed = None
     if site is not None:
         allowed = (
@@ -317,7 +317,7 @@ async def _pending(db: AsyncSession, request_id: UUID, user_id: UUID) -> tuple[A
 class ConsentOut(BaseModel):
     client_name: str
     redirect_host: str
-    slug: str
+    site: str  # "<owner>/<project>" (0039)
     project: str
     workspace: str
     visibility: str
@@ -343,7 +343,7 @@ async def consent(request_id: UUID, db: Db, principal: CurrentPrincipal) -> Cons
     return ConsentOut(
         client_name=pending.client_name,
         redirect_host=host,
-        slug=pending.slug,
+        site=f"{site.owner}/{site.project}",
         project=names.project,
         workspace=names.workspace,
         visibility=site.visibility,

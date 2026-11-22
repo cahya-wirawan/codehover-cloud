@@ -39,7 +39,6 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
   const [buildId, setBuildId] = useState<string>("");
   const chosen = buildId || current?.build_id || ready[0]?.id || "";
   const [visibility, setVisibility] = useState<"private" | "public">("private");
-  const [slug, setSlug] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
@@ -52,7 +51,6 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
         {
           build_id: chosen,
           visibility,
-          public_slug: slug.trim() || null,
           confirmation: visibility === "public" ? confirmation : null,
           acknowledge_partial: acknowledged,
         },
@@ -77,16 +75,14 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
         <p className="mt-1">
           Published build <span className="font-mono">{current.commit_sha.slice(0, 12)}</span>,{" "}
           {current.visibility === "public" ? <strong>public</strong> : "private to this workspace"}
-          {current.public_slug ? (
-            <> at <Link className="text-primary underline" to={`/sites/${current.public_slug}`}>/sites/{current.public_slug}</Link></>
-          ) : null}
+ at <Link className="text-primary underline" to={`/sites/${current.address}`}>/sites/{current.address}</Link>
           .
         </p>
       ) : (
         <p className="mt-1 text-muted">Not published. Every build stays private until an admin publishes it.</p>
       )}
-      {current?.public_slug && !current.suspended_reason ? (
-        <McpAddress slug={current.public_slug} isPublic={current.visibility === "public"} workspaceId={project.workspace_id} />
+      {current && !current.suspended_reason ? (
+        <McpAddress address={current.address} isPublic={current.visibility === "public"} workspaceId={project.workspace_id} />
       ) : null}
       {current?.suspended_reason ? (
         <p role="alert" className="mt-2 text-destructive">{SUSPENDED[current.suspended_reason] ?? "Suspended."}</p>
@@ -121,14 +117,10 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
                 Anyone with the address (public)
               </label>
             </fieldset>
-            <label className="flex max-w-md flex-col gap-1">
-              Site address {visibility === "private" ? "(optional)" : ""}
-              <span className="flex items-center gap-1 font-mono text-muted">/sites/
-                <input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase())} maxLength={63}
-                  pattern="[a-z0-9][a-z0-9-]{2,62}" placeholder={current?.public_slug ?? project.slug}
-                  className="h-9 flex-1 rounded-lg border border-input-border bg-surface px-2 text-foreground" />
-              </span>
-            </label>
+            <p className="text-muted">
+              The site lives at <span className="font-mono">/sites/{current?.address ?? `…/${project.slug}`}</span>: the
+              owner's name and this project's address.
+            </p>
             {visibility === "public" ? (
               <div className="rounded-lg border border-input-border p-3">
                 <p>
@@ -149,7 +141,7 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
               </label>
             ) : null}
             <button type="submit"
-              disabled={publish.isPending || !chosen || Boolean(blocked) || (needsAck && !acknowledged) || (visibility === "public" && (!slug.trim() || confirmation !== project.name))}
+              disabled={publish.isPending || !chosen || Boolean(blocked) || (needsAck && !acknowledged) || (visibility === "public" && confirmation !== project.name)}
               className="btn btn-primary btn-lg">
               {current ? "Update publication" : "Publish"}
             </button>
@@ -183,21 +175,22 @@ export function PublicationPanel({ project, canPublish }: { project: Project; ca
   );
 }
 
-/** The site's hosted MCP address (06 "/mcp/{slug}") and the command that adds it to Claude Code. */
-function McpAddress({ slug, isPublic, workspaceId }: { slug: string; isPublic: boolean; workspaceId: string }) {
-  const url = `${window.location.origin}/api/v1/mcp/${slug}`;
-  const command = `claude mcp add --transport http ${slug} ${url}${isPublic ? "" : ' --header "Authorization: Bearer <token>"'}`;
+/** The site's hosted MCP address (06 "/mcp/<owner>/<project>") and the command that adds it to Claude Code. */
+function McpAddress({ address, isPublic, workspaceId }: { address: string; isPublic: boolean; workspaceId: string }) {
+  const url = `${window.location.origin}/api/v1/mcp/${address}`;
+  const name = address.replace("/", "-");
+  const command = `claude mcp add --transport http ${name} ${url}`;
   return (
     <div className="mt-3">
       <p>
         MCP clients can read this site at <code className="font-mono text-[13px]">{url}</code>.
         {isPublic ? null : (
           <>
-            {" "}It needs an{" "}
+            {" "}The client asks you to sign in through the browser; clients without sign-in can send an{" "}
             <Link className="text-primary underline" to={`/w/${workspaceId}`}>
               access token
-            </Link>
-            .
+            </Link>{" "}
+            instead.
           </>
         )}
       </p>

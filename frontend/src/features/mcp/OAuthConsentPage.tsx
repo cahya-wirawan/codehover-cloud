@@ -65,7 +65,7 @@ export function OAuthConsentPage() {
         Allow {request.client_name} to read {request.project}?
       </h1>
       <p className="mt-3">
-        {request.client_name} will read the published site <span className="font-mono">{request.slug}</span> of{" "}
+        {request.client_name} will read the published site <span className="font-mono">{request.site}</span> of{" "}
         {request.workspace} as you: its explanations, guide and source code. It can read nothing else, and it
         cannot change anything.
       </p>

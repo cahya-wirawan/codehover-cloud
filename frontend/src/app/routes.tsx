@@ -7,7 +7,7 @@ import { PrivacyPage, SupportPage, TermsPage } from "../features/legal/LegalPage
 import { OAuthConsentPage } from "../features/mcp/OAuthConsentPage";
 import { OrganizationPage } from "../features/organizations/OrganizationPage";
 import { OpsPage } from "../features/ops/OpsPage";
-import { SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
+import { LegacySiteRedirect, SiteCode, SiteGuide, SitePage, SiteSearch } from "../features/sites/SitePage";
 import { ProjectPage } from "../features/projects/ProjectPage";
 import {
   BuildCode,
@@ -70,7 +70,7 @@ export const routes: RouteObject[] = [
       },
       { path: "invitations/accept", element: <AcceptInvitationPage /> },
       {
-        path: "sites/:site",
+        path: "sites/:owner/:project",
         element: <SitePage />,
         children: [
           { index: true, element: <SiteGuide /> },
@@ -80,6 +80,10 @@ export const routes: RouteObject[] = [
           { path: "search", element: <SiteSearch /> },
         ],
       },
+      // Pre-0039 one-segment addresses (/sites/<slug>, /sites/<slug>/code, …) redirect through their alias.
+      { path: "sites/:alias", element: <LegacySiteRedirect /> },
+      { path: "sites/:alias/code", element: <LegacySiteRedirect /> },
+      { path: "sites/:alias/search", element: <LegacySiteRedirect /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

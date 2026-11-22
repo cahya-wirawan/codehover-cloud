@@ -173,6 +173,24 @@
         "title": "AccountDeletionOut",
         "type": "object"
       },
+      "AliasOut": {
+        "properties": {
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "project"
+        ],
+        "title": "AliasOut",
+        "type": "object"
+      },
       "Answered": {
         "properties": {
           "organization_id": {
@@ -1255,8 +1273,8 @@
             "title": "Scope",
             "type": "string"
           },
-          "slug": {
-            "title": "Slug",
+          "site": {
+            "title": "Site",
             "type": "string"
           },
           "visibility": {
@@ -1271,7 +1289,7 @@
         "required": [
           "client_name",
           "redirect_host",
-          "slug",
+          "site",
           "project",
           "workspace",
           "visibility"
@@ -4111,18 +4129,6 @@
             ],
             "title": "Confirmation"
           },
-          "public_slug": {
-            "anyOf": [
-              {
-                "maxLength": 63,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Slug"
-          },
           "visibility": {
             "default": "private",
             "enum": [
@@ -4145,6 +4151,10 @@
             "title": "Acknowledged Partial",
             "type": "boolean"
           },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
           "build_id": {
             "format": "uuid",
             "title": "Build Id",
@@ -4164,17 +4174,6 @@
               }
             ],
             "title": "License Spdx"
-          },
-          "public_slug": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Slug"
           },
           "suspended_at": {
             "anyOf": [
@@ -4225,7 +4224,7 @@
         "required": [
           "build_id",
           "visibility",
-          "public_slug",
+          "address",
           "version",
           "acknowledged_partial",
           "suspended_at",
@@ -4946,6 +4945,10 @@
       },
       "SiteOut": {
         "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
           "commit_sha": {
             "title": "Commit Sha",
             "type": "string"
@@ -4981,6 +4984,7 @@
           }
         },
         "required": [
+          "address",
           "project",
           "repository",
           "commit_sha",
@@ -8318,54 +8322,6 @@
         ]
       }
     },
-    "/api/v1/ops/slug-reservations/{slug}": {
-      "delete": {
-        "description": "End a released address's reservation early (0036), so any workspace may publish at it.",
-        "operationId": "release_slug_api_v1_ops_slug_reservations__slug__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "slug",
-            "required": true,
-            "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "reason",
-            "required": true,
-            "schema": {
-              "maxLength": 500,
-              "minLength": 3,
-              "title": "Reason",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Release Slug",
-        "tags": [
-          "operations"
-        ]
-      }
-    },
     "/api/v1/ops/summary": {
       "get": {
         "operationId": "summary_api_v1_ops_summary_get",
@@ -10323,17 +10279,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}": {
+    "/api/v1/published/{owner}/{project}": {
       "get": {
-        "operationId": "site_api_v1_published__slug__get",
+        "operationId": "site_api_v1_published__owner___project__get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           }
@@ -10366,17 +10333,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}/files/{file_id}": {
+    "/api/v1/published/{owner}/{project}/files/{file_id}": {
       "get": {
-        "operationId": "file_view_api_v1_published__slug__files__file_id__get",
+        "operationId": "file_view_api_v1_published__owner___project__files__file_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           },
@@ -10464,17 +10442,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}/guide": {
+    "/api/v1/published/{owner}/{project}/guide": {
       "get": {
-        "operationId": "guide_index_api_v1_published__slug__guide_get",
+        "operationId": "guide_index_api_v1_published__owner___project__guide_get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           },
@@ -10524,17 +10513,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}/guide/{page}": {
+    "/api/v1/published/{owner}/{project}/guide/{page}": {
       "get": {
-        "operationId": "guide_page_api_v1_published__slug__guide__page__get",
+        "operationId": "guide_page_api_v1_published__owner___project__guide__page__get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           },
@@ -10594,17 +10594,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}/search": {
+    "/api/v1/published/{owner}/{project}/search": {
       "get": {
-        "operationId": "search_api_v1_published__slug__search_get",
+        "operationId": "search_api_v1_published__owner___project__search_get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           },
@@ -10694,17 +10705,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}/symbols/{symbol_id}": {
+    "/api/v1/published/{owner}/{project}/symbols/{symbol_id}": {
       "get": {
-        "operationId": "symbol_view_api_v1_published__slug__symbols__symbol_id__get",
+        "operationId": "symbol_view_api_v1_published__owner___project__symbols__symbol_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           },
@@ -10764,17 +10786,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}/tree": {
+    "/api/v1/published/{owner}/{project}/tree": {
       "get": {
-        "operationId": "tree_api_v1_published__slug__tree_get",
+        "operationId": "tree_api_v1_published__owner___project__tree_get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           },
@@ -10835,17 +10868,28 @@
         ]
       }
     },
-    "/api/v1/published/{slug}/variants": {
+    "/api/v1/published/{owner}/{project}/variants": {
       "get": {
-        "operationId": "variants_api_v1_published__slug__variants_get",
+        "operationId": "variants_api_v1_published__owner___project__variants_get",
         "parameters": [
           {
             "in": "path",
-            "name": "slug",
+            "name": "owner",
             "required": true,
             "schema": {
-              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
-              "title": "Slug",
+              "maxLength": 39,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+              "title": "Project",
               "type": "string"
             }
           }
@@ -10873,6 +10917,50 @@
           }
         },
         "summary": "Variants",
+        "tags": [
+          "published"
+        ]
+      }
+    },
+    "/api/v1/site-aliases/{alias}": {
+      "get": {
+        "description": "Where a pre-0039 address (/sites/<slug>) leads now, for a year after the change: a public site for\nanyone, a private one for its members; 404 otherwise, alike for unknown, private and withdrawn.",
+        "operationId": "site_alias_api_v1_site_aliases__alias__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AliasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Site Alias",
         "tags": [
           "published"
         ]

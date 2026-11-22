@@ -280,7 +280,6 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
     async with sessions() as db:
         identity = (await db.execute(text("SELECT * FROM app_private.sweep_identity()"))).one()
         audit = (await db.execute(text("SELECT app_private.sweep_audit()"))).scalar_one()
-        slugs = (await db.execute(text("SELECT app_private.sweep_slug_reservations()"))).scalar_one()
         oauth = (await db.execute(text("SELECT app_private.sweep_oauth()"))).scalar_one()
         handles = (await db.execute(text("SELECT app_private.sweep_handle_reservations()"))).scalar_one()
         windows: Any = await db.execute(  # rate-limit counters (0019): no tenant data, kept two days
@@ -295,7 +294,6 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
             "oauth_transactions": identity.oauth_transactions,
             "sessions": identity.sessions,
             "audit_events": audit,
-            "slug_reservations": slugs,
             "oauth": oauth,
             "handle_reservations": handles,
             "rate_limit_windows": int(windows.rowcount or 0),
@@ -306,7 +304,6 @@ async def sweep(sessions: async_sessionmaker[AsyncSession], store: ObjectStore) 
         "oauth_transactions",
         "sessions",
         "audit_events",
-        "slug_reservations",
         "oauth",
         "handle_reservations",
         "rate_limit_windows",

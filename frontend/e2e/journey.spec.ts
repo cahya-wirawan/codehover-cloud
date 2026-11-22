@@ -109,10 +109,12 @@ test("sign in, build, read, review, publish to members then the public, withdraw
   // get the same "not found" as for a site that does not exist (09, 13).
   const projectUrl = buildUrl.replace(/\/builds\/.*$/, "");
   await page.goto(projectUrl);
-  const slug = `e2e-site-${run}`;
-  await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/private to this workspace/)).toBeVisible();
+  // 0039: the site lives under its owner, /sites/<owner>/<project>.
+  const publishedPid = projectUrl.split("/p/")[1] ?? "";
+  const slug = ((await (await page.request.get(`/api/v1/projects/${publishedPid}/publication`)).json()) as { address: string }).address;
+  expect(slug).toMatch(/^[a-z0-9-]+\/api$/);
   await accessible(page, "private publication");
 
   const member = await personPage(browser, base);
@@ -143,7 +145,6 @@ test("sign in, build, read, review, publish to members then the public, withdraw
 
   // Opt in to public with the typed confirmation; the anonymous reader now sees it.
   await page.getByRole("radio", { name: /public/ }).check();
-  await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
   await page.getByRole("region", { name: "Publication" }).getByRole("textbox", { name: /Type the project name/ }).fill("API");
   await page.getByRole("button", { name: "Update publication" }).click();
   await expect(page.getByRole("link", { name: `/sites/${slug}` })).toBeVisible();
@@ -202,7 +203,6 @@ test("sign in, build, read, review, publish to members then the public, withdraw
 
   // Delete the project: delivery stops at once for members, and the project is gone (A22).
   await page.goto(projectUrl);
-  await page.getByRole("textbox", { name: /Site address/ }).fill(slug);
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/private to this workspace/)).toBeVisible();
   await member.goto(`/sites/${slug}`);

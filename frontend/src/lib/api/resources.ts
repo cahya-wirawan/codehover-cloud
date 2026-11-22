@@ -239,7 +239,7 @@ export interface OAuthGrant {
 export interface OAuthConsent {
   client_name: string;
   redirect_host: string;
-  slug: string;
+  site: string; // "<owner>/<project>"
   project: string;
   workspace: string;
   visibility: string;
@@ -400,7 +400,8 @@ export interface Quality {
 export interface Publication {
   build_id: string;
   visibility: "private" | "public";
-  public_slug: string | null;
+  /** 0039: "<owner>/<project>"; the site is /sites/<address>, its MCP endpoint /api/v1/mcp/<address>. */
+  address: string;
   version: number;
   acknowledged_partial: boolean;
   suspended_at: string | null;
@@ -413,11 +414,12 @@ export interface Publication {
 export interface PublishRequest {
   build_id: string;
   visibility: "private" | "public";
-  public_slug: string | null;
   confirmation: string | null;
   acknowledge_partial: boolean;
 }
 export interface Site {
+  /** The canonical "<owner>/<project>"; differs from the address asked for after an owner was renamed. */
+  address: string;
   project: string;
   repository: string;
   commit_sha: string;
@@ -499,11 +501,13 @@ function viewerSource(
 
 export const buildSource = (bid: string): ViewerSource =>
   viewerSource(`/builds/${bid}`, `build:${bid}`, () => apiJson<Quality>(`/builds/${bid}/quality`));
+/** A site's path, "<owner>/<project>" (0039), each part encoded. */
+export const sitePath = (owner: string, project: string) => `${encodeURIComponent(owner)}/${encodeURIComponent(project)}`;
 /** A published site, read in one of its languages (FR-026), or as published when `language` is null. */
-export const siteSource = (slug: string, language: string | null = null): ViewerSource =>
+export const siteSource = (site: string, language: string | null = null): ViewerSource =>
   viewerSource(
-    `/published/${encodeURIComponent(slug)}`,
-    `site:${slug}:${language ?? ""}`,
+    `/published/${site}`,
+    `site:${site}:${language ?? ""}`,
     null,
     language ? { language } : {},
   );
@@ -879,8 +883,9 @@ export const api = {
     ),
   unpublish: async (pid: string, ifMatch: string) =>
     apiSend("DELETE", `/projects/${pid}/publication`, undefined, { "If-Match": ifMatch }),
-  site: (slug: string) => apiJson<Site>(`/published/${encodeURIComponent(slug)}`),
-  siteVariants: (slug: string) => apiJson<Page<SiteVariant>>(`/published/${encodeURIComponent(slug)}/variants`),
+  site: (site: string) => apiJson<Site>(`/published/${site}`),
+  siteVariants: (site: string) => apiJson<Page<SiteVariant>>(`/published/${site}/variants`),
+  siteAlias: (alias: string) => apiJson<{ owner: string; project: string }>(`/site-aliases/${encodeURIComponent(alias)}`),
   freshness: (pid: string) => apiJson<Freshness>(`/projects/${pid}/freshness`),
   audit: (wid: string, action: string | null, cursor: string | null) => {
     const params = new URLSearchParams({ limit: "50" });

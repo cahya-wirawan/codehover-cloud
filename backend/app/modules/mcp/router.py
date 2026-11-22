@@ -31,7 +31,7 @@ from app.core.errors import ApiError
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Db
 from app.modules.mcp import oauth, resources, tokens, tools
-from app.modules.published.router import Site, SlugPath
+from app.modules.published.router import AliasPath, OwnerPath, ProjectPath, Site, find_site
 from app.modules.workspaces.access import PublicReader, ReadMember, WriteMember
 
 router = APIRouter(tags=["mcp"])
@@ -136,6 +136,7 @@ def _unauthenticated(request: Request, slug: str, message: str, error: str | Non
 
 
 async def _site(slug: str, request: Request, db: Db) -> Site:
+    """`slug` is the requested address, "<owner>/<project>" (0039)."""
     settings = request.app.state.settings
     await ratelimit.hit(
         request.app.state.rate_sessions, settings, "public", ratelimit.client_address(request, settings)
@@ -147,14 +148,8 @@ async def _site(slug: str, request: Request, db: Db) -> Site:
     principal = await tokens.resolve(db, token) if token is not None else None
     if token is not None and principal is None:
         raise _unauthenticated(request, slug, "This access token is not valid.", "invalid_token")
-    found = (
-        await db.execute(
-            text(
-                "SELECT workspace_id, project_id, build_id, visibility FROM app_private.resolve_publication(:s)"
-            ),
-            {"s": slug},
-        )
-    ).one_or_none()
+    owner, _, project = slug.partition("/")
+    found = await find_site(db, owner, project)
     if (
         principal is not None
         and principal.project_id is not None
@@ -180,7 +175,13 @@ async def _site(slug: str, request: Request, db: Db) -> Site:
     if principal is not None and principal.workspace_id == found.workspace_id:
         await tokens.touch(db, principal)
     await db.commit()
-    return Site(PublicReader(found.workspace_id), found.project_id, found.build_id, found.visibility)
+    return Site(
+        PublicReader(found.workspace_id),
+        found.project_id,
+        found.build_id,
+        found.visibility,
+        f"{found.owner}/{found.project}",
+    )
 
 
 def _result(id_: Any, result: dict[str, Any]) -> JSONResponse:
@@ -191,13 +192,41 @@ def _error(id_: Any, code: int, message: str, status: int = 200) -> JSONResponse
     return JSONResponse({"jsonrpc": "2.0", "id": id_, "error": {"code": code, "message": message}}, status)
 
 
-@router.post("/mcp/{slug}", include_in_schema=False)
+Protocol = Annotated[str | None, Header(alias="MCP-Protocol-Version")]
+
+
+@router.post("/mcp/{owner}/{project}", include_in_schema=False)
 async def mcp(
-    slug: SlugPath,
-    request: Request,
-    db: Db,
-    protocol: Annotated[str | None, Header(alias="MCP-Protocol-Version")] = None,
+    owner: OwnerPath, project: ProjectPath, request: Request, db: Db, protocol: Protocol = None
 ) -> Response:
+    return await _answer(f"{owner}/{project}", request, db, protocol)
+
+
+@router.post("/mcp/{alias}", include_in_schema=False)
+async def mcp_alias(alias: AliasPath, request: Request, db: Db, protocol: Protocol = None) -> Response:
+    """A pre-0039 one-segment endpoint keeps answering, for its site's current address, while the alias
+    lasts (a year); MCP clients do not follow redirects. A public site answers anyone; a private one only
+    a request with a token (checked as usual for the site). Anything else is the same 401 with no sign-in
+    hint, so an old slug names no private site."""
+    found = (
+        await db.execute(
+            text("SELECT owner, project, visibility FROM app_private.site_alias(:a)"), {"a": alias}
+        )
+    ).one_or_none()
+    await db.commit()
+    if found is not None and found.visibility != "public" and request.headers.get("authorization") is None:
+        found = None
+    if found is None:
+        raise ApiError(
+            401,
+            "UNAUTHENTICATED",
+            "Site not found.",
+            headers={"WWW-Authenticate": 'Bearer realm="codehover"'},
+        )
+    return await _answer(f"{found.owner}/{found.project}", request, db, protocol)
+
+
+async def _answer(slug: str, request: Request, db: Db, protocol: str | None) -> Response:
     if protocol is not None and protocol not in PROTOCOL_VERSIONS:
         raise ApiError(400, "VALIDATION_FAILED", "Unsupported MCP-Protocol-Version.")
     raw = await request.body()
@@ -252,15 +281,17 @@ async def mcp(
             return _error(id_, -32602, f"Invalid arguments: {error}"[:500])
         return _result(id_, {"content": [{"type": "text", "text": output}], "isError": is_error})
     if method == "resources/list":
-        return _result(id_, {"resources": await resources.listing(db, request.app.state.objects, site, slug)})
+        return _result(
+            id_, {"resources": await resources.listing(db, request.app.state.objects, site, site.address)}
+        )
     if method == "resources/templates/list":
-        return _result(id_, {"resourceTemplates": resources.templates(slug)})
+        return _result(id_, {"resourceTemplates": resources.templates(site.address)})
     if method == "resources/read":
         uri = params.get("uri")
         if not isinstance(uri, str) or len(uri) > 2048:
             return _error(id_, -32602, "Invalid params: uri")
         try:
-            return _result(id_, await resources.read(db, request.app.state.objects, site, slug, uri))
+            return _result(id_, await resources.read(db, request.app.state.objects, site, site.address, uri))
         except resources.NotFound:
             return _error(id_, -32002, "Resource not found")
     if method == "prompts/list":
@@ -278,11 +309,13 @@ async def mcp(
     return _error(id_, -32601, "Method not found")
 
 
-@router.get("/mcp/{slug}", include_in_schema=False)
-async def mcp_stream(slug: SlugPath) -> Response:
+@router.get("/mcp/{owner}/{project}", include_in_schema=False)
+@router.delete("/mcp/{owner}/{project}", include_in_schema=False)
+async def mcp_stream(owner: OwnerPath, project: ProjectPath) -> Response:
     return Response(status_code=405, headers={"Allow": "POST"})
 
 
-@router.delete("/mcp/{slug}", include_in_schema=False)
-async def mcp_close(slug: SlugPath) -> Response:
+@router.get("/mcp/{alias}", include_in_schema=False)
+@router.delete("/mcp/{alias}", include_in_schema=False)
+async def mcp_alias_stream(alias: AliasPath) -> Response:
     return Response(status_code=405, headers={"Allow": "POST"})
