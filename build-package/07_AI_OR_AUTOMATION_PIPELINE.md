@@ -84,7 +84,7 @@ Push rebuilds (M6, T21; `app/modules/projects/pushes.py`). The worker's maintena
 - A push never publishes.
 
 Variants (M6, T22; FR-026):
-- The generation config's `languages` (en, de, id) and `levels` (standard, beginner, expert) hold one value each.
+- The generation config's `languages` (the 30 most spoken languages by total speakers (Ethnologue 2026 as listed by Wikipedia): en, zh, hi, es, ar, fr, bn, pt, id, ur, ru, de, ja, pcm, arz, mr, vi, te, sw, ha, tr, pnb, tl, ta, yue, wuu, fa, ko, am, th (ISO 639-1, else ISO 639-3; `prompts.LANGUAGES`)) and `levels` (standard, beginner, expert) hold one value each.
 - `variant_of` names a ready, original generated build of the same project and snapshot. The estimate then copies the base's scope (include, exclude, max_files, guide_pages), so the variant explains the same files.
 - The plan stage copies the base's guide pages instead of calling P01.
 - The writer's requests carry the audience in the system instruction and in the cache key (`variant`), so variants never share cached outputs.

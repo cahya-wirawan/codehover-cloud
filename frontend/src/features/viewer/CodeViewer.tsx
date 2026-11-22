@@ -12,6 +12,7 @@ import type { FileView, Related, TreeEntry, ViewerSource } from "../../lib/api/r
 import { cn } from "../../lib/cn";
 import { useMediaQuery } from "../../lib/useMediaQuery";
 import { type Control, kindClass, nameRange, parameterUses, referenceRanges, renderLine, withoutOverlaps } from "./codeLine";
+import { GuideMarkdown } from "./GuideMarkdown";
 import { CandidatesCard, InlineText, NoteCard, ParamCard, SymbolCard } from "./SymbolCard";
 
 const WINDOW = 500; // the API returns at most 500 lines per request (06)
@@ -57,6 +58,9 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 /** The scanner's language names (scan.LANGUAGES) as highlighter grammars. */
 const SCANNED: Record<string, string> = { python: "python", javascript: "jsx", typescript: "tsx", tsx: "tsx", rust: "rust", c: "c", cpp: "cpp" };
+
+const MARKDOWN_FILE = /\.(md|markdown|mdx)$/i;
+const plainText = (text: string, key: string) => <Fragment key={key}>{text}</Fragment>;
 
 /** The highlighter grammar: the language the scanner gave the file, else its extension. */
 function languageOf(path: string, scanned?: string | null): string {
@@ -215,6 +219,8 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
   const end = Number(params.get("end") ?? "0") || line;
   const pinnedSymbol = params.get("symbol");
   const inlineNotes = params.get("notes") === "inline";
+  // A Markdown file reads formatted unless the reader asks for its source or a link targets its lines.
+  const wantsSource = params.get("view") === "source" || line !== null;
   const [preview, setPreview] = useState<string | null>(null);
   const [pinnedLocal, setPinnedLocal] = useState<string | null>(null);
   const openTimer = useRef<number | undefined>(undefined);
@@ -405,7 +411,17 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
             </div>
           ) : null}
           <div className="file-tools">
-            {notes.length ? (
+            {MARKDOWN_FILE.test(data.path) ? (
+              <div className="notes-mode" role="group" aria-label="How this Markdown file is shown">
+                <button type="button" aria-pressed={!wantsSource} onClick={() => update({ view: null, line: null, end: null })}>
+                  Formatted
+                </button>
+                <button type="button" aria-pressed={wantsSource} onClick={() => update({ view: "source" })}>
+                  Source
+                </button>
+              </div>
+            ) : null}
+            {notes.length && !(MARKDOWN_FILE.test(data.path) && !wantsSource) ? (
               <div className="notes-mode" role="group" aria-label="How line notes are shown">
                 <button type="button" aria-pressed={!inlineNotes} onClick={() => update({ notes: null })}>
                   Notes on hover
@@ -421,6 +437,12 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
               </Button>
             ) : null}
           </div>
+          {MARKDOWN_FILE.test(data.path) && !wantsSource ? (
+            <div className="prose md-file">
+              {/* Repository Markdown is data: the guide's renderer shows no HTML and no images, and links only to https. */}
+              <GuideMarkdown markdown={data.lines.join("\n")} text={plainText} />
+            </div>
+          ) : (
           <Highlight code={data.lines.join("\n")} language={languageOf(data.path, data.language)} theme={NO_THEME}>
             {({ tokens }) => (
               <div className="code">
@@ -536,6 +558,7 @@ export function CodeViewer({ source, base }: { source: ViewerSource; base?: stri
               </div>
             )}
           </Highlight>
+          )}
           {total && last < total ? (
             <Button size="sm" className="m-3" onClick={() => setWindowStart(last + 1)}>
               Later lines

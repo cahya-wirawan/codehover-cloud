@@ -22,6 +22,7 @@ from app.adapters.storage import ObjectStore
 from app.core import ratelimit
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
+from app.engine.prompts import LANGUAGE_PATTERN
 from app.modules.identity.sessions import Db, OptionalPrincipal
 from app.modules.projects import quality, service
 from app.modules.projects.router import (
@@ -82,7 +83,7 @@ async def resolve_site(slug: SlugPath, request: Request, db: Db, principal: Opti
 
 
 SiteDep = Annotated[Site, Depends(resolve_site)]
-LanguageQuery = Annotated[str | None, Query(pattern=r"^(en|de|id)$")]
+LanguageQuery = Annotated[str | None, Query(pattern=LANGUAGE_PATTERN)]
 
 
 async def site_variants(db: Any, found: Site) -> list[dict[str, Any]]:

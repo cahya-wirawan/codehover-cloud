@@ -4,6 +4,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-11-22
+
+### Added
+
+- 01, 02, 06, 07: languages are the 30 most spoken by total speakers (Ethnologue 2026, as listed by Wikipedia), up from English, German and Indonesian; site routes and MCP tools accept the same codes. English, German and Indonesian keep their prompt names, so their cached outputs stay valid. The generation panel makes English the first language, adds further ones from a dropdown and translates them by default.
+- 02: a repository Markdown file opens formatted in the code view, with a Formatted / Source switch; right-to-left prose takes its paragraph's direction.
+
 ## [0.6.8] - 2026-11-22
 
 ### Added

@@ -211,7 +211,79 @@ export interface Variant {
   level: string;
   base: boolean;
 }
-export const LANGUAGES: Record<string, string> = { en: "English", de: "Deutsch", id: "Bahasa Indonesia" };
+/** The 30 most spoken languages by total speakers (FR-026; the backend's prompts.LANGUAGES), in that order,
+ * by their own names. */
+export const LANGUAGES: Record<string, string> = {
+  en: "English",
+  zh: "中文（普通话）",
+  hi: "हिन्दी",
+  es: "Español",
+  ar: "العربية",
+  fr: "Français",
+  bn: "বাংলা",
+  pt: "Português",
+  id: "Bahasa Indonesia",
+  ur: "اردو",
+  ru: "Русский",
+  de: "Deutsch",
+  ja: "日本語",
+  pcm: "Naijá",
+  arz: "مصرى",
+  mr: "मराठी",
+  vi: "Tiếng Việt",
+  te: "తెలుగు",
+  sw: "Kiswahili",
+  ha: "Hausa",
+  tr: "Türkçe",
+  pnb: "پنجابی",
+  tl: "Tagalog",
+  ta: "தமிழ்",
+  yue: "粵語",
+  wuu: "吴语",
+  fa: "فارسی",
+  ko: "한국어",
+  am: "አማርኛ",
+  th: "ไทย",
+};
+/** The same languages' English names, shown beside their own in the language picker. */
+export const LANGUAGE_ENGLISH: Record<string, string> = {
+  en: "English",
+  zh: "Mandarin Chinese",
+  hi: "Hindi",
+  es: "Spanish",
+  ar: "Arabic",
+  fr: "French",
+  bn: "Bengali",
+  pt: "Portuguese",
+  id: "Indonesian",
+  ur: "Urdu",
+  ru: "Russian",
+  de: "German",
+  ja: "Japanese",
+  pcm: "Nigerian Pidgin",
+  arz: "Egyptian Arabic",
+  mr: "Marathi",
+  vi: "Vietnamese",
+  te: "Telugu",
+  sw: "Swahili",
+  ha: "Hausa",
+  tr: "Turkish",
+  pnb: "Western Punjabi",
+  tl: "Tagalog",
+  ta: "Tamil",
+  yue: "Cantonese",
+  wuu: "Wu Chinese",
+  fa: "Persian",
+  ko: "Korean",
+  am: "Amharic",
+  th: "Thai",
+};
+/** "Deutsch (German)"; English alone. */
+export function languageLabel(code: string): string {
+  const own = LANGUAGES[code] ?? code;
+  const english = LANGUAGE_ENGLISH[code];
+  return english && english !== own ? `${own} (${english})` : own;
+}
 export const LEVELS: Record<string, string> = { standard: "Standard", beginner: "Beginner", expert: "Expert" };
 export interface SiteMeta {
   operator_name: string;

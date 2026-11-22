@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-22 · Package version 0.6.8
+Date: 2026-11-22 · Package version 0.6.9
+
+0.6.9 widens languages to the 30 most spoken by total speakers and shows repository Markdown files formatted. Unit tests check that the 30 languages reach the writer by name, that the route pattern accepts exactly them, and that English, German and Indonesian keep their prompt names. Integration tests check that a Japanese variant is accepted and an unknown code refused, and that a site answers a supported language it does not carry with 404 and an unknown code with 422. Frontend tests check that English comes first, the picker offers the other 29 and stops at two, translation is on by default and can be turned off, and a Markdown file renders formatted with no images, no HTML and only https links, with its source one click away. Results: unit 287 passed (8 skipped), integration 259 passed, frontend 61 passed, e2e 2 passed.
 
 0.6.8 adds translated language variants (prompt set 0.6.0). `test_variants.py` checks that a translated family's estimate prices the translation below a written language and adds them up, that the cap is shared in proportion, that the variant waits for each base stage, calls only the translator (no explain, overview, plan or guide calls), keeps the base's pages and explanation structure with `translated_from` provenance and carries the same claim checks, and that a translation of a ready build must keep its reader level. `test_generation_engine.py` covers the translate request (source as a data block, audience, cache key), the structure checks (renamed parameters, moved or dropped notes, a reordered reading order, lost citations or links are refused; translated headings and anchors are allowed) and the config rule. The frontend test covers the option and the split estimate. Results: unit 286 passed (8 skipped), integration 259 passed, frontend 60 passed.
 

@@ -454,4 +454,5 @@ async def test_a_site_serves_the_ready_language_variants_of_its_build(
     listed = (await owner.get(f"/api/v1/published/{slug}/variants")).json()["items"]
     assert [v["language"] for v in listed] == ["en", "de"]
     assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "id"})).status_code == 404
-    assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "fr"})).status_code == 422
+    assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "ja"})).status_code == 404
+    assert (await owner.get(f"/api/v1/published/{slug}/tree", params={"language": "tlh"})).status_code == 422

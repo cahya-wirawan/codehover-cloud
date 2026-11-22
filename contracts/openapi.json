@@ -8833,7 +8833,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^(en|de|id)$",
+                  "pattern": "^(en|zh|hi|es|ar|fr|bn|pt|id|ur|ru|de|ja|pcm|arz|mr|vi|te|sw|ha|tr|pnb|tl|ta|yue|wuu|fa|ko|am|th)$",
                   "type": "string"
                 },
                 {
@@ -8893,7 +8893,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^(en|de|id)$",
+                  "pattern": "^(en|zh|hi|es|ar|fr|bn|pt|id|ur|ru|de|ja|pcm|arz|mr|vi|te|sw|ha|tr|pnb|tl|ta|yue|wuu|fa|ko|am|th)$",
                   "type": "string"
                 },
                 {
@@ -8963,7 +8963,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^(en|de|id)$",
+                  "pattern": "^(en|zh|hi|es|ar|fr|bn|pt|id|ur|ru|de|ja|pcm|arz|mr|vi|te|sw|ha|tr|pnb|tl|ta|yue|wuu|fa|ko|am|th)$",
                   "type": "string"
                 },
                 {
@@ -9063,7 +9063,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^(en|de|id)$",
+                  "pattern": "^(en|zh|hi|es|ar|fr|bn|pt|id|ur|ru|de|ja|pcm|arz|mr|vi|te|sw|ha|tr|pnb|tl|ta|yue|wuu|fa|ko|am|th)$",
                   "type": "string"
                 },
                 {
@@ -9133,7 +9133,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^(en|de|id)$",
+                  "pattern": "^(en|zh|hi|es|ar|fr|bn|pt|id|ur|ru|de|ja|pcm|arz|mr|vi|te|sw|ha|tr|pnb|tl|ta|yue|wuu|fa|ko|am|th)$",
                   "type": "string"
                 },
                 {
@@ -9204,7 +9204,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^(en|de|id)$",
+                  "pattern": "^(en|zh|hi|es|ar|fr|bn|pt|id|ur|ru|de|ja|pcm|arz|mr|vi|te|sw|ha|tr|pnb|tl|ta|yue|wuu|fa|ko|am|th)$",
                   "type": "string"
                 },
                 {

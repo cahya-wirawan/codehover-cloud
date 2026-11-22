@@ -145,8 +145,10 @@ async def test_variant_requests_are_validated(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
 ) -> None:
     owner, _ws, project, base, app = await ready_build(client, idp, github)
-    unknown = await variant(owner, project, base, language="fr", level="standard")
+    unknown = await variant(owner, project, base, language="tlh", level="standard")
     assert unknown.status_code == 422
+    japanese = await variant(owner, project, base, language="ja", level="standard")  # one of the 30
+    assert japanese.status_code == 201, japanese.text
     unchanged = await variant(owner, project, base, language="en", level="standard")
     assert unchanged.status_code == 422 and code(unchanged) == "VARIANT_UNCHANGED"
     missing = await make_estimate(
