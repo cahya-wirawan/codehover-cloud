@@ -837,5 +837,6 @@ class SlugReservation(Base):
     __tablename__ = "slug_reservations"
     slug: Mapped[str] = mapped_column(Text, primary_key=True)
     workspace_id: Mapped[UUID] = ref()
+    project_id: Mapped[UUID] = ref()
     released_at: Mapped[datetime] = ts(default_now=True)
     reserved_until: Mapped[datetime] = ts()

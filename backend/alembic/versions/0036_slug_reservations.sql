@@ -4,23 +4,27 @@
 -- again the moment its publication let go of it (unpublish, a new address, a private site without one,
 -- a project or workspace purge), so another workspace could publish its own site at the same address and
 -- receive the old site's readers and agents. Now the address is reserved for the releasing workspace for
--- 90 days: that workspace may take it back at any time, every other workspace gets SLUG_TAKEN. A workspace
--- holds at most 10 reservations; a further release ends its oldest one. A purged
+-- 90 days: that workspace may take it back at any time, every other workspace gets SLUG_TAKEN. Each
+-- project keeps at most 3 of the addresses it let go, so renaming a site through many addresses cannot hold
+-- them all; the address released last is always kept, so unpublishing or purging never frees a live
+-- site's address early, and one project's renames never end another project's reservation. A purged
 -- workspace's addresses stay reserved for nobody until the period ends. Operator takedowns already keep
 -- their address forever (0012, 0016: the row cannot be deleted).
 --
 -- The table is global (an address is unique across tenants), so the runtime cannot read or write it at
 -- all: only the trigger functions below, owned by app_resolver, touch it. Rows hold the address, the
--- releasing workspace's ID and two times, nothing else.
+-- releasing workspace's and project's IDs and two times, nothing else.
 
 CREATE TABLE slug_reservations (
   slug text PRIMARY KEY CHECK (slug ~ '^[a-z0-9][a-z0-9-]{2,62}$'),
-  workspace_id uuid NOT NULL,  -- no foreign key: the reservation outlives a purged workspace
+  workspace_id uuid NOT NULL,  -- no foreign keys: the reservation outlives a purged workspace
+  project_id uuid NOT NULL,
   released_at timestamptz NOT NULL DEFAULT now(),
   reserved_until timestamptz NOT NULL,
   CHECK (reserved_until > released_at)
 );
 CREATE INDEX ix_slug_reservations_until ON slug_reservations(reserved_until);
+CREATE INDEX ix_slug_reservations_project ON slug_reservations(project_id, released_at DESC);
 ALTER TABLE slug_reservations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slug_reservations FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON slug_reservations FROM app_runtime;
@@ -68,16 +72,18 @@ CREATE FUNCTION app_private.slug_release() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
   IF OLD.public_slug IS NOT NULL AND (TG_OP = 'DELETE' OR NEW.public_slug IS DISTINCT FROM OLD.public_slug) THEN
-    INSERT INTO public.slug_reservations(slug, workspace_id, reserved_until)
-    VALUES (OLD.public_slug, OLD.workspace_id, now() + interval '90 days')
+    -- clock_timestamp: several releases in one transaction (a purge) still have an order.
+    INSERT INTO public.slug_reservations(slug, workspace_id, project_id, released_at, reserved_until)
+    VALUES (OLD.public_slug, OLD.workspace_id, OLD.project_id, clock_timestamp(), clock_timestamp() + interval '90 days')
     ON CONFLICT (slug) DO UPDATE
-      SET workspace_id = EXCLUDED.workspace_id, released_at = now(), reserved_until = EXCLUDED.reserved_until;
-    -- At most 10 at a time per workspace, so renaming a site through many addresses cannot hold them all:
-    -- the oldest reservations end first.
+      SET workspace_id = EXCLUDED.workspace_id, project_id = EXCLUDED.project_id,
+          released_at = EXCLUDED.released_at, reserved_until = EXCLUDED.reserved_until;
+    -- At most 3 per project: earlier renames of this project end first, never the address just released
+    -- and never another project's.
     DELETE FROM public.slug_reservations r
-     WHERE r.workspace_id = OLD.workspace_id
-       AND r.slug IN (SELECT x.slug FROM public.slug_reservations x WHERE x.workspace_id = OLD.workspace_id
-                       ORDER BY x.released_at DESC, x.slug OFFSET 10);
+     WHERE r.project_id = OLD.project_id
+       AND r.slug IN (SELECT x.slug FROM public.slug_reservations x WHERE x.project_id = OLD.project_id
+                       ORDER BY x.released_at DESC, x.slug OFFSET 3);
   END IF;
   RETURN NULL;
 END $$;

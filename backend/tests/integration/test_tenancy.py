@@ -807,17 +807,12 @@ def test_a_slug_reservation_ends_after_its_period(world: World, ddl: Db) -> None
     assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=slug) == 0
 
 
-def test_a_workspace_holds_at_most_ten_slug_reservations(world: World, ddl: Db) -> None:
-    """0036 security review: renaming a site through many addresses cannot reserve them all; a release
-    beyond ten ends the workspace's oldest reservations."""
+def test_a_project_keeps_its_last_three_released_addresses(world: World, ddl: Db) -> None:
+    """0036 security review: renaming a site through many addresses cannot reserve them all; each project
+    keeps the three it released last, so the address it just let go is never the one that ends."""
     run = secrets.token_hex(3)
     _publish(ddl, world.a, f"r{run}-00")
     for n in range(1, 13):  # each rename releases the previous address
-        ddl.run(
-            "UPDATE slug_reservations SET released_at = released_at - interval '1 minute',"
-            " reserved_until = reserved_until - interval '1 minute' WHERE workspace_id = :w",
-            w=world.a.workspace,
-        )
         ddl.run(
             "UPDATE publications SET public_slug = :s WHERE workspace_id = :w",
             s=f"r{run}-{n:02}",
@@ -826,8 +821,11 @@ def test_a_workspace_holds_at_most_ten_slug_reservations(world: World, ddl: Db) 
     held = [
         r[0]
         for r in ddl.rows(
-            "SELECT slug FROM slug_reservations WHERE workspace_id = :w ORDER BY slug", w=world.a.workspace
+            "SELECT slug FROM slug_reservations WHERE project_id = :p ORDER BY slug", p=world.a.project
         )
     ]
-    assert held == [f"r{run}-{n:02}" for n in range(2, 12)]  # the newest ten; 00 and 01 ended
-    _publish(ddl, world.b, f"r{run}-00")
+    assert held == [f"r{run}-{n:02}" for n in (9, 10, 11)]
+    ddl.run("DELETE FROM publications WHERE workspace_id = :w", w=world.a.workspace)  # unpublish
+    assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=f"r{run}-12") == 1
+    _publish(ddl, world.b, f"r{run}-00")  # long released by now
+    _refused(ddl, world.b, f"r{run}-12")
