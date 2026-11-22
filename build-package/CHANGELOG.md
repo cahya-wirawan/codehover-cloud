@@ -4,6 +4,8 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-22
+
 ### Added
 
 - 01, 02, 05, 06, 09: people and organizations (FR-030, migration 0038). Every person has a handle, suggested at first sign-in and confirmed once, in one global namespace with organizations; renamed or deleted handles stay reserved for 90 days. Organizations are a level above workspaces: every workspace belongs to a person or an organization, an organization's owners and admins are owners and admins of all its workspaces, and plain members see the workspaces they are added to. Organizations invite people by handle. 
