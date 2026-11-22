@@ -732,7 +732,7 @@ def test_access_tokens_are_tenant_scoped_and_resolved_by_digest_only(world: Worl
     runtime.context()
     found = runtime.rows("SELECT * FROM app_private.access_token(:h)", h=digest)
     assert [(r.workspace_id, r.user_id) for r in found] == [(world.b.workspace, world.b.user)]
-    assert set(found[0]._mapping) == {"token_id", "workspace_id", "user_id", "scope"}
+    assert set(found[0]._mapping) == {"token_id", "workspace_id", "user_id", "scope", "project_id"}
     assert runtime.rows("SELECT * FROM app_private.access_token(:h)", h=b"\x03" * 32) == []
     assert runtime.one("SELECT count(*) FROM access_tokens") == 0  # the resolver exposes no rows
 
@@ -829,3 +829,92 @@ def test_a_project_keeps_its_last_three_released_addresses(world: World, ddl: Db
     assert ddl.one("SELECT count(*) FROM slug_reservations WHERE slug = :s", s=f"r{run}-12") == 1
     _publish(ddl, world.b, f"r{run}-00")  # long released by now
     _refused(ddl, world.b, f"r{run}-12")
+
+
+def test_mcp_sign_in_rows_are_scoped_and_reached_through_functions(world: World, runtime: Db) -> None:
+    """0037: clients and pending authorizations are global and unreachable for the runtime; grants follow
+    the tenant policy and change only in their refresh, use and revocation columns; a code is redeemed
+    once, a second use ends the grant made from it."""
+    for table in ("oauth_clients", "oauth_authorizations"):
+        expect(runtime, DENIED, f"SELECT count(*) FROM {table}")  # noqa: S608 - fixed names
+    client_id = "chc_" + secrets.token_urlsafe(24)
+    runtime.one("SELECT app_private.oauth_register_client(:c, 'x', ARRAY['https://x.test/cb'])", c=client_id)
+    client = runtime.one("SELECT id FROM app_private.oauth_client(:c)", c=client_id)
+    request = runtime.one(
+        "SELECT app_private.oauth_begin(:c, 'https://x.test/cb', :ch, 'r', 'some-site', NULL)",
+        c=client,
+        ch="A" * 43,
+    )
+    assert runtime.rows("SELECT * FROM app_private.oauth_pending(:i)", i=request)[0].slug == "some-site"
+    runtime.context()  # nobody signed in cannot decide
+    expect(
+        runtime,
+        DENIED,
+        "SELECT * FROM app_private.oauth_decide(:i, :w, :p, true, :h)",
+        i=request,
+        w=world.a.workspace,
+        p=world.a.project,
+        h=b"\x05" * 32,
+    )
+    runtime.context(user=world.b.user)  # someone without access to the project cannot approve
+    expect(
+        runtime,
+        DENIED,
+        "SELECT * FROM app_private.oauth_decide(:i, :w, :p, true, :h)",
+        i=request,
+        w=world.a.workspace,
+        p=world.a.project,
+        h=b"\x05" * 32,
+    )
+    runtime.context(user=world.a.user)
+    assert runtime.rows(
+        "SELECT * FROM app_private.oauth_decide(:i, :w, :p, true, :h)",
+        i=request,
+        w=world.a.workspace,
+        p=world.a.project,
+        h=b"\x05" * 32,
+    )
+    redeemed = runtime.rows(
+        "SELECT * FROM app_private.oauth_redeem(:h, :c, 'https://x.test/cb')", h=b"\x05" * 32, c=client_id
+    )
+    assert [(r.workspace_id, r.user_id, r.project_id) for r in redeemed] == [
+        (world.a.workspace, world.a.user, world.a.project)
+    ]
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    runtime.run(
+        "INSERT INTO oauth_grants(workspace_id, user_id, project_id, client, client_name, authorization_id,"
+        " refresh_hash, refresh_expires_at) VALUES (:w, :u, :p, :c, 'x', :a, :h, now() + interval '1 day')",
+        w=world.a.workspace,
+        u=world.a.user,
+        p=world.a.project,
+        c=client,
+        a=redeemed[0].authorization_id,
+        h=b"\x06" * 32,
+    )
+    expect(runtime, DENIED, "UPDATE oauth_grants SET project_id = :p", p=world.b.project)
+    expect(runtime, DENIED, "UPDATE oauth_grants SET user_id = :u", u=world.b.user)
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    assert runtime.one("SELECT count(*) FROM oauth_grants") == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO oauth_grants(workspace_id, user_id, project_id, client, client_name, authorization_id,"
+        " refresh_hash, refresh_expires_at) VALUES (:w, :u, :p, :c, 'x', :a, :h, now() + interval '1 day')",
+        w=world.a.workspace,
+        u=world.b.user,
+        p=world.a.project,
+        c=client,
+        a=request,
+        h=b"\x07" * 32,
+    )
+    runtime.context()
+    assert (
+        runtime.rows(
+            "SELECT * FROM app_private.oauth_redeem(:h, :c, 'https://x.test/cb')", h=b"\x05" * 32, c=client_id
+        )
+        == []
+    )
+    runtime.context(workspace=world.a.workspace)
+    assert runtime.one(
+        "SELECT revoked_at IS NOT NULL FROM oauth_grants WHERE refresh_hash = :h", h=b"\x06" * 32
+    )

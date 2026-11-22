@@ -16,6 +16,7 @@ from app.core.errors import ApiError
 from app.modules.workspaces.access import Member
 
 PREFIX = "chm_"
+OAUTH_PREFIX = "cho_"  # access tokens issued through MCP sign-in (0037, app.modules.mcp.oauth)
 MAX_TOKENS_PER_MEMBER = 20
 TOUCH_INTERVAL = timedelta(hours=1)
 
@@ -33,6 +34,7 @@ class TokenPrincipal:
     token_id: UUID
     workspace_id: UUID
     user_id: UUID
+    project_id: UUID | None = None  # an OAuth token reads only this project's site
 
 
 async def create(db: AsyncSession, member: Member, name: str, days: int) -> dict[str, Any]:
@@ -42,7 +44,7 @@ async def create(db: AsyncSession, member: Member, name: str, days: int) -> dict
         await db.execute(
             text(
                 "SELECT count(*) FROM access_tokens WHERE workspace_id = :w AND user_id = :u"
-                " AND revoked_at IS NULL AND expires_at > now()"
+                " AND grant_id IS NULL AND revoked_at IS NULL AND expires_at > now()"
             ),
             {"w": member.workspace_id, "u": member.user_id},
         )
@@ -82,7 +84,7 @@ async def listing(db: AsyncSession, member: Member) -> list[dict[str, Any]]:
     rows = await db.execute(
         text(
             "SELECT id, name, prefix, scope, created_at, expires_at, last_used_at, revoked_at"
-            " FROM access_tokens WHERE workspace_id = :w AND user_id = :u"
+            " FROM access_tokens WHERE workspace_id = :w AND user_id = :u AND grant_id IS NULL"
             " ORDER BY created_at DESC LIMIT 100"
         ),
         {"w": member.workspace_id, "u": member.user_id},
@@ -98,7 +100,7 @@ async def revoke(db: AsyncSession, member: Member, token_id: UUID) -> None:
         await db.execute(
             text(
                 "UPDATE access_tokens SET revoked_at = COALESCE(revoked_at, now())"
-                " WHERE workspace_id = :w AND id = :t AND (user_id = :u OR :admin) RETURNING id"
+                " WHERE workspace_id = :w AND id = :t AND grant_id IS NULL AND (user_id = :u OR :admin) RETURNING id"
             ),
             {"w": member.workspace_id, "t": token_id, "u": member.user_id, "admin": member.at_least("admin")},
         )
@@ -115,26 +117,26 @@ async def revoke(db: AsyncSession, member: Member, token_id: UUID) -> None:
 
 
 async def revoke_for_member(db: AsyncSession, workspace_id: UUID, user_id: UUID) -> None:
-    """A member who leaves (or is removed) keeps no working token, even if they return later."""
-    await db.execute(
-        text(
-            "UPDATE access_tokens SET revoked_at = now() WHERE workspace_id = :w AND user_id = :u"
-            " AND revoked_at IS NULL"
-        ),
-        {"w": workspace_id, "u": user_id},
-    )
+    """A member who leaves (or is removed) keeps no working token or MCP sign-in, even if they return."""
+    for statement in (
+        "UPDATE access_tokens SET revoked_at = now() WHERE workspace_id = :w AND user_id = :u"
+        " AND revoked_at IS NULL",
+        "UPDATE oauth_grants SET revoked_at = now() WHERE workspace_id = :w AND user_id = :u"
+        " AND revoked_at IS NULL",
+    ):
+        await db.execute(text(statement), {"w": workspace_id, "u": user_id})
 
 
 async def resolve(db: AsyncSession, token: str) -> TokenPrincipal | None:
     """The token's workspace and user, when it is live (0035 `app_private.access_token`)."""
-    if not token.startswith(PREFIX) or len(token) > 100:
+    if not token.startswith((PREFIX, OAUTH_PREFIX)) or len(token) > 100:
         return None
     row = (
         await db.execute(text("SELECT * FROM app_private.access_token(:h)"), {"h": digest(token)})
     ).one_or_none()
     if row is None or row.scope != "mcp:read":
         return None
-    return TokenPrincipal(row.token_id, row.workspace_id, row.user_id)
+    return TokenPrincipal(row.token_id, row.workspace_id, row.user_id, row.project_id)
 
 
 async def touch(db: AsyncSession, principal: TokenPrincipal) -> None:

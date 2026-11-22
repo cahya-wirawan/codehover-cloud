@@ -32,6 +32,7 @@ from app.modules.billing import router as billing
 from app.modules.deletion import router as deletion
 from app.modules.github import router as github
 from app.modules.identity import router as identity
+from app.modules.mcp import oauth as mcp_oauth
 from app.modules.mcp import router as mcp
 from app.modules.ops import router as ops
 from app.modules.projects import router as projects
@@ -179,6 +180,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(projects.router)
     api.include_router(published.router)
     api.include_router(mcp.router)
+    api.include_router(mcp_oauth.router)
     api.include_router(usage.router)
     api.include_router(billing.router)
     api.include_router(providers.router)
@@ -186,6 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(deletion.router)
     api.include_router(ops.router)
     app.include_router(api)
+    app.include_router(mcp_oauth.well_known)  # /.well-known/oauth-* at the origin's root (RFC 8414, 9728)
     return app
 
 

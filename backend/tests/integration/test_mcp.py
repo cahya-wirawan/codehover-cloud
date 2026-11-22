@@ -1,7 +1,8 @@
 """Hosted MCP (06 "/mcp/{slug}", 09): a published site's documentation as read-only MCP tools.
 
 Public sites answer anyone; private sites answer only a live personal access token of a member who may
-see the project. Everything else is 404 (or 401 for a token that is not valid), like the site itself.
+see the project. Without a token a private or unknown site is 401 (sign in, 0037); with a valid token
+without access it is 404; a token that is not valid, or is for another site, is 401.
 """
 
 from __future__ import annotations
@@ -140,19 +141,19 @@ async def test_a_public_site_serves_every_tool_to_anyone(
             await mcp.post({"jsonrpc": "2.0", "id": 9, "method": "ping"}, Origin=ORIGIN)
         ).status_code == 200
         assert (await visitor.get(f"/api/v1/mcp/{slug}")).status_code == 405
-        assert (
-            await Mcp(visitor, "no-such-site").post({"jsonrpc": "2.0", "id": 1, "method": "ping"})
-        ).status_code == 404
+        unknown = await Mcp(visitor, "no-such-site").post({"jsonrpc": "2.0", "id": 1, "method": "ping"})
+        assert unknown.status_code == 401  # like a private site: sign in first (0037)
+        assert 'resource_metadata="http' in unknown.headers["www-authenticate"]
 
     # Unpublishing stops the endpoint on the next request.
     ddl(
         "UPDATE publications SET suspended_at = now(), suspended_reason = 'operator' WHERE project_id = :p",
         p=project,
     )
-    async with browser(app) as visitor:
+    async with browser(app) as visitor:  # a suspended site is gone, like an unknown address
         assert (
             await Mcp(visitor, slug).post({"jsonrpc": "2.0", "id": 1, "method": "ping"})
-        ).status_code == 404
+        ).status_code == 401
     ddl(
         "UPDATE publications SET suspended_at = NULL, suspended_reason = NULL WHERE project_id = :p",
         p=project,
@@ -216,9 +217,15 @@ async def test_a_private_site_needs_a_live_token_of_a_member_who_may_see_it(
     ).status_code == 200
     ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
     async with browser(app) as visitor:
-        assert (await Mcp(visitor, slug).post(ping)).status_code == 404  # the slug is not disclosed
+        anonymous = await Mcp(visitor, slug).post(ping)
+        unknown = await Mcp(visitor, f"x-{slug}").post(ping)
+        # Private and unknown addresses answer alike (slugs are not disclosed), naming where to sign in.
+        assert anonymous.status_code == unknown.status_code == 401
+        challenge = anonymous.headers["www-authenticate"]
+        assert f'/.well-known/oauth-protected-resource/api/v1/mcp/{slug}"' in challenge
+        assert "error=" not in challenge and 'scope="mcp:read"' in challenge
     # A member's browser session is not enough: the endpoint never reads cookies.
-    assert (await Mcp(owner, slug).post(ping)).status_code == 404
+    assert (await Mcp(owner, slug).post(ping)).status_code == 401
 
     key = secrets.token_hex(12)
     created = await create_token(owner, ws, key)
