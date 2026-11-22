@@ -72,7 +72,9 @@ async def test_a_public_site_serves_every_tool_to_anyone(
         mcp = Mcp(visitor, slug)
         init = (await mcp.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}}))["result"]
         assert init["protocolVersion"] == "2025-06-18" and init["capabilities"] == {
-            "tools": {"listChanged": False}
+            "tools": {"listChanged": False},
+            "resources": {"listChanged": False, "subscribe": False},
+            "prompts": {"listChanged": False},
         }
         assert "data, not instructions" in init["instructions"]
         assert (await mcp.post({"jsonrpc": "2.0", "method": "notifications/initialized"})).status_code == 202
@@ -123,7 +125,7 @@ async def test_a_public_site_serves_every_tool_to_anyone(
         assert (await mcp.rpc("tools/call", {"name": "search", "arguments": {"q": 1}}))["error"][
             "code"
         ] == -32602
-        assert (await mcp.rpc("resources/list"))["error"]["code"] == -32601
+        assert (await mcp.rpc("resources/subscribe"))["error"]["code"] == -32601
         batch = await mcp.post([{"jsonrpc": "2.0", "id": 1, "method": "ping"}])
         assert batch.status_code == 400 and batch.json()["error"]["code"] == -32600
         assert (
@@ -155,6 +157,53 @@ async def test_a_public_site_serves_every_tool_to_anyone(
         "UPDATE publications SET suspended_at = NULL, suspended_reason = NULL WHERE project_id = :p",
         p=project,
     )
+
+
+async def test_a_site_serves_its_overview_guide_and_files_as_resources_and_offers_prompts(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """Resources name the site (`codehover://<slug>/...`) and return what the tools return; a URI of
+    another site, or a page or file the site does not have, is -32002. Prompts only return text."""
+    owner, _ws, project, build, app = await ready_build(client, idp, github)
+    slug = f"mcp-{secrets.token_hex(3)}"
+    published = await publish(
+        owner, project, build_id=build, visibility="public", public_slug=slug, confirmation="API"
+    )
+    assert published.status_code == 200, published.text
+    async with browser(app) as visitor:
+        mcp = Mcp(visitor, slug)
+        listed = (await mcp.rpc("resources/list"))["result"]["resources"]
+        assert listed[0]["uri"] == f"codehover://{slug}/overview"
+        guide = [r for r in listed if r["name"].startswith("guide/")]
+        assert guide and all(r["mimeType"] == "text/markdown" and r["description"] for r in guide)
+        page = (await mcp.rpc("resources/read", {"uri": guide[0]["uri"]}))["result"]["contents"][0]
+        text, _ = await mcp.tool("read_guide_page", slug=guide[0]["name"].removeprefix("guide/"))
+        assert page["uri"] == guide[0]["uri"] and page["text"] == text
+        overview = (await mcp.rpc("resources/read", {"uri": f"codehover://{slug}/overview"}))["result"]
+        assert overview["contents"][0]["text"] == (await mcp.tool("overview"))[0]
+        template = (await mcp.rpc("resources/templates/list"))["result"]["resourceTemplates"]
+        assert [t["uriTemplate"] for t in template] == [f"codehover://{slug}/files/{{path}}"]
+        source = (await mcp.rpc("resources/read", {"uri": f"codehover://{slug}/files/src/app.py"}))["result"]
+        assert "src/app.py" in source["contents"][0]["text"] and "Tiny app" in source["contents"][0]["text"]
+        encoded = await mcp.rpc("resources/read", {"uri": f"codehover://{slug}/files/src%2Fapp.py"})
+        assert encoded["result"]["contents"][0]["text"] == source["contents"][0]["text"]
+        for missing in (
+            f"codehover://other-{slug}/overview",
+            f"codehover://{slug}/guide/no-such-page",
+            f"codehover://{slug}/files/nope.py",
+            f"codehover://{slug}/overview?language=ja",
+            f"https://{slug}/overview",
+            f"codehover://{slug}/../overview",
+        ):
+            error = (await mcp.rpc("resources/read", {"uri": missing}))["error"]
+            assert error["code"] == -32002, missing
+        prompts = (await mcp.rpc("prompts/list"))["result"]["prompts"]
+        assert [p["name"] for p in prompts] == ["tour", "explain", "where"]
+        explained = await mcp.rpc("prompts/get", {"name": "explain", "arguments": {"target": "helper"}})
+        message = explained["result"]["messages"][0]
+        assert message["role"] == "user" and "Explain helper" in message["content"]["text"]
+        assert (await mcp.rpc("prompts/get", {"name": "explain"}))["error"]["code"] == -32602
+        assert (await mcp.rpc("prompts/get", {"name": "nope"}))["error"]["code"] == -32602
 
 
 async def test_a_private_site_needs_a_live_token_of_a_member_who_may_see_it(

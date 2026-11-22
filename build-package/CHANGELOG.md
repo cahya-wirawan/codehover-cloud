@@ -7,6 +7,7 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 ### Added
 
 - 21, 22: TypeScript imports through path aliases (`@/…`) resolve in SCIP. The sandboxed index worker reads `baseUrl` and `paths` from the repository's `tsconfig*.json` / `jsconfig*.json` (following `extends` inside the snapshot), and gives each aliasing config a project of its own, so each app in a monorepo resolves its own `@/*`. No other option of the repository's config is loaded. Engine 0.4.0.
+- 06: hosted MCP also serves resources (the overview, each guide page, and source files through a template, under `codehover://<slug>/...`) and three prompts (`tour`, `explain`, `where`).
 
 ### Fixed
 

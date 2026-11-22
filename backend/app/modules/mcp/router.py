@@ -28,7 +28,7 @@ from app.core import idempotency, ratelimit
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Db
-from app.modules.mcp import tokens, tools
+from app.modules.mcp import resources, tokens, tools
 from app.modules.published.router import Site, SlugPath
 from app.modules.workspaces.access import PublicReader, ReadMember, WriteMember
 
@@ -215,7 +215,11 @@ async def mcp(
             id_,
             {
                 "protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
-                "capabilities": {"tools": {"listChanged": False}},
+                "capabilities": {
+                    "tools": {"listChanged": False},
+                    "resources": {"listChanged": False, "subscribe": False},
+                    "prompts": {"listChanged": False},
+                },
                 "serverInfo": {"name": "codehover-cloud", "version": __version__},
                 "instructions": INSTRUCTIONS,
             },
@@ -235,6 +239,30 @@ async def mcp(
         except tools.InvalidArguments as error:
             return _error(id_, -32602, f"Invalid arguments: {error}"[:500])
         return _result(id_, {"content": [{"type": "text", "text": output}], "isError": is_error})
+    if method == "resources/list":
+        return _result(id_, {"resources": await resources.listing(db, request.app.state.objects, site, slug)})
+    if method == "resources/templates/list":
+        return _result(id_, {"resourceTemplates": resources.templates(slug)})
+    if method == "resources/read":
+        uri = params.get("uri")
+        if not isinstance(uri, str) or len(uri) > 2048:
+            return _error(id_, -32602, "Invalid params: uri")
+        try:
+            return _result(id_, await resources.read(db, request.app.state.objects, site, slug, uri))
+        except resources.NotFound:
+            return _error(id_, -32002, "Resource not found")
+    if method == "prompts/list":
+        return _result(id_, {"prompts": resources.prompt_listing()})
+    if method == "prompts/get":
+        name, arguments = params.get("name"), params.get("arguments") or {}
+        if not isinstance(name, str) or not isinstance(arguments, dict):
+            return _error(id_, -32602, "Invalid params: name and arguments")
+        try:
+            return _result(id_, resources.prompt(name, arguments))
+        except KeyError:
+            return _error(id_, -32602, f"Unknown prompt: {name[:80]}")
+        except resources.InvalidPrompt as error:
+            return _error(id_, -32602, f"Invalid arguments: {error}")
     return _error(id_, -32601, "Method not found")
 
 
