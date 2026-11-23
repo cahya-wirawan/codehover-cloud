@@ -171,6 +171,39 @@ async def require_capacity(db: AsyncSession, settings: Settings, workspace_id: U
         )
 
 
+async def billing_holder(db: AsyncSession, namespace_id: UUID | None) -> UUID | None:
+    """The workspace holding the owner's billing rows (0042): its customer's, else its newest
+    subscription's or grant's. Handing over (`app_private.move_billing_anchor`) puts them all in one."""
+    value = (
+        await db.execute(
+            text(
+                "SELECT COALESCE("
+                " (SELECT workspace_id FROM billing_customers WHERE namespace_id = :n),"
+                " (SELECT workspace_id FROM subscriptions WHERE namespace_id = :n ORDER BY updated_at DESC LIMIT 1),"
+                " (SELECT workspace_id FROM entitlement_grants WHERE namespace_id = :n"
+                "   ORDER BY created_at DESC LIMIT 1))"
+            ),
+            {"n": namespace_id},
+        )
+    ).scalar_one_or_none()
+    return value if value is None or isinstance(value, UUID) else UUID(str(value))
+
+
+async def holds_billing(db: AsyncSession, workspace_id: UUID) -> bool:
+    """Whether the workspace holds any of its owner's billing rows (read in its context)."""
+    held: bool = (
+        await db.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM billing_customers WHERE workspace_id = :w)"
+                " OR EXISTS (SELECT 1 FROM subscriptions WHERE workspace_id = :w)"
+                " OR EXISTS (SELECT 1 FROM entitlement_grants WHERE workspace_id = :w)"
+            ),
+            {"w": workspace_id},
+        )
+    ).scalar_one()
+    return held
+
+
 async def manages_billing(db: AsyncSession, user_id: UUID) -> bool:
     """Whether the person manages the plan of the workspace in context (0040): the person themselves for
     their own workspaces, an owner of the organization for its workspaces."""

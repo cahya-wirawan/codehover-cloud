@@ -14,6 +14,7 @@ import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 import { projectSlugFrom } from "../../lib/slug";
 import { AccessTokenPanel, ConnectedAppsPanel } from "./AccessTokenPanel";
+import { MoveWorkspacePanel } from "./MoveWorkspacePanel";
 import { SupportAccessPanel } from "./SupportAccessPanel";
 
 export function WorkspacePage() {
@@ -33,7 +34,7 @@ export function WorkspacePage() {
   // The address follows the name until the person edits it.
   const [typedSlug, setTypedSlug] = useState<string | null>(null);
   const slug = typedSlug ?? projectSlugFrom(name);
-  const { current: owner } = useOwnerContext();
+  const { current: owner, options: owners } = useOwnerContext();
   const navigate = useNavigate();
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
   const workspace = workspaces.data?.items.find((w) => w.id === wid);
@@ -257,6 +258,7 @@ export function WorkspacePage() {
       {workspace ? <AccessTokenPanel workspaceId={wid} /> : null}
       {workspace ? <ConnectedAppsPanel workspaceId={wid} /> : null}
       {workspace?.role === "admin" || workspace?.role === "owner" ? <SupportAccessPanel workspaceId={wid} /> : null}
+      {workspace?.role === "owner" ? <MoveWorkspacePanel workspace={workspace} current={owner} options={owners} /> : null}
       {workspace?.role === "owner" ? (
         <ConfirmDeletion
           title="Delete workspace"

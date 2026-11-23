@@ -15,7 +15,7 @@ from app.core.pagination import Position, clamp_limit, decode_cursor, encode_cur
 from app.core.settings import Settings
 from app.modules.billing import service as billing
 from app.modules.identity.sessions import CsrfPrincipal, CurrentPrincipal, Db
-from app.modules.workspaces import service
+from app.modules.workspaces import moves, service
 from app.modules.workspaces.access import ReadMember, Role, WriteMember, require_role
 
 router = APIRouter(tags=["workspaces"])
@@ -143,6 +143,22 @@ async def rename_workspace(
     workspace = await service.rename_workspace(db, member, body.name.strip(), if_match)
     response.headers["ETag"] = service.etag(workspace["updated_at"])
     return WorkspaceSummary(**workspace)
+
+
+class WorkspaceMove(BaseModel):
+    # The new owner: an organization the caller owns or administers, or null for the caller themselves.
+    organization_id: UUID | None = None
+
+
+@router.post("/workspaces/{workspace_id}/move", response_model=WorkspaceSummary)
+async def move_workspace(
+    body: WorkspaceMove, request: Request, db: Db, member: WriteMember
+) -> WorkspaceSummary:
+    """Owners move a workspace to another owner (0042); its sites follow, old addresses redirect 90 days."""
+    await moves.move_workspace(db, _settings(request), member, body.organization_id)
+    moved = await service.workspace_summary(db, member.principal, member.workspace_id)
+    await db.commit()
+    return WorkspaceSummary(**moved)
 
 
 # ---------------------------------------------------------------- members

@@ -7,10 +7,111 @@ import { Button } from "../../components/ui/button";
 import { Field, Input, Select } from "../../components/ui/input";
 import { EmptyState, PageHeader, Section } from "../../components/ui/section";
 import { ApiError } from "../../lib/api/client";
-import { api, type OrgRole } from "../../lib/api/resources";
+import { api, formatUsd, type OrgBilling, type OrgMember, type OrgRole } from "../../lib/api/resources";
 import { HANDLE_HINT, HANDLE_PATTERN } from "../account/WelcomePage";
 
 const ROLES: OrgRole[] = ["member", "admin", "owner"];
+
+function day(value: string | null | undefined): string {
+  return value ? new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "never";
+}
+
+function matches(member: OrgMember, query: string, role: OrgRole | ""): boolean {
+  const q = query.trim().toLowerCase();
+  return (
+    (!role || member.role === role) &&
+    (!q || member.display_name.toLowerCase().includes(q) || member.handle.toLowerCase().includes(q))
+  );
+}
+
+/** The organization's one plan across its workspaces (0042), for owners and admins. */
+function OrganizationPlan({ billing }: { billing: OrgBilling }) {
+  const share = billing.allowance_micro_usd ? Math.min(100, (billing.spent_micro_usd / billing.allowance_micro_usd) * 100) : 0;
+  const holder = billing.workspaces.find((w) => w.holds_billing);
+  const manageIn = holder ?? billing.workspaces[0];
+  return (
+    <div className="flex flex-col gap-4">
+      <p>
+        <span className="text-[15px] font-semibold">{billing.plan_name ?? "No plan"}</span>
+        {billing.plan === "trial" && billing.trial_ends_at ? (
+          <span className="block text-muted">The trial ends on {day(billing.trial_ends_at)}.</span>
+        ) : billing.renews_at ? (
+          <span className="block text-muted">
+            {billing.cancel_at_period_end ? "Ends on " : "Renews on "}
+            {day(billing.renews_at)}.
+          </span>
+        ) : null}
+      </p>
+      {billing.generation_blocked || billing.hosting_suspended ? (
+        <p role="status" className="text-destructive">
+          {billing.hosting_suspended ? "Published sites are offline because of the plan state. " : ""}
+          {billing.generation_blocked === "past_due" ? "A payment is overdue: new builds are paused." : ""}
+          {billing.generation_blocked === "disputed" ? "A payment is disputed: new builds are paused." : ""}
+        </p>
+      ) : null}
+      <div>
+        <p className="flex justify-between text-[13px]">
+          <span>Generation this month</span>
+          <span className="font-mono">
+            {formatUsd(billing.spent_micro_usd)} of {formatUsd(billing.allowance_micro_usd)}
+          </span>
+        </p>
+        <div className="mt-1.5 h-2 rounded-full bg-surface-muted" role="presentation">
+          <div className="h-2 rounded-full bg-accent" style={{ width: `${share}%` }} />
+        </div>
+      </div>
+      <dl className="grid max-w-xl grid-cols-3 gap-x-8 gap-y-2">
+        {[
+          ["Projects", billing.totals.projects, billing.limits?.projects],
+          ["People", billing.totals.people, billing.limits?.seats],
+          ["Builds running", billing.totals.active_builds, billing.limits?.active_builds],
+        ].map(([label, used, limit]) => (
+          <div key={String(label)}>
+            <dt className="text-xs text-muted">{label}</dt>
+            <dd className="font-mono text-[13px]">
+              {used}
+              {limit !== undefined ? ` of ${limit}` : ""}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {billing.workspaces.length ? (
+        <div className="panel overflow-x-auto">
+          <table className="w-full text-left">
+            <caption className="sr-only">Generation this month by workspace</caption>
+            <thead>
+              <tr className="border-b border-border text-xs text-muted">
+                <th scope="col" className="px-4 py-2 font-medium">Workspace</th>
+                <th scope="col" className="px-4 py-2 font-medium">Spent</th>
+                <th scope="col" className="px-4 py-2 font-medium">Held for running builds</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {billing.workspaces.map((w) => (
+                <tr key={w.id}>
+                  <th scope="row" className="px-4 py-2 font-medium">
+                    <Link to={`/w/${w.id}/usage`}>{w.name}</Link>
+                    {w.holds_billing ? <span className="block text-xs font-normal text-muted">Holds the plan's billing</span> : null}
+                  </th>
+                  <td className="px-4 py-2 font-mono text-[13px]">{formatUsd(w.settled_micro_usd)}</td>
+                  <td className="px-4 py-2 font-mono text-[13px]">{formatUsd(w.reserved_micro_usd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {manageIn ? (
+        <p className="text-muted">
+          {billing.can_manage ? "Choose or change the plan" : "Owners choose or change the plan"} on{" "}
+          <Link to={`/w/${manageIn.id}/usage`}>Plan and usage of {manageIn.name}</Link>; every workspace of the organization shares it.
+        </p>
+      ) : (
+        <p className="text-muted">Create a workspace in the organization to choose a plan.</p>
+      )}
+    </div>
+  );
+}
 
 function failure(error: unknown, fallback: string): string | null {
   if (!error) return null;
@@ -28,6 +129,15 @@ export function OrganizationPage() {
   const manager = role === "owner" || role === "admin";
   const workspaces = useQuery({ queryKey: ["org-workspaces", oid], queryFn: () => api.organizationWorkspaces(oid) });
   const members = useQuery({ queryKey: ["org-members", oid], queryFn: () => api.organizationMembers(oid) });
+  const billing = useQuery({
+    queryKey: ["org-billing", oid],
+    queryFn: () => api.organizationBilling(oid),
+    enabled: manager,
+    retry: false,
+  });
+  const [query, setQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<OrgRole | "">("");
+  const shown = members.data?.items.filter((m) => matches(m, query, roleFilter)) ?? [];
   const invitations = useQuery({
     queryKey: ["org-invitations", oid],
     queryFn: () => api.organizationInvitations(oid),
@@ -117,12 +227,44 @@ export function OrganizationPage() {
         )}
       </Section>
 
+      {manager ? (
+        <Section title="Plan and usage" className="mt-10">
+          {billing.data ? (
+            <OrganizationPlan billing={billing.data} />
+          ) : billing.isError ? (
+            <p className="text-muted">The plan could not be loaded.</p>
+          ) : (
+            <p className="text-muted">Loading the plan…</p>
+          )}
+        </Section>
+      ) : null}
+
       <Section title="Members" className="mt-10">
+        <div className="mb-3 flex flex-wrap gap-3">
+          <Field label="Search members" className="min-w-48 flex-1">
+            <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name or handle" />
+          </Field>
+          <Field label="Show role">
+            <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as OrgRole | "")}>
+              <option value="">Every role</option>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+        {members.data && !shown.length ? <p className="text-muted">No member matches.</p> : null}
         <ul className="divide-y divide-border">
-          {members.data?.items.map((m) => (
+          {shown.map((m) => (
             <li key={m.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
               <span className="font-medium">{m.display_name}</span>
               <span className="font-mono text-[13px] text-muted">{m.handle}</span>
+              <span className="text-xs text-muted">joined {day(m.created_at)}</span>
+              {m.last_active_at !== undefined && m.workspaces ? (
+                <span className="text-xs text-muted">last active {day(m.last_active_at)}</span>
+              ) : null}
               {role === "owner" ? (
                 <Select
                   aria-label={`Role of ${m.handle}`}
@@ -150,6 +292,13 @@ export function OrganizationPage() {
                 >
                   Remove
                 </Button>
+              ) : null}
+              {m.workspaces ? (
+                <span className="basis-full text-xs text-muted">
+                  {m.workspaces.length
+                    ? `In ${m.workspaces.map((w) => `${w.name} (${w.role}${w.via_organization ? ", from the organization" : ""})`).join(", ")}`
+                    : "In none of the organization's workspaces"}
+                </span>
               ) : null}
             </li>
           ))}

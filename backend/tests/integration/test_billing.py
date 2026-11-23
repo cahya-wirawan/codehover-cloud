@@ -809,3 +809,32 @@ async def test_only_the_person_manages_the_plan_of_their_own_workspaces(
     assert (await state(partner, ws))["can_manage"] is False
     assert (await unsafe(partner, "POST", f"/api/v1/workspaces/{ws}/billing/trial")).status_code == 403
     assert (await unsafe(person, "POST", f"/api/v1/workspaces/{ws}/billing/trial")).status_code == 200
+
+
+async def test_handing_billing_to_another_workspace_frees_the_old_one(
+    client: httpx.AsyncClient, billing: Billing, new_user: NewUser
+) -> None:
+    """0042: the workspace holding a live subscription hands it to another of the owner's workspaces,
+    which then holds the customer and the subscription; the old one can be deleted, and webhooks for the
+    customer now land in the new one."""
+    owner = await new_user()
+    first, second = await workspace(owner), await workspace(owner)
+    customer = billing.customer_for(first)
+    billing.fake.subscribe(customer)
+    await billing.reconcile()
+    name = (await owner.get(f"/api/v1/workspaces/{first}")).json()["name"]
+    deletion = f"/api/v1/workspaces/{first}/deletion"
+    assert code(await unsafe(owner, "POST", deletion, json={"confirmation": name})) == "SUBSCRIPTION_ACTIVE"
+    moved = await unsafe(owner, "PUT", f"/api/v1/workspaces/{second}/billing/anchor")
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["holds_billing"] is True and moved.json()["plan"] is not None
+    assert ddl(
+        "SELECT (SELECT workspace_id FROM billing_customers WHERE provider_customer_id = :c),"
+        " (SELECT count(*) FROM subscriptions WHERE provider_customer_id = :c AND workspace_id = :w)",
+        c=customer,
+        w=second,
+    ) == [(UUID(second), 1)]
+    await billing.reconcile()  # the provider's answer is written to the new holder
+    assert (await owner.get(f"/api/v1/workspaces/{second}/billing")).json()["status"] == "active"
+    deleted = await unsafe(owner, "POST", deletion, json={"confirmation": name})
+    assert deleted.status_code == 202, deleted.text

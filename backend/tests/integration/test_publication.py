@@ -568,3 +568,42 @@ async def test_an_admin_changes_a_projects_address_and_the_old_one_still_leads_t
     )[0][0]
     taken = await unsafe(owner, "PUT", f"/api/v1/projects/{other}/address", json={"slug": new_slug})
     assert taken.status_code == 409 and taken.json()["error"]["code"] == "SLUG_TAKEN"
+
+
+async def test_a_moved_workspace_keeps_its_sites_and_old_addresses_lead_to_the_new_owner(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """0042: moving a workspace to another owner keeps its sites published under the new owner; the old
+    addresses lead there for 90 days and the old owner's other workspaces cannot take them meanwhile."""
+    owner, ws, project, build, app = await ready_build(client, idp, github)
+    published = await publish(owner, project, build_id=build, visibility="public", confirmation="API")
+    assert published.status_code == 200, published.text
+    old = published.json()["address"]
+    slug = old.split("/")[1]
+    org_handle = f"m{secrets.token_hex(4)}"
+    org = await unsafe(owner, "POST", "/api/v1/organizations", json={"name": "Movers", "handle": org_handle})
+    assert org.status_code == 201, org.text
+    moved = await unsafe(
+        owner, "POST", f"/api/v1/workspaces/{ws}/move", json={"organization_id": org.json()["id"]}
+    )
+    assert moved.status_code == 200, moved.text
+    new = f"{org_handle}/{slug}"
+    assert await address(owner, project) == new
+    async with browser(app) as visitor:
+        assert (await visitor.get(f"/api/v1/published/{new}")).status_code == 200
+        assert (await visitor.get(f"/api/v1/published/{old}")).json()["address"] == new
+    other = (await unsafe(owner, "POST", "/api/v1/workspaces", json={"name": "Other"})).json()["id"]
+    taken = await unsafe(
+        owner,
+        "POST",
+        f"/api/v1/workspaces/{other}/projects",
+        json={"source": "upload", "name": "x", "slug": slug},
+    )
+    assert taken.status_code == 409 and taken.json()["error"]["code"] == "SLUG_TAKEN"
+    # Moving back ends its own redirect there and answers at the old address again.
+    back = await unsafe(owner, "POST", f"/api/v1/workspaces/{ws}/move", json={"organization_id": None})
+    assert back.status_code == 200, back.text
+    assert await address(owner, project) == old
+    async with browser(app) as visitor:
+        assert (await visitor.get(f"/api/v1/published/{old}")).json()["address"] == old
+        assert (await visitor.get(f"/api/v1/published/{new}")).json()["address"] == old

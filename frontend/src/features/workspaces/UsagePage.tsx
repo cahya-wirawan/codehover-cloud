@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, Loader2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -141,6 +141,10 @@ export function UsagePage() {
   const entries = useQuery({ queryKey: ["usage-entries", wid], queryFn: () => api.usageEntries(wid), enabled: ledgerReader });
   const checkout = useMutation({ mutationFn: (plan: "pro" | "team") => api.checkout(wid, plan), onSuccess: (r) => go(r.url) });
   const portal = useMutation({ mutationFn: () => api.billingPortal(wid), onSuccess: (r) => go(r.url) });
+  const hold = useMutation({
+    mutationFn: () => api.holdBilling(wid),
+    onSuccess: (next) => queryClient.setQueryData(["billing", wid], next),
+  });
   const trial = useMutation({
     mutationFn: () => api.startTrial(wid),
     onSuccess: (state) => {
@@ -221,6 +225,36 @@ export function UsagePage() {
       <Section title="Current plan">
         {state ? <CurrentPlan billing={state} /> : <p className="text-muted">Loading the plan…</p>}
       </Section>
+
+      {state?.holds_billing ? (
+        <Section title="Billing">
+          <p className="max-w-2xl text-muted">
+            This workspace holds the billing of {state.owner?.handle ?? "its owner"}: its subscription, trial and grants. While
+            it does, it can&apos;t be moved to another owner, or deleted while subscribed. To free it, open Plan and usage in
+            another of {state.owner?.handle ?? "the owner"}&apos;s workspaces and choose Hold billing here.
+          </p>
+        </Section>
+      ) : state?.holder ? (
+        <Section title="Billing">
+          <p className="max-w-2xl text-muted">
+            The billing of {state.owner?.handle ?? "this workspace's owner"} is held by{" "}
+            {state.holder.name ? <Link to={`/w/${state.holder.id}/usage`}>{state.holder.name}</Link> : "another of its workspaces"}.
+            {manages ? " Hold it here instead to delete or move that workspace." : ""}
+          </p>
+          {manages ? (
+            <div className="mt-3">
+              <Button variant="secondary" onClick={() => hold.mutate()} disabled={hold.isPending}>
+                Hold billing here
+              </Button>
+              {hold.error ? (
+                <p role="alert" className="mt-2 text-destructive">
+                  {message(hold.error, "Could not move the billing here.")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </Section>
+      ) : null}
 
       {state && !subscribed ? (
         <Section
