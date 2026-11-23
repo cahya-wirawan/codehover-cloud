@@ -180,3 +180,19 @@ def test_include_patterns() -> None:
     assert glob("app", "**/*.ts").fullmatch("app/x/y.ts") and glob("app", "**/*.ts").fullmatch("app/y.ts")
     assert not glob("app", "*.ts").fullmatch("app/x/y.ts")
     assert glob("", "../outside") is None
+
+
+def test_globs_match_in_linear_time() -> None:
+    """Security review: a repository's patterns never make matching backtrack."""
+    import time
+
+    glob = ts_project._glob
+    hostile = glob("", "/".join(["**"] * 40) + "/" + "*a" * 40 + "b")
+    path = "/".join(["x"] * 60) + "/" + "a" * 200
+    started = time.monotonic()
+    assert hostile is not None and not hostile.fullmatch(path)
+    assert time.monotonic() - started < 1.0
+    assert glob("", "src/**/*.test.ts").fullmatch("src/a/b/c.test.ts")
+    assert glob("", "src/**/*.test.ts").fullmatch("src/c.test.ts")
+    assert not glob("", "src/**/*.test.ts").fullmatch("src/c.ts")
+    assert glob("", "a?c.ts").fullmatch("abc.ts") and not glob("", "a?c.ts").fullmatch("ac.ts")

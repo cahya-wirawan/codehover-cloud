@@ -17,6 +17,13 @@ All notable changes to this build package. The format follows [Keep a Changelog 
   - `rootDirs` and `moduleSuffixes` are read.
   - Workspace packages resolve by their `package.json` names to sources in the checkout.
 
+
+### Security
+
+- 06 (security review of 0042): only the workspace's owner moves it. That is the person for their own workspace, or an owner of the organization for an organization's workspace. A co-owner, or an organization member given a direct owner role, cannot take a workspace away.
+- 08, 22 (security review of 0043):
+  - One 5-second deadline now covers a whole client metadata fetch, over a connection pool of its own.
+  - tsconfig `include`/`exclude` globs are matched in linear time instead of by backtracking regexes.
 ## [0.9.3] - 2026-11-23
 
 ### Added

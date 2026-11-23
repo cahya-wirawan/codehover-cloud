@@ -200,9 +200,53 @@ def _aliases(options: dict[str, Any]) -> tuple[str | None, dict[str, list[str]]]
     return base_url, aliases
 
 
-def _glob(directory: str, pattern: str) -> re.Pattern[str] | None:
-    """A tsconfig `include`/`exclude` pattern as a regex over checkout paths. A last segment without a
-    wildcard or an extension names a directory, which means everything under it."""
+def _segment_matches(pattern: str, name: str) -> bool:
+    """`*` and `?` within one path segment, by dynamic programming: time linear in the pattern times the
+    name, never backtracking (security review: regexes built from repository globs could)."""
+    reach = [True] + [False] * len(name)
+    for char in pattern:
+        if char == "*":
+            for j in range(1, len(name) + 1):
+                reach[j] = reach[j] or reach[j - 1]
+        else:
+            for j in range(len(name), 0, -1):
+                reach[j] = reach[j - 1] and (char == "?" or char == name[j - 1])
+            reach[0] = False
+    return reach[len(name)]
+
+
+class _Glob:
+    """A tsconfig `include`/`exclude` pattern over checkout paths: `**` segments match any number of
+    segments, `*` and `?` stay inside one. Matched segment by segment in linear time."""
+
+    def __init__(self, path: str) -> None:
+        self.parts: list[str] = []
+        for part in path.split("/"):
+            if part == "**":
+                if not self.parts or self.parts[-1] != "**":  # consecutive ones are one
+                    self.parts.append(part)
+            else:
+                self.parts.append(re.sub(r"\*+", "*", part))
+
+    def fullmatch(self, path: str) -> bool:
+        names = path.split("/")
+        reach = [True] + [False] * len(names)
+        for part in self.parts:
+            if part == "**":
+                running = False
+                for j in range(len(names) + 1):
+                    running = running or reach[j]
+                    reach[j] = running
+            else:
+                for j in range(len(names), 0, -1):
+                    reach[j] = reach[j - 1] and _segment_matches(part, names[j - 1])
+                reach[0] = False
+        return reach[len(names)]
+
+
+def _glob(directory: str, pattern: str) -> _Glob | None:
+    """A tsconfig `include`/`exclude` pattern relative to its config. A last segment without a wildcard
+    or an extension names a directory, which means everything under it."""
     if not pattern or len(pattern) > MAX_PATTERN_CHARS:
         return None
     path = _inside(posixpath.join(directory, pattern))
@@ -211,27 +255,10 @@ def _glob(directory: str, pattern: str) -> re.Pattern[str] | None:
     last = posixpath.basename(path)
     if not any(c in last for c in "*?") and "." not in last:
         path = posixpath.join(path, "**/*") if path else "**/*"
-    out, i = [], 0
-    while i < len(path):
-        if path.startswith("**/", i):
-            out.append("(?:.*/)?")
-            i += 3
-        elif path.startswith("**", i):
-            out.append(".*")
-            i += 2
-        elif path[i] == "*":
-            out.append("[^/]*")
-            i += 1
-        elif path[i] == "?":
-            out.append("[^/]")
-            i += 1
-        else:
-            out.append(re.escape(path[i]))
-            i += 1
-    return re.compile("".join(out))
+    return _Glob(path)
 
 
-def _globs(directory: str, patterns: list[Any]) -> list[re.Pattern[str]]:
+def _globs(directory: str, patterns: list[Any]) -> list[_Glob]:
     found = (_glob(directory, p) for p in patterns[:MAX_GLOBS] if isinstance(p, str))
     return [g for g in found if g is not None]
 

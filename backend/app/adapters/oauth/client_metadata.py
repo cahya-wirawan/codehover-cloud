@@ -6,7 +6,9 @@ The URL comes from whoever starts a sign-in, so fetching it must never reach the
 (SSRF, 08): only `https` on port 443 to a DNS name (never an IP literal), every address the name resolves
 to must be public, and the request goes to the checked address itself (the name is sent as Host and TLS
 SNI, and the certificate is verified for it), so a second DNS answer cannot redirect it. No redirects are
-followed; the answer is capped at 64 KiB and 5 seconds. Nothing from the deployment is sent: no cookies,
+followed; the answer is capped at 64 KiB and the whole fetch at 5 seconds (a deadline over resolving,
+connecting and reading, so a host sending a byte at a time cannot stretch it; security review), over a
+small pool of its own. Nothing from the deployment is sent: no cookies,
 no credentials, a fixed User-Agent.
 """
 
@@ -25,6 +27,7 @@ import httpx
 MAX_URL_CHARS = 512
 MAX_BYTES = 64 * 1024
 TIMEOUT = httpx.Timeout(5.0, connect=3.0)
+DEADLINE_SECONDS = 5.0
 USER_AGENT = "codehover-cloud (client metadata)"
 
 Resolver = Callable[[str], Awaitable[list[str]]]
@@ -80,6 +83,13 @@ class HttpClientMetadata:
         self.resolve = resolve
 
     async def fetch(self, url: str) -> dict[str, Any]:
+        try:
+            async with asyncio.timeout(DEADLINE_SECONDS):
+                return await self._fetch(url)
+        except TimeoutError as error:
+            raise MetadataError("timeout") from error
+
+    async def _fetch(self, url: str) -> dict[str, Any]:
         if not is_metadata_client_id(url):
             raise MetadataError("invalid_url")
         parts = urlsplit(url)
@@ -87,7 +97,7 @@ class HttpClientMetadata:
         try:
             found = await asyncio.wait_for(self.resolve(host), timeout=3.0)
             addresses = [ipaddress.ip_address(a) for a in found]
-        except (OSError, ValueError, TimeoutError) as error:
+        except (OSError, ValueError) as error:
             raise MetadataError("unresolvable") from error
         if not addresses or not all(a.is_global for a in addresses):
             raise MetadataError("not_public")

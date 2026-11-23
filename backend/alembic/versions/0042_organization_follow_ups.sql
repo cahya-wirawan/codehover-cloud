@@ -129,7 +129,10 @@ CREATE FUNCTION app_private.workspace_move_clashes(p_workspace uuid, p_target uu
 $$;
 
 -- Move `p_workspace` to the caller's own namespace (`p_organization` NULL) or to an organization the
--- caller owns or administers. The caller (app.user_id) must be an owner of the workspace. Returns the new
+-- caller owns or administers. The caller (app.user_id) must own what it leaves: their own namespace
+-- (never another person's: a co-owner cannot take it), or, for an organization's workspace, be an owner
+-- of that organization (a member given a direct owner role there cannot take it out; security review),
+-- and be an owner of the workspace. Returns the new
 -- owner's namespace. Errors: 42501 not allowed, 22023 already the owner, 55000 the workspace holds billing
 -- rows, 23505 (uq_projects_namespace_slug) a project's slug is taken there.
 CREATE FUNCTION app_private.move_workspace(p_workspace uuid, p_organization uuid) RETURNS uuid
@@ -166,6 +169,14 @@ BEGIN
   END IF;
   IF dst = src THEN
     RAISE EXCEPTION 'the workspace already belongs to this owner' USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.namespaces n
+                  WHERE n.id = src
+                    AND ((n.kind = 'user' AND n.user_id = caller)
+                      OR (n.kind = 'organization' AND EXISTS (
+                            SELECT 1 FROM public.organization_members m
+                             WHERE m.organization_id = n.organization_id AND m.user_id = caller AND m.role = 'owner')))) THEN
+    RAISE EXCEPTION 'only the workspace''s owner moves it' USING ERRCODE = '42501';
   END IF;
   -- Both owners' allowances and limits, in a fixed order (spending and creates take the same locks).
   PERFORM pg_advisory_xact_lock(hashtextextended('billing-account:' || LEAST(src, dst)::text, 0));

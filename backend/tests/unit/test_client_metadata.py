@@ -90,3 +90,20 @@ async def test_bad_answers_are_refused(response: httpx.Response, reason: str) ->
     with pytest.raises(MetadataError) as error:
         await fetcher(lambda request: response, ["93.184.215.14"]).fetch(URL)
     assert error.value.reason == reason
+
+
+async def test_one_deadline_covers_the_whole_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Security review: a host that answers slowly (a byte at a time) cannot stretch the fetch."""
+    import asyncio
+
+    from app.adapters.oauth import client_metadata
+
+    monkeypatch.setattr(client_metadata, "DEADLINE_SECONDS", 0.2)
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(5)
+        return httpx.Response(200, json={}, headers={"Content-Type": "application/json"})
+
+    with pytest.raises(MetadataError) as error:
+        await fetcher(slow, ["93.184.215.14"]).fetch(URL)
+    assert error.value.reason == "timeout"

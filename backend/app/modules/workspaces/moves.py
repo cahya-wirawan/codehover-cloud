@@ -1,6 +1,8 @@
 """Moving a workspace to another owner (0042; 02 S03b, 06 POST /workspaces/{wid}/move).
 
-A workspace owner moves it to their own namespace or to an organization they own or administer. Its
+The workspace's owner moves it: the person, for their own workspace, or an owner of the organization, for
+an organization's (a co-owner or a member with a direct owner role cannot take it away; security review),
+to their own namespace or to an organization they own or administer. Its
 projects keep their slugs under the new owner, and each old site address keeps leading to its project for
 90 days. The move is refused when a project's slug is taken under the new owner (the clashes are listed;
 nothing is renamed), when the workspace holds its owner's billing (hand that to another workspace first),
@@ -104,7 +106,8 @@ async def move_workspace(
             raise ApiError(
                 403,
                 "FORBIDDEN",
-                "You can move it to yourself, or to an organization you own or administer.",
+                "Only the workspace's owner moves it (you, for your own; an owner of the organization, for"
+                " its), to yourself or to an organization you own or administer.",
             ) from error
         if state == "22023":
             raise ApiError(422, "SAME_OWNER", "The workspace already belongs to that owner.") from error

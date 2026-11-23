@@ -414,3 +414,32 @@ async def test_a_workspace_moves_between_owners(new_user: NewUser) -> None:
     assert trial.status_code == 200, trial.text
     held = await unsafe(owner, "POST", url, json={"organization_id": org["id"]})
     assert held.status_code == 409 and code(held) == "BILLING_HELD"
+
+
+async def test_only_the_workspaces_owner_moves_it_never_a_co_owner(new_user: NewUser) -> None:
+    """Security review of 0042: a direct owner role on someone else's workspace does not let a person take
+    it: an organization member made a workspace owner cannot move it out of the organization, and a
+    person's co-owner cannot move it into their own namespace."""
+    owner, member, co_owner = await new_user(), await new_user(), await new_user()
+    org = await create_org(owner)
+    await add_member(owner, org["id"], member, "member")
+    org_ws = (await org_workspace(owner, org["id"])).json()["id"]
+    await join(owner, org_ws, member, "owner")
+    assert (await member.get(f"/api/v1/workspaces/{org_ws}")).json()["role"] == "owner"
+    taken = await unsafe(member, "POST", f"/api/v1/workspaces/{org_ws}/move", json={"organization_id": None})
+    assert taken.status_code == 403
+    personal = (await unsafe(owner, "POST", "/api/v1/workspaces", json={"name": "Mine"})).json()["id"]
+    await join(owner, personal, co_owner, "owner")
+    stolen = await unsafe(
+        co_owner, "POST", f"/api/v1/workspaces/{personal}/move", json={"organization_id": None}
+    )
+    assert stolen.status_code == 403
+    assert ddl(
+        "SELECT count(*) FROM workspaces w JOIN namespaces n ON n.id = w.namespace_id"
+        " WHERE w.id IN (:a, :b) AND (n.organization_id = :o OR n.user_id = (SELECT user_id FROM namespaces"
+        " WHERE handle = :h))",
+        a=org_ws,
+        b=personal,
+        o=org["id"],
+        h=(await owner.get("/api/v1/me")).json()["handle"],
+    ) == [(2,)]  # both stayed with their owners
