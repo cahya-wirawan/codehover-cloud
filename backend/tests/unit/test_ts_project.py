@@ -103,3 +103,80 @@ def test_limits() -> None:
     assert len(result[0]["compilerOptions"]["paths"]) == ts_project.MAX_ALIASES
     assert ts_project.is_config("a/tsconfig.app.json") and ts_project.is_config("jsconfig.json")
     assert not ts_project.is_config("a/config.json") and not ts_project.is_config("tsconfig.json.bak")
+
+
+def test_a_solution_config_hands_files_to_the_configs_it_references() -> None:
+    """Vite's layout: tsconfig.json owns nothing and references the app and node configs, where the alias is."""
+    configs = {
+        "tsconfig.json": '{"files": [], "references": [{"path": "./tsconfig.app.json"}, {"path": "./tsconfig.node.json"}]}',
+        "tsconfig.app.json": '{"include": ["src"], "exclude": ["src/**/*.test.ts"],'
+        ' "compilerOptions": {"paths": {"@/*": ["./src/*"]}}}',
+        "tsconfig.node.json": '{"include": ["vite.config.ts"]}',
+    }
+    files = ["src/main.tsx", "src/lib/utils.ts", "src/lib/utils.test.ts", "vite.config.ts"]
+    result = projects(configs, files, SRC)
+    assert [(r["files"], r["compilerOptions"].get("paths")) for r in result] == [
+        (["/w/src/src/lib/utils.ts", "/w/src/src/main.tsx"], {"@/*": ["/w/src/src/*"]}),
+        (["/w/src/src/lib/utils.test.ts", "/w/src/vite.config.ts"], None),
+    ]
+
+
+def test_a_referenced_config_of_any_name_is_a_project_for_its_directory() -> None:
+    configs = {
+        "tsconfig.json": '{"files": [], "references": [{"path": "packages/core/tsconfig.lib.json"}, {"path": "nope"}]}',
+        "packages/core/tsconfig.lib.json": '{"compilerOptions": {"baseUrl": ".", "paths": {"#c/*": ["lib/*"]}}}',
+    }
+    result = projects(configs, ["packages/core/lib/a.ts", "tools/x.ts"], SRC)
+    assert [r["files"] for r in result] == [["/w/src/packages/core/lib/a.ts"], ["/w/src/tools/x.ts"]]
+    assert result[0]["compilerOptions"]["paths"] == {"#c/*": ["/w/src/packages/core/lib/*"]}
+
+
+def test_workspace_packages_resolve_by_name_to_their_sources() -> None:
+    packages = {
+        "package.json": '{"name": "monorepo", "private": true, "workspaces": ["packages/*"]}',
+        "packages/ui/package.json": '{"name": "@acme/ui", "main": "dist/index.js", "types": "dist/index.d.ts"}',
+        "packages/core/package.json": '{"name": "@acme/core", "exports": {".": {"import": "./src/main.ts"}}}',
+        "packages/bad/package.json": '{"name": "Not A Name", "main": "index.ts"}',
+        "packages/web/package.json": '{"name": "web"}',
+    }
+    files = [
+        "packages/ui/src/index.ts",
+        "packages/ui/src/button.tsx",
+        "packages/core/src/main.ts",
+        "packages/bad/index.ts",
+        "packages/web/app.ts",
+    ]
+    result = projects({}, files, SRC, packages)
+    assert len(result) == 1  # no tsconfig anywhere: one project, with the packages' names
+    assert result[0]["compilerOptions"]["paths"] == {
+        "@acme/core": ["/w/src/packages/core/src/main.ts"],
+        "@acme/core/*": ["/w/src/packages/core/src/*"],
+        "@acme/ui": ["/w/src/packages/ui/src/index.ts"],  # dist/index.js mapped to its source
+        "@acme/ui/*": ["/w/src/packages/ui/src/*"],
+        "web/*": ["/w/src/packages/web/*"],  # no entry in the checkout: only its files by path
+    }
+    # A project's own paths win over a package of the same name.
+    own = {"tsconfig.json": '{"compilerOptions": {"paths": {"@acme/ui": ["./shim.ts"]}}}'}
+    paths = projects(own, ["shim.ts", *files], SRC, packages)[0]["compilerOptions"]["paths"]
+    assert paths["@acme/ui"] == ["/w/src/shim.ts"] and paths["@acme/core"] == [
+        "/w/src/packages/core/src/main.ts"
+    ]
+
+
+def test_root_dirs_and_module_suffixes_pass_through_inside_the_checkout() -> None:
+    configs = {
+        "tsconfig.json": '{"compilerOptions": {"rootDirs": ["src", "generated", "../../etc"],'
+        ' "moduleSuffixes": [".ios", "", "../x", 5]}}'
+    }
+    options = projects(configs, ["src/a.ts"], SRC)[0]["compilerOptions"]
+    assert options["rootDirs"] == ["/w/src/src", "/w/src/generated"]
+    assert options["moduleSuffixes"] == [".ios", ""]
+    assert "paths" not in options
+
+
+def test_include_patterns() -> None:
+    glob = ts_project._glob
+    assert glob("", "src").fullmatch("src/a/b.ts") and not glob("", "src").fullmatch("srcx/a.ts")
+    assert glob("app", "**/*.ts").fullmatch("app/x/y.ts") and glob("app", "**/*.ts").fullmatch("app/y.ts")
+    assert not glob("app", "*.ts").fullmatch("app/x/y.ts")
+    assert glob("", "../outside") is None

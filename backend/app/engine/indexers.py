@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.engine import sandbox, ts_project
-from app.engine.index_worker import MANIFESTS, OPENSSL_CONFIG, RUST_CONFIG, TSCONFIGS
+from app.engine.index_worker import MANIFESTS, OPENSSL_CONFIG, PACKAGE_FILES, RUST_CONFIG, TSCONFIGS
 
 FAMILIES = {
     "scip-python": frozenset({"python"}),
@@ -29,6 +29,7 @@ PACKAGES = {"scip-python": "@sourcegraph/scip-python", "scip-typescript": "@sour
 SANDBOX_GRACE_SECONDS = 60  # the sandbox's own wall clock outlasts the indexer timeout inside it
 MAX_MANIFESTS = 500
 MAX_TSCONFIGS = ts_project.MAX_CONFIGS
+MAX_PACKAGES = ts_project.MAX_PACKAGES
 # rust-analyzer's own settings: no proc-macro server, no build scripts, no cargo (the crate graph comes
 # from rust-project.json), no diagnostics. The repository's rust-analyzer.toml is never in the checkout.
 RUST_ANALYZER_SETTINGS = {
@@ -157,10 +158,16 @@ def _checkout(
         # project's root. The generated projects (in out) are not above the checkout, so the search would
         # leave the scratch directory; this fixed one ends it here for every project alike.
         (work / "package.json").write_text(json.dumps({"name": "codehover", "version": "0.0.0"}))
-        # The repository's configs as data, beside the checkout: the sandboxed worker reads their aliases.
-        for c in (tsconfigs or [])[:MAX_TSCONFIGS]:
-            if _safe(c["path"]) and ts_project.is_config(c["path"]):
-                target = work / TSCONFIGS / c["path"]
+        # The repository's configs and package manifests as data, beside the checkout: the sandboxed
+        # worker reads their module resolution (app.engine.ts_project).
+        configs = [c for c in tsconfigs or [] if _safe(c["path"]) and ts_project.is_config(c["path"])]
+        packages = [c for c in tsconfigs or [] if _safe(c["path"]) and ts_project.is_package(c["path"])]
+        for folder, chosen in (
+            (TSCONFIGS, configs[:MAX_TSCONFIGS]),
+            (PACKAGE_FILES, packages[:MAX_PACKAGES]),
+        ):
+            for c in chosen:
+                target = work / folder / c["path"]
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(c["text"].encode("utf-8"))
     if indexer == "scip-python":

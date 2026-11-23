@@ -1004,3 +1004,47 @@ def test_an_old_project_address_is_taken_only_by_its_own_workspace(world: World,
     expect(runtime, REJECTED, take, w=second, r=repo, s=old)
     runtime.context(workspace=world.a.workspace, user=world.a.user)
     runtime.run(take, w=world.a.workspace, r=world.a.repository, s=old)  # its own workspace may
+
+
+def test_mcp_sessions_are_tenant_scoped_and_bound_to_their_project(world: World, runtime: Db) -> None:
+    """0043: sessions follow the tenant policy; only their subscriptions and liveness change; the
+    resolver only sweeps expired ones."""
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    runtime.run(
+        "INSERT INTO mcp_sessions(workspace_id, project_id, session_hash, protocol_version, expires_at)"
+        " VALUES (:w, :p, :h, '2025-11-25', now() + interval '1 day')",
+        w=world.b.workspace,
+        p=world.b.project,
+        h=b"\x05" * 32,
+    )
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM mcp_sessions WHERE workspace_id = :w", w=world.b.workspace) == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO mcp_sessions(workspace_id, project_id, session_hash, protocol_version, expires_at)"
+        " VALUES (:w, :p, :h, '2025-11-25', now() + interval '1 day')",
+        w=world.b.workspace,
+        p=world.b.project,
+        h=b"\x06" * 32,
+    )
+    # Another workspace's project cannot be named, even in one's own workspace (composite key).
+    expect(
+        runtime,
+        sa.exc.IntegrityError,
+        "INSERT INTO mcp_sessions(workspace_id, project_id, session_hash, protocol_version, expires_at)"
+        " VALUES (:w, :p, :h, '2025-11-25', now() + interval '1 day')",
+        w=world.a.workspace,
+        p=world.b.project,
+        h=b"\x07" * 32,
+    )
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    expect(runtime, DENIED, "UPDATE mcp_sessions SET project_id = :p", p=world.b.project)
+    expect(runtime, DENIED, "UPDATE mcp_sessions SET user_id = :u", u=world.b.user)
+    runtime.run(
+        "UPDATE mcp_sessions SET subscriptions = '{codehover://x/overview}' WHERE workspace_id = :w",
+        w=world.b.workspace,
+    )
+    runtime.context()
+    assert runtime.one("SELECT app_private.sweep_mcp_sessions()") == 0  # not expired
+    assert runtime.one("SELECT count(*) FROM mcp_sessions") == 0  # the resolver exposes no rows

@@ -6,7 +6,8 @@ import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
 
 const ERRORS: Record<string, string> = {
-  invalid_client: "This app is not registered with codehover, or it asked to return somewhere it did not register.",
+  invalid_client:
+    "This app is not registered with codehover, its client document could not be read, or it asked to return somewhere it did not name.",
   rate_limited: "Too many sign-in attempts. Wait a minute, then start again from your app.",
 };
 
@@ -69,6 +70,12 @@ export function OAuthConsentPage() {
         {request.workspace} as you: its explanations, guide and source code. It can read nothing else, and it
         cannot change anything.
       </p>
+      {request.client_url ? (
+        <p className="mt-2 text-muted">
+          It names itself in <span className="break-all font-mono">{request.client_url}</span>. The name above is its own; check
+          that this address belongs to the app you meant to connect.
+        </p>
+      ) : null}
       <p className="mt-2 text-muted">
         After you allow it, you return to <span className="font-mono">{request.redirect_host}</span>. Only continue
         if you started this from your own app. You can disconnect it at any time on the workspace page.

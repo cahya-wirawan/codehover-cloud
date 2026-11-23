@@ -16,6 +16,7 @@ from app.adapters.billing import billing_provider
 from app.adapters.github.app import GitHubApp
 from app.adapters.github.public import PublicGitHub
 from app.adapters.oauth import OAuthProvider
+from app.adapters.oauth.client_metadata import HttpClientMetadata
 from app.adapters.oauth.github import GitHubProvider
 from app.adapters.oauth.google import GoogleProvider
 from app.adapters.storage import MemoryObjectStore, ObjectStore, S3ObjectStore
@@ -167,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.catalog = catalog.load(settings.model_catalog_file)
     app.state.billing = billing_provider(settings, http)
     app.state.key_verifier = provider_keys.verify_with_provider
+    app.state.client_metadata = HttpClientMetadata(http)  # MCP sign-in client ID metadata documents
 
     install_error_handlers(app)
     app.middleware("http")(no_store)

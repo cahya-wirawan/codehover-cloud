@@ -7,16 +7,20 @@ without access it is 404; a token that is not valid, or is for another site, is 
 
 from __future__ import annotations
 
+import asyncio
+import json
 import secrets
 from typing import Any
 
 import httpx
 import pytest
 
+from app.modules.mcp import sessions
 from tests.integration.auth_support import ORIGIN, FakeIdP, browser, ddl, unsafe
 from tests.integration.conftest import needs_db
+from tests.integration.test_event_stream import parse
 from tests.integration.test_github import FakeGitHub, github, workspace  # noqa: F401
-from tests.integration.test_publication import address, publish, ready_build
+from tests.integration.test_publication import address, publish, ready_build, second_build
 from tests.integration.test_workspaces import NewUser, join, new_user  # noqa: F401
 
 pytestmark = [pytest.mark.integration, needs_db]
@@ -74,7 +78,7 @@ async def test_a_public_site_serves_every_tool_to_anyone(
         init = (await mcp.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}}))["result"]
         assert init["protocolVersion"] == "2025-06-18" and init["capabilities"] == {
             "tools": {"listChanged": False},
-            "resources": {"listChanged": False, "subscribe": False},
+            "resources": {"listChanged": True, "subscribe": True},  # 0043: sessions
             "prompts": {"listChanged": False},
         }
         assert "data, not instructions" in init["instructions"]
@@ -126,7 +130,8 @@ async def test_a_public_site_serves_every_tool_to_anyone(
         assert (await mcp.rpc("tools/call", {"name": "search", "arguments": {"q": 1}}))["error"][
             "code"
         ] == -32602
-        assert (await mcp.rpc("resources/subscribe"))["error"]["code"] == -32601
+        assert (await mcp.rpc("sampling/createMessage"))["error"]["code"] == -32601
+        assert (await mcp.rpc("resources/subscribe"))["error"]["code"] == -32602  # no uri (0043: a session's)
         batch = await mcp.post([{"jsonrpc": "2.0", "id": 1, "method": "ping"}])
         assert batch.status_code == 400 and batch.json()["error"]["code"] == -32600
         assert (
@@ -140,7 +145,9 @@ async def test_a_public_site_serves_every_tool_to_anyone(
         assert (
             await mcp.post({"jsonrpc": "2.0", "id": 9, "method": "ping"}, Origin=ORIGIN)
         ).status_code == 200
-        assert (await visitor.get(f"/api/v1/mcp/{slug}")).status_code == 405
+        assert (
+            await visitor.get(f"/api/v1/mcp/{slug}")
+        ).status_code == 406  # a stream needs text/event-stream
         unknown = await Mcp(visitor, "nobody-x/no-such-site").post(
             {"jsonrpc": "2.0", "id": 1, "method": "ping"}
         )
@@ -316,3 +323,135 @@ def viewer_user(ws: str, token_id: str) -> str:
     return str(
         ddl("SELECT user_id FROM access_tokens WHERE workspace_id = :w AND id = :t", w=ws, t=token_id)[0][0]
     )
+
+
+def rpc(id_: int, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": id_, "method": method, "params": params or {}}
+
+
+async def test_a_session_subscribes_and_its_stream_follows_the_site(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """0043: initialize opens a session; its stream says when the published build changes (and which
+    subscribed resources changed), and ends when the site stops being served."""
+    owner, _ws, project, first, app = await ready_build(client, idp, github)
+    slug = await address(owner, project)
+    v1 = await publish(owner, project, build_id=first, visibility="public", confirmation="API")
+    assert v1.status_code == 200, v1.text
+    second = await second_build(owner, app, project)
+    app.state.mcp_timing = sessions.Timing(
+        poll_seconds=0.05, heartbeat_seconds=0.1, recheck_seconds=0.1, max_seconds=30
+    )
+    async with browser(app) as visitor:
+        mcp = Mcp(visitor, slug)
+        init = await mcp.post(rpc(1, "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}}))
+        sid = init.headers["mcp-session-id"]
+        assert init.json()["result"]["capabilities"]["resources"] == {"listChanged": True, "subscribe": True}
+        assert ddl(
+            "SELECT count(*) FROM mcp_sessions WHERE session_hash = sha256(convert_to(:s, 'UTF8'))", s=sid
+        ) == [(1,)]
+        overview = f"codehover://{slug}/overview"
+        # Subscriptions need the session; an unknown session is 404, so the client initializes again.
+        assert (await mcp.post(rpc(2, "resources/subscribe", {"uri": overview}))).json()["error"][
+            "code"
+        ] == -32600
+        assert (await mcp.post(rpc(3, "ping"), **{"Mcp-Session-Id": "nope"})).status_code == 404
+        session = {"Mcp-Session-Id": sid}
+        missing = await mcp.post(
+            rpc(4, "resources/subscribe", {"uri": f"codehover://{slug}/guide/nope"}), **session
+        )
+        assert missing.json()["error"]["code"] == -32002
+        assert (await mcp.post(rpc(5, "resources/subscribe", {"uri": overview}), **session)).json()[
+            "result"
+        ] == {}
+        page = ddl("SELECT slug FROM guide_pages WHERE build_id = :b ORDER BY ordinal LIMIT 1", b=first)[0][0]
+        guide = f"codehover://{slug}/guide/{page}"
+        assert (await mcp.post(rpc(6, "resources/subscribe", {"uri": guide}), **session)).json()[
+            "result"
+        ] == {}
+        assert (
+            await mcp.post({"jsonrpc": "2.0", "method": "notifications/initialized"}, **session)
+        ).status_code == 202
+        stream_url = f"/api/v1/mcp/{slug}"
+        assert (await visitor.get(stream_url, headers={"Accept": "text/event-stream"})).status_code == 400
+
+        async def change_the_site() -> None:
+            await asyncio.sleep(0.5)
+            # The republished build's page differs from the first's (replay builds are otherwise alike).
+            ddl(
+                "UPDATE guide_pages SET title = 'A changed title' WHERE build_id = :b AND slug = :s",
+                b=second,
+                s=page,
+            )
+            v2 = await publish(
+                owner, project, v1.headers["etag"], build_id=second, visibility="public", confirmation="API"
+            )
+            assert v2.status_code == 200, v2.text
+            await asyncio.sleep(0.5)
+            removed = await unsafe(
+                owner,
+                "DELETE",
+                f"/api/v1/projects/{project}/publication",
+                headers={"If-Match": v2.headers["etag"]},
+            )
+            assert removed.status_code == 204
+
+        streamed, _ = await asyncio.gather(
+            visitor.get(stream_url, headers={"Accept": "text/event-stream", **session}), change_the_site()
+        )
+        assert streamed.status_code == 200 and streamed.headers["content-type"].startswith(
+            "text/event-stream"
+        )
+        messages = [json.loads(f["data"]) for f in parse(streamed.text) if "data" in f]
+        methods = [m["method"] for m in messages]
+        assert methods[0] == "notifications/resources/list_changed"  # republished
+        assert methods[-1] == "notifications/resources/list_changed" and len(methods) >= 2  # withdrawn: ends
+        updates = [m["params"]["uri"] for m in messages if m["method"] == "notifications/resources/updated"]
+        assert guide in updates and set(updates) <= {overview, guide}
+        # Ending the session: 204, then it is gone.
+        republished = await publish(owner, project, build_id=first, visibility="public", confirmation="API")
+        assert republished.status_code == 200, republished.text
+        assert (await visitor.delete(stream_url, headers=session)).status_code == 204
+        assert (await mcp.post(rpc(7, "ping"), **session)).status_code == 404
+
+
+async def test_a_session_is_its_persons_and_a_revoked_token_ends_the_stream(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
+) -> None:
+    owner, ws, project, build, app = await ready_build(client, idp, github)
+    slug = await address(owner, project)
+    assert (await publish(owner, project, build_id=build)).status_code == 200  # private
+    app.state.mcp_timing = sessions.Timing(
+        poll_seconds=0.05, heartbeat_seconds=0.1, recheck_seconds=0.1, max_seconds=30
+    )
+    mine = (await create_token(owner, ws)).json()
+    viewer = await new_user()
+    await join(owner, ws, viewer, "viewer")
+    theirs = (await create_token(viewer, ws)).json()["token"]
+    async with browser(app) as reader:
+        init = await Mcp(reader, slug, mine["token"]).post(
+            rpc(1, "initialize", {"protocolVersion": "2025-11-25"})
+        )
+        session = {"Mcp-Session-Id": init.headers["mcp-session-id"]}
+        # Another member's token cannot use this person's session.
+        assert (await Mcp(reader, slug, theirs).post(rpc(2, "ping"), **session)).status_code == 404
+        assert (await Mcp(reader, slug, mine["token"]).post(rpc(3, "ping"), **session)).status_code == 200
+
+        async def revoke() -> None:
+            await asyncio.sleep(0.4)
+            revoked = await unsafe(owner, "DELETE", f"/api/v1/workspaces/{ws}/access-tokens/{mine['id']}")
+            assert revoked.status_code == 204
+
+        streamed, _ = await asyncio.gather(
+            reader.get(
+                f"/api/v1/mcp/{slug}",
+                headers={
+                    "Accept": "text/event-stream",
+                    "Authorization": f"Bearer {mine['token']}",
+                    **session,
+                },
+            ),
+            revoke(),
+        )
+        methods = [json.loads(f["data"])["method"] for f in parse(streamed.text) if "data" in f]
+        assert methods == ["notifications/resources/list_changed"]  # the site is no longer this reader's

@@ -2,7 +2,8 @@
 
 An MCP client that gets 401 from `/mcp/<owner>/<project>` reads the protected-resource metadata (RFC 9728) named in
 `WWW-Authenticate`, then the authorization server metadata (RFC 8414), registers itself (RFC 7591;
-public clients only, no secret), and sends its person to `/oauth/authorize` with PKCE (S256 only) and
+public clients only, no secret) or names its client ID metadata document (an https `client_id`, fetched
+here at authorization and kept an hour; app.adapters.oauth.client_metadata), and sends its person to `/oauth/authorize` with PKCE (S256 only) and
 the site's URL as `resource` (RFC 8707). The app's consent page shows who asks for what; approving needs
 access to the project and yields a one-time code (60 s), which the token endpoint trades for an access
 token of one hour bound to that project and a refresh token of 30 days that changes on every use. A
@@ -30,6 +31,7 @@ from pydantic import BaseModel
 from sqlalchemy import exc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.oauth.client_metadata import MetadataError, is_metadata_client_id
 from app.core import ratelimit
 from app.core.errors import ApiError
 from app.core.settings import Settings
@@ -57,6 +59,8 @@ BLOCKED_SCHEMES = frozenset(
     {"http", "https", "javascript", "data", "file", "vbscript", "about", "blob", "ws", "wss"}
 )
 MAX_BODY_BYTES = 16 * 1024
+METADATA_FRESH = timedelta(hours=1)  # a client metadata document is fetched again after this
+METADATA_STALE = timedelta(hours=24)  # and a stored copy still serves this long when its host is down
 
 well_known = APIRouter(tags=["oauth"])
 router = APIRouter(tags=["oauth"])
@@ -156,6 +160,7 @@ async def authorization_server(request: Request) -> JSONResponse:
             "revocation_endpoint_auth_methods_supported": ["none"],
             "scopes_supported": [SCOPE],
             "authorization_response_iss_parameter_supported": True,
+            "client_id_metadata_document_supported": True,
         }
     )
 
@@ -220,6 +225,57 @@ async def register(request: Request, db: Db) -> Response:
     )
 
 
+# ---------------------------------------------------------------- client ID metadata documents
+def client_from_document(url: str, document: dict[str, Any]) -> tuple[str, list[str]] | None:
+    """The client name and redirect URIs of a metadata document fetched from `url`, or None when it is not
+    a document for that URL with what a public client here may use (the same rules as registration)."""
+    uris = document.get("redirect_uris")
+    if document.get("client_id") != url:
+        return None
+    if not isinstance(uris, list) or not 1 <= len(uris) <= 5 or not all(valid_redirect(u) for u in uris):
+        return None
+    if document.get("token_endpoint_auth_method", "none") != "none":
+        return None
+    grants = document.get("grant_types", ["authorization_code"])
+    if not isinstance(grants, list) or not set(grants) <= {"authorization_code", "refresh_token"}:
+        return None
+    if document.get("response_types", ["code"]) != ["code"]:
+        return None
+    name = document.get("client_name")
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name.strip() if isinstance(name, str) else "")[:100]
+    return name or (urlsplit(url).hostname or "MCP client"), list(dict.fromkeys(uris))
+
+
+async def _client(db: AsyncSession, request: Request, client_id: str) -> Any:
+    """The client a sign-in names: a registered one, or one from its metadata document."""
+    client = (
+        await db.execute(text("SELECT * FROM app_private.oauth_client(:c)"), {"c": client_id})
+    ).one_or_none()
+    await db.commit()
+    if not is_metadata_client_id(client_id):
+        return client
+    now = datetime.now(UTC)
+    if client is not None and client.fetched_at is not None and now - client.fetched_at < METADATA_FRESH:
+        return client
+    try:  # no transaction is open while the document is fetched
+        found = client_from_document(client_id, await request.app.state.client_metadata.fetch(client_id))
+    except MetadataError:
+        found = None
+    if found is None:
+        fresh_enough = (
+            client is not None and client.fetched_at is not None and now - client.fetched_at < METADATA_STALE
+        )
+        return client if fresh_enough else None
+    name, uris = found
+    await db.execute(
+        text("SELECT app_private.oauth_metadata_client(:c, :n, CAST(:u AS text[]))"),
+        {"c": client_id, "n": name, "u": uris},
+    )
+    client = (await db.execute(text("SELECT * FROM app_private.oauth_client(:c)"), {"c": client_id})).one()
+    await db.commit()
+    return client
+
+
 # ---------------------------------------------------------------- authorization (browser)
 def _consent_redirect(**query: str) -> RedirectResponse:
     return RedirectResponse(f"{CONSENT_PAGE}?{urlencode(query)}", status_code=302)
@@ -234,7 +290,7 @@ def _client_redirect(settings: Settings, uri: str, **query: str | None) -> str:
 async def authorize(
     request: Request,
     db: Db,
-    client_id: Annotated[str, Query(max_length=100)] = "",
+    client_id: Annotated[str, Query(max_length=512)] = "",
     redirect_uri: Annotated[str, Query(max_length=512)] = "",
     response_type: Annotated[str, Query(max_length=20)] = "",
     code_challenge: Annotated[str, Query(max_length=128)] = "",
@@ -250,10 +306,7 @@ async def authorize(
         )
     except ApiError:
         return _consent_redirect(error="rate_limited")
-    client = (
-        await db.execute(text("SELECT * FROM app_private.oauth_client(:c)"), {"c": client_id})
-    ).one_or_none()
-    await db.commit()
+    client = await _client(db, request, client_id)
     # An unknown client or a redirect it did not register: never redirect there (RFC 6749 4.1.2.1).
     if client is None or redirect_uri not in client.redirect_uris:
         return _consent_redirect(error="invalid_client")
@@ -315,7 +368,8 @@ async def _pending(db: AsyncSession, request_id: UUID, user_id: UUID) -> tuple[A
 
 
 class ConsentOut(BaseModel):
-    client_name: str
+    client_name: str  # as the client names itself
+    client_url: str | None = None  # its metadata document, which says who publishes it
     redirect_host: str
     site: str  # "<owner>/<project>" (0039)
     project: str
@@ -342,6 +396,7 @@ async def consent(request_id: UUID, db: Db, principal: CurrentPrincipal) -> Cons
     host = f"{target.scheme}://{target.netloc}" if target.netloc else f"{target.scheme}:"
     return ConsentOut(
         client_name=pending.client_name,
+        client_url=pending.client_id if is_metadata_client_id(pending.client_id) else None,
         redirect_host=host,
         site=f"{site.owner}/{site.project}",
         project=names.project,

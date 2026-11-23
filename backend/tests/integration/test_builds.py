@@ -616,6 +616,6 @@ async def test_a_typescript_repository_gives_the_indexer_its_tsconfig_files(
     assert seen["manifests"] == []
     assert seen["tsconfigs"] == [
         {"path": p, "text": repository[p]}
-        for p in ("tsconfig.base.json", "tsconfig.json", "web/jsconfig.json")
+        for p in ("package.json", "tsconfig.base.json", "tsconfig.json", "web/jsconfig.json")  # 0.9.4: packages
     ]
     await owner.aclose()
