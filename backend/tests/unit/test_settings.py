@@ -35,6 +35,8 @@ def test_database_url_requires_psycopg_driver() -> None:
         ({"session_cookie_secure": False}, "SESSION_COOKIE_SECURE"),
         ({"session_secret": SecretStr("short")}, "SESSION_SECRET"),
         ({"app_encryption_key": SecretStr("s" * 32)}, "must differ"),
+        ({"app_encryption_key_previous": SecretStr("k" * 32)}, "APP_ENCRYPTION_KEY_PREVIOUS must differ"),
+        ({"app_encryption_key_previous": SecretStr("short")}, "APP_ENCRYPTION_KEY_PREVIOUS must be at least"),
     ],
 )
 def test_production_rules(overrides: dict[str, object], message: str) -> None:
@@ -102,3 +104,7 @@ def test_blank_optional_values_mean_not_configured(monkeypatch: pytest.MonkeyPat
     assert settings.support_email is None
     assert make_settings(stripe_secret_key=SecretStr("  ")).stripe_secret_key is None
     assert make_settings(stripe_price_pro="price_1").stripe_price_pro == "price_1"
+
+
+def test_a_blank_previous_encryption_key_is_unset() -> None:
+    assert make_settings(app_encryption_key_previous=SecretStr(" ")).app_encryption_key_previous is None

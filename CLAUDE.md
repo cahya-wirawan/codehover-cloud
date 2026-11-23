@@ -59,8 +59,7 @@ Next scope: nothing is scheduled after M6 (`14_IMPLEMENTATION_ROADMAP.md`); cand
 - Rust resolution has no crates.io dependencies, proc-macro expansion or build-script output, and assumes a 64-bit Linux target;
 - a published site and an offline ZIP switch languages only at the published or exported build's reader level;
 - the permitted-license list awaits legal review, and GitHub's single-license answer refuses some multi-license or `NOASSERTION` repositories (spec 21);
-- hosted MCP has no server-initiated stream or resource subscriptions; MCP sign-in registers clients dynamically only (no client ID metadata documents) and has run only against the test suite, not a real MCP client;
-- rotating `APP_ENCRYPTION_KEY` makes stored provider keys unreadable.
+- hosted MCP has no server-initiated stream or resource subscriptions; MCP sign-in registers clients dynamically only (no client ID metadata documents) and has run only against the test suite, not a real MCP client.
 
 Without a plan, an owner's workspaces share `GENERATION_ALLOWANCE_MICRO_USD`; a held plan replaces it with the plan's allowance, and manual grants add to either (0040: per owner).
 
@@ -103,6 +102,7 @@ cd frontend && npm run test:e2e           # Playwright + axe journey; same TEST_
 .venv/bin/python -m app.ops.loadcheck --base <url> --site <owner>/<project> --users 50   # NFR p95 targets (see README)
 .venv/bin/python -m app.ops.billing reconcile|process   # re-sync Stripe customers / process webhook receipts now
 .venv/bin/python -m app.ops.billing clear-dispute <workspace-id> "<reason>"   # unblock generation after a lost dispute
+.venv/bin/python -m app.ops.encryption reseal|check   # rotate APP_ENCRYPTION_KEY: new key + APP_ENCRYPTION_KEY_PREVIOUS=old, reseal, check, then unset (22)
 python3 scripts/check_versions.py        # VERSION == backend/frontend/lockfile/OpenAPI versions
 cd deployment && cp .env.example .env && mkdir -p secrets && touch secrets/github-app.pem \
   && docker compose --env-file .env -f compose.yaml --profile app up -d --build   # http://localhost:8080
