@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-23 · Package version 0.9.2
+Date: 2026-11-23 · Package version 0.9.4
+
+0.9.4 (0043) adds MCP sessions and client ID metadata documents, and more TypeScript resolution.
+- **MCP sessions.** `test_mcp.py`: a session subscribes, and its stream sends `list_changed` with `updated` for a changed subscribed page when the site is republished, then ends when it is withdrawn. Another member's token cannot use a person's session, and a revoked token ends the stream. `test_tenancy.py` covers `mcp_sessions`.
+- **Metadata documents.** `test_mcp_oauth.py`: a client named by its document signs in and the document is cached; a document for another URL or an unlisted redirect is refused; an hour-old copy is fetched again, and a stored one serves for a day while its host is down. `tests/unit/test_client_metadata.py` checks that only public addresses are fetched, pinned and capped.
+- **TypeScript.** `test_ts_project.py` covers solution configs with references, `include`/`exclude`, workspace packages, `rootDirs` and `moduleSuffixes`.
+
+0.9.3 (0042) adds organization follow-ups. `test_organizations.py` covers member details for owners and admins only, the organization's plan across its workspaces, handing billing over, and moving a workspace (clashes listed, held billing refused, access following the owner). `test_publication.py` shows a moved workspace's sites at the new owner with the old addresses leading there; `test_billing.py` shows a handed-over subscription freeing the old workspace for deletion.
+
+Results for both: unit 321 passed, integration 292 passed (three expectations were updated for the new routes and the package files, and the anchor trigger now resets an unset handover setting; those suites then passed again), frontend 80 passed, e2e 2 passed.
 
 0.9.2 rotates `APP_ENCRYPTION_KEY` without losing stored provider keys. `tests/unit/test_sealer.py` checks that the previous key opens what it sealed, new values use only the new key, resealing moves old values and leaves current ones, and values stay bound to their row; `test_settings.py` checks the production rules for `APP_ENCRYPTION_KEY_PREVIOUS`. `test_own_keys_batch.py` stores a workspace's key, checks it without changing it, reseals it so that only the new key opens it, finds nothing left on a second run, reports a key neither key opens without touching it, and checks every workspace page by page. Results: unit 302 passed, integration 283 passed.
 
