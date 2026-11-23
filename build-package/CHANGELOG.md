@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-23
+
+### Added
+
+- 08, 22: rotating `APP_ENCRYPTION_KEY` keeps workspaces' stored provider keys. `APP_ENCRYPTION_KEY_PREVIOUS` opens values the old key sealed during the switch, `python -m app.ops.encryption reseal` seals every live provider key again with the new key, and `check` confirms that none needs the old key before it is unset. Both deployment copies pass the new optional setting.
+
 ## [0.9.1] - 2026-11-23
 
 ### Changed

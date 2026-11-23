@@ -150,6 +150,15 @@ The worker processes webhook receipts every 30 s and reconciles daily. From `bac
 
 `BILLING_ENFORCED=true` makes plans required for new projects and members. `OPERATOR_NAME` and `SUPPORT_EMAIL` fill the privacy, terms and support pages, which are drafts for legal review.
 
+## Rotating the encryption key
+
+Workspaces' own provider keys are sealed with `APP_ENCRYPTION_KEY`. Replacing it on its own would make them unreadable. Rotate it in four steps instead (spec 22):
+
+1. Set `APP_ENCRYPTION_KEY` to the new key and `APP_ENCRYPTION_KEY_PREVIOUS` to the old one, then restart api and worker.
+2. From `backend/` with the runtime role, run `.venv/bin/python -m app.ops.encryption reseal`. It seals every stored key again with the new key.
+3. Run `.venv/bin/python -m app.ops.encryption check`. It exits 0 once no stored key needs the old one.
+4. After at least ten minutes, unset `APP_ENCRYPTION_KEY_PREVIOUS` and restart again. The wait lets sign-ins already in progress finish.
+
 ## M6 features
 
 - **Push rebuilds.** Subscribe the GitHub App to `push` events, then choose "Rebuild on push" on a project page (admins). `PUSH_DEBOUNCE_SECONDS` and `PUSH_MAX_WAIT_SECONDS` tune the debounce.

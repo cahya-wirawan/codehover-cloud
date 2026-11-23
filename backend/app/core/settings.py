@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = True
     session_secret: SecretStr
     app_encryption_key: SecretStr
+    # While rotating APP_ENCRYPTION_KEY (22): the old key, which still opens what it sealed until
+    # `python -m app.ops.encryption reseal` has moved every stored key; then unset it.
+    app_encryption_key_previous: SecretStr | None = None
 
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
@@ -172,6 +175,7 @@ class Settings(BaseSettings):
         "scip_tools_dir",
         "scip_rust_analyzer_path",
         "scip_rust_src_dir",
+        "app_encryption_key_previous",
         mode="before",
     )
     @classmethod
@@ -255,6 +259,22 @@ class Settings(BaseSettings):
                 problems.append(f"{name.upper()} must be at least {MIN_SECRET_LENGTH} characters")
         if self.session_secret.get_secret_value() == self.app_encryption_key.get_secret_value():
             problems.append("SESSION_SECRET and APP_ENCRYPTION_KEY must differ")
+        if (
+            self.app_encryption_key_previous is not None
+            and self.app_encryption_key_previous.get_secret_value()
+            in (
+                self.session_secret.get_secret_value(),
+                self.app_encryption_key.get_secret_value(),
+            )
+        ):
+            problems.append(
+                "APP_ENCRYPTION_KEY_PREVIOUS must differ from APP_ENCRYPTION_KEY and SESSION_SECRET"
+            )
+        if (
+            self.app_encryption_key_previous is not None
+            and len(self.app_encryption_key_previous.get_secret_value()) < MIN_SECRET_LENGTH
+        ):
+            problems.append(f"APP_ENCRYPTION_KEY_PREVIOUS must be at least {MIN_SECRET_LENGTH} characters")
         if problems:
             raise ValueError("; ".join(problems))
         return self

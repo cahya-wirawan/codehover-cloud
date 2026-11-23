@@ -25,7 +25,7 @@ from app.core.db import create_engine, session_factory
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
 from app.core.request_context import RequestIdMiddleware
-from app.core.security import Sealer
+from app.core.security import sealer_for
 from app.core.settings import Environment, Settings, get_settings
 from app.engine import catalog
 from app.modules.billing import router as billing
@@ -159,7 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     limiter = create_engine(settings, application_name="ratelimit", pool_size=4, max_overflow=4)
     app.state.rate_sessions = session_factory(limiter)
     app.state.http = http
-    app.state.sealer = Sealer(settings.app_encryption_key.get_secret_value())
+    app.state.sealer = sealer_for(settings)
     app.state.oauth_providers = oauth_providers(settings, http)
     app.state.github_app = github_app(settings, http)
     app.state.public_github = public_github(settings, http)

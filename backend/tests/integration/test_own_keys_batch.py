@@ -9,17 +9,22 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 import httpx
 import pytest
+from cryptography.exceptions import InvalidTag
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.adapters.models.replay import ReplayGateway
 from app.core.db import session_factory
+from app.core.security import Sealer
 from app.engine import catalog
 from app.engine.gateway import BatchItem, GenerationRequest, GenerationResult, ProviderError
 from app.jobs import control
 from app.jobs.stages import Runtime
+from app.modules.providers.keys import associated
+from app.ops import encryption
 from tests.integration.auth_support import FakeIdP, ddl, unsafe
 from tests.integration.conftest import RUNTIME_URL, SYSTEM_URL, needs_db, needs_system
 from tests.integration.test_budgets import account_counters, make_estimate, start_from
@@ -136,6 +141,48 @@ async def resume(app: Any, build: str, rt: Runtime) -> list[str]:
     async with session_factory(create_async_engine(SYSTEM_URL))() as sys_db:
         await control.reconcile_once(sys_db)
     return await drive(app, build, runtime=rt)
+
+
+async def test_rotating_the_encryption_key_reseals_stored_keys(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """22 "Rotating APP_ENCRYPTION_KEY": with the old key as the previous one, `app.ops.encryption`
+    moves a workspace's stored key to the new key; a key neither opens is reported and left alone."""
+    owner, ws, _project, _build, app = await ready_build(client, idp, github)
+    accept_good_keys(app)
+    assert (await save_key(owner, ws)).status_code == 200
+    workspace = UUID(ws)
+    old, new = "k" * 32, "n" * 32  # the app's key (tests/conftest.py), then the new one
+
+    def stored() -> bytes:
+        return bytes(
+            ddl("SELECT sealed_key FROM provider_keys WHERE workspace_id = :w AND revoked_at IS NULL", w=ws)[
+                0
+            ][0]
+        )
+
+    before = stored()
+    assert RUNTIME_URL
+    engine = create_async_engine(RUNTIME_URL)
+    sessions = session_factory(engine)
+    rotating = Sealer(new, previous_key=old)
+    try:
+        checked = await encryption.reseal_workspace(sessions, rotating, workspace, write=False)
+        assert checked == {"keys": 1, "resealed": 1, "unreadable": 0} and stored() == before
+        assert await encryption.reseal_workspace(sessions, rotating, workspace, write=True) == checked
+        assert Sealer(new).open(stored(), associated(workspace, "anthropic")).decode() == GOOD_KEY
+        with pytest.raises(InvalidTag):
+            Sealer(old).open(stored(), associated(workspace, "anthropic"))
+        again = await encryption.reseal_workspace(sessions, rotating, workspace, write=True)
+        assert again == {"keys": 1, "resealed": 0, "unreadable": 0}
+        after = stored()
+        lost = await encryption.reseal_workspace(sessions, Sealer("x" * 32, "y" * 32), workspace, write=True)
+        assert lost == {"keys": 1, "resealed": 0, "unreadable": 1} and stored() == after
+        # Every workspace, page by page (a check changes nothing).
+        totals = await encryption.reseal(sessions, rotating, write=False)
+        assert totals["workspaces"] >= 1 and totals["keys"] >= 1 and stored() == after
+    finally:
+        await engine.dispose()
 
 
 # ---------------------------------------------------------------- own keys

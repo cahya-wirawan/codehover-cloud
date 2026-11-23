@@ -13,7 +13,7 @@ from app.adapters.models.openai import OpenAIGateway
 from app.adapters.models.openrouter import OpenRouterGateway
 from app.adapters.models.replay import ReplayGateway
 from app.core.db import create_engine, session_factory
-from app.core.security import Sealer
+from app.core.security import sealer_for
 from app.core.settings import Environment, Settings
 from app.engine import catalog, indexers
 from app.engine.gateway import ModelGateway
@@ -73,7 +73,7 @@ def build_runtime(settings: Settings, application_name: str) -> tuple[Runtime, h
         allow_unsandboxed=settings.app_env is not Environment.PRODUCTION,
         catalog=catalog.load(settings.model_catalog_file),
         gateways=operator_gateways(settings, http),
-        sealer=Sealer(settings.app_encryption_key.get_secret_value()),
+        sealer=sealer_for(settings),
         own_key_gateway=own_key_gateways(http),  # M6, T24: a workspace's own key, opened per build
         indexers=(
             indexers.Config(

@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-23 · Package version 0.9.1
+Date: 2026-11-23 · Package version 0.9.2
+
+0.9.2 rotates `APP_ENCRYPTION_KEY` without losing stored provider keys. `tests/unit/test_sealer.py` checks that the previous key opens what it sealed, new values use only the new key, resealing moves old values and leaves current ones, and values stay bound to their row; `test_settings.py` checks the production rules for `APP_ENCRYPTION_KEY_PREVIOUS`. `test_own_keys_batch.py` stores a workspace's key, checks it without changing it, reseals it so that only the new key opens it, finds nothing left on a second run, reports a key neither key opens without touching it, and checks every workspace page by page. Results: unit 302 passed, integration 283 passed.
 
 0.9.1 makes a new project's address follow its name. `test_uploads.py` checks that a project created without one gets it from the name, that the same name in another workspace of the owner is refused with `SLUG_TAKEN` (never suffixed), and that a name without letters or digits gets `project`; frontend tests check that the field follows the name until edited, shows the site address, and shows a clash at the field. Results: unit 297 passed, integration 282 passed, frontend 76 passed, e2e 2 passed.
 
