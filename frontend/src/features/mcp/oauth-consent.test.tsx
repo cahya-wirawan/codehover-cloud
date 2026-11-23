@@ -122,6 +122,16 @@ test("errors from the authorize step and unavailable requests are explained", as
   expect(await screen.findByRole("alert")).toHaveTextContent("not registered");
 });
 
+test("a client named by its metadata document shows the document's address", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ ...REQUEST, client_name: "Example", client_url: "https://client.example.test/c.json" }))),
+  );
+  page("?request=r3");
+  expect(await screen.findByRole("heading", { name: "Allow Example to read API?" })).toBeInTheDocument();
+  expect(screen.getByText("https://client.example.test/c.json")).toBeInTheDocument();
+});
+
 test("a request for a site the person cannot open shows the server's reason", async () => {
   serve([], 404);
   page("?request=r2");

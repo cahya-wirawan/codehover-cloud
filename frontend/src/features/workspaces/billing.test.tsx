@@ -44,6 +44,10 @@ function serve(billing: () => unknown, role = "owner", sent: { url: string; body
         if (url.endsWith("/billing/checkout")) return new Response(JSON.stringify({ url: "http://evil.test/" }));
         if (url.endsWith("/billing/trial")) return new Response(JSON.stringify({ ...NONE, plan: "trial", status: "trial", trial_available: false }));
       }
+      if (init?.method === "PUT" && url.endsWith("/billing/anchor")) {
+        sent.push({ url, body: null });
+        return new Response(JSON.stringify({ ...(billing() as object), holder: { id: "w1", name: "Team" }, holds_billing: true }));
+      }
       if (url === "/api/v1/workspaces") return new Response(JSON.stringify({ items: [{ id: "w1", name: "Team", slug: "team", role }], next_cursor: null }));
       if (url === "/api/v1/workspaces/w1/billing") return new Response(JSON.stringify(billing()));
       if (url === "/api/v1/workspaces/w1/usage") return new Response(JSON.stringify(USAGE));
@@ -121,4 +125,13 @@ test("legal and support pages are marked as drafts and name the operator's conta
   expect(screen.getAllByRole("note")[0]).toHaveTextContent("Draft for legal review");
   expect(await screen.findByText(/Example Ops runs this service/)).toBeInTheDocument();
   expect(screen.getAllByRole("link", { name: "help@example.test" })[0]).toHaveAttribute("href", "mailto:help@example.test");
+});
+
+test("a workspace that does not hold the owner's billing can take it over", async () => {
+  const sent = serve(() => ({ ...NONE, can_manage: true, owner: { kind: "organization", handle: "acme" }, holder: { id: "w2", name: "Old" }, holds_billing: false }));
+  page();
+  expect(await screen.findByRole("link", { name: "Old" })).toHaveAttribute("href", "/w/w2/usage");
+  fireEvent.click(screen.getByRole("button", { name: "Hold billing here" }));
+  expect(await screen.findByText(/This workspace holds the billing of acme/)).toBeInTheDocument();
+  expect(sent).toContainEqual({ url: "/api/v1/workspaces/w1/billing/anchor", body: null });
 });

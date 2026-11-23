@@ -200,6 +200,8 @@ def bodies(ids: dict[str, str], workspace_name: str) -> dict[tuple[str, str], di
         ("PUT", "/api/v1/projects/{project_id}/address"): {"slug": "hijacked"},
         ("PUT", "/api/v1/projects/{project_id}/access/members/{user_id}"): {"role": "editor"},
         ("PATCH", "/api/v1/workspaces/{workspace_id}"): {"name": "Hijacked"},
+        ("POST", "/api/v1/workspaces/{workspace_id}/move"): {"organization_id": None},
+        ("PUT", "/api/v1/workspaces/{workspace_id}/billing/anchor"): {},
         ("POST", "/api/v1/workspaces/{workspace_id}/deletion"): {"confirmation": workspace_name},
         ("POST", "/api/v1/workspaces/{workspace_id}/github/install"): {},
         ("POST", "/api/v1/workspaces/{workspace_id}/invitations"): {

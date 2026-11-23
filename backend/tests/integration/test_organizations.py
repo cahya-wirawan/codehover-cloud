@@ -275,3 +275,171 @@ async def test_account_deletion_needs_another_owner_for_organizations_owned_alon
     }
     assert roles == {partner_id}
     assert ddl("SELECT namespace_id FROM handle_reservations WHERE handle = :h", h=owner_handle) == [(None,)]
+
+
+# ---------------------------------------------------------------- 0042 follow-ups
+async def upload_project(person: httpx.AsyncClient, ws: str, slug: str) -> str:
+    created = await unsafe(
+        person,
+        "POST",
+        f"/api/v1/workspaces/{ws}/projects",
+        json={"source": "upload", "name": slug, "slug": slug},
+    )
+    assert created.status_code == 201, created.text
+    project: str = created.json()["id"]
+    return project
+
+
+async def test_members_show_details_to_owners_and_admins_only(new_user: NewUser) -> None:
+    owner, admin, plain = await new_user(), await new_user(), await new_user()
+    org = await create_org(owner)
+    await add_member(owner, org["id"], admin, "admin")
+    await add_member(owner, org["id"], plain, "member")
+    ws = (await org_workspace(owner, org["id"])).json()["id"]
+    await join(owner, ws, plain, "viewer")
+    handles = {
+        name: (await p.get("/api/v1/me")).json()["handle"]
+        for name, p in (("owner", owner), ("admin", admin), ("plain", plain))
+    }
+    for viewer in (owner, admin):
+        listed = (await viewer.get(f"/api/v1/organizations/{org['id']}/members")).json()["items"]
+        by = {m["handle"]: m for m in listed}
+        assert by[handles["plain"]]["workspaces"] == [
+            {"id": ws, "name": "Docs", "role": "viewer", "via_organization": False}
+        ]
+        assert by[handles["owner"]]["workspaces"] == [
+            {"id": ws, "name": "Docs", "role": "owner", "via_organization": True}
+        ]
+        assert by[handles["owner"]]["last_active_at"] is not None and by[handles["owner"]]["created_at"]
+    seen_by_plain = (await plain.get(f"/api/v1/organizations/{org['id']}/members")).json()["items"]
+    assert len(seen_by_plain) == 3
+    assert all(m["last_active_at"] is None and m["workspaces"] is None for m in seen_by_plain)
+
+
+async def test_an_organizations_plan_covers_its_workspaces_and_its_billing_can_move(
+    new_user: NewUser,
+) -> None:
+    owner, admin, plain = await new_user(), await new_user(), await new_user()
+    org = await create_org(owner)
+    await add_member(owner, org["id"], admin, "admin")
+    await add_member(owner, org["id"], plain, "member")
+    first = (await org_workspace(owner, org["id"])).json()["id"]
+    second = (await org_workspace(owner, org["id"])).json()["id"]
+    url = f"/api/v1/organizations/{org['id']}/billing"
+    assert (await plain.get(url)).status_code == 403
+    empty = (await owner.get(url)).json()
+    assert empty["plan"] is None and empty["limits"] is None and len(empty["workspaces"]) == 2
+    trial = await unsafe(owner, "POST", f"/api/v1/workspaces/{first}/billing/trial")
+    assert trial.status_code == 200, trial.text
+    assert trial.json()["holds_billing"] is True and trial.json()["holder"]["id"] == first
+    summary = (await owner.get(url)).json()
+    assert summary["plan"] == "trial" and summary["limits"]["projects"] >= 1 and summary["can_manage"] is True
+    assert {w["id"]: w["holds_billing"] for w in summary["workspaces"]} == {first: True, second: False}
+    assert summary["allowance_micro_usd"] > 0 and summary["spent_micro_usd"] == 0
+    assert (await admin.get(url)).json()["can_manage"] is False
+    # Only whoever manages the plan hands the billing to another of the owner's workspaces.
+    anchor = f"/api/v1/workspaces/{second}/billing/anchor"
+    assert (await unsafe(admin, "PUT", anchor)).status_code == 403
+    moved = await unsafe(owner, "PUT", anchor)
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["holds_billing"] is True and moved.json()["holder"]["id"] == second
+    assert (await owner.get(f"/api/v1/workspaces/{first}/billing")).json()["holds_billing"] is False
+    assert {w["id"]: w["holds_billing"] for w in (await owner.get(url)).json()["workspaces"]} == {
+        first: False,
+        second: True,
+    }
+    assert ddl(
+        "SELECT metadata->>'from_workspace_id' FROM audit_events WHERE workspace_id = :w"
+        " AND action = 'billing.anchor_moved'",
+        w=second,
+    ) == [(first,)]
+    # Another owner's workspace cannot take this owner's billing: the rows stay with their owner.
+    stranger_ws = (await unsafe(plain, "POST", "/api/v1/workspaces", json={"name": "Mine"})).json()["id"]
+    assert (await unsafe(plain, "PUT", f"/api/v1/workspaces/{stranger_ws}/billing/anchor")).status_code == 200
+    assert ddl("SELECT count(*) FROM entitlement_grants WHERE workspace_id = :w", w=stranger_ws) == [(0,)]
+
+
+async def test_a_workspace_moves_between_owners(new_user: NewUser) -> None:
+    owner, admin = await new_user(), await new_user()
+    org = await create_org(owner)
+    await add_member(owner, org["id"], admin, "admin")
+    personal = (await unsafe(owner, "POST", "/api/v1/workspaces", json={"name": "Mine"})).json()["id"]
+    project = await upload_project(owner, personal, "api")
+    org_ws = (await org_workspace(owner, org["id"])).json()["id"]
+    await upload_project(owner, org_ws, "api")
+    url = f"/api/v1/workspaces/{personal}/move"
+    # The organization has an "api" already: refused with the clashes, nothing renamed.
+    clash = await unsafe(owner, "POST", url, json={"organization_id": org["id"]})
+    assert clash.status_code == 409 and code(clash) == "SLUG_TAKEN"
+    assert clash.json()["error"]["details"]["projects"] == [
+        {"project_id": project, "name": "api", "slug": "api"}
+    ]
+    assert (
+        await unsafe(owner, "PUT", f"/api/v1/projects/{project}/address", json={"slug": "api-two"})
+    ).status_code == 200
+    assert (await admin.get(f"/api/v1/workspaces/{personal}")).status_code == 404
+    moved = await unsafe(owner, "POST", url, json={"organization_id": org["id"]})
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["owner"] == {
+        "kind": "organization",
+        "handle": org["handle"],
+        "organization_id": org["id"],
+    }
+    assert ddl(
+        "SELECT namespace_id = (SELECT id FROM namespaces WHERE organization_id = :o) FROM projects"
+        " WHERE id = :p",
+        o=org["id"],
+        p=project,
+    ) == [(True,)]
+    # The organization's admins come with it; the same owner again is refused.
+    assert (await admin.get(f"/api/v1/workspaces/{personal}")).json()["role"] == "admin"
+    same = await unsafe(owner, "POST", url, json={"organization_id": org["id"]})
+    assert same.status_code == 422 and code(same) == "SAME_OWNER"
+    # Admins are not owners of the workspace: they cannot move it out.
+    assert (await unsafe(admin, "POST", url, json={"organization_id": None})).status_code == 403
+    back = await unsafe(owner, "POST", url, json={"organization_id": None})
+    assert (
+        back.status_code == 200 and back.json()["owner"]["kind"] == "user" and back.json()["role"] == "owner"
+    )
+    assert (await admin.get(f"/api/v1/workspaces/{personal}")).status_code == 404  # its access went with it
+    assert [
+        r[0]
+        for r in ddl(
+            "SELECT action FROM audit_events WHERE workspace_id = :w AND action = 'workspace.moved'",
+            w=personal,
+        )
+    ] == ["workspace.moved", "workspace.moved"]
+    # A workspace holding its owner's billing hands it over first.
+    trial = await unsafe(owner, "POST", f"/api/v1/workspaces/{personal}/billing/trial")
+    assert trial.status_code == 200, trial.text
+    held = await unsafe(owner, "POST", url, json={"organization_id": org["id"]})
+    assert held.status_code == 409 and code(held) == "BILLING_HELD"
+
+
+async def test_only_the_workspaces_owner_moves_it_never_a_co_owner(new_user: NewUser) -> None:
+    """Security review of 0042: a direct owner role on someone else's workspace does not let a person take
+    it: an organization member made a workspace owner cannot move it out of the organization, and a
+    person's co-owner cannot move it into their own namespace."""
+    owner, member, co_owner = await new_user(), await new_user(), await new_user()
+    org = await create_org(owner)
+    await add_member(owner, org["id"], member, "member")
+    org_ws = (await org_workspace(owner, org["id"])).json()["id"]
+    await join(owner, org_ws, member, "owner")
+    assert (await member.get(f"/api/v1/workspaces/{org_ws}")).json()["role"] == "owner"
+    taken = await unsafe(member, "POST", f"/api/v1/workspaces/{org_ws}/move", json={"organization_id": None})
+    assert taken.status_code == 403
+    personal = (await unsafe(owner, "POST", "/api/v1/workspaces", json={"name": "Mine"})).json()["id"]
+    await join(owner, personal, co_owner, "owner")
+    stolen = await unsafe(
+        co_owner, "POST", f"/api/v1/workspaces/{personal}/move", json={"organization_id": None}
+    )
+    assert stolen.status_code == 403
+    assert ddl(
+        "SELECT count(*) FROM workspaces w JOIN namespaces n ON n.id = w.namespace_id"
+        " WHERE w.id IN (:a, :b) AND (n.organization_id = :o OR n.user_id = (SELECT user_id FROM namespaces"
+        " WHERE handle = :h))",
+        a=org_ws,
+        b=personal,
+        o=org["id"],
+        h=(await owner.get("/api/v1/me")).json()["handle"],
+    ) == [(2,)]  # both stayed with their owners

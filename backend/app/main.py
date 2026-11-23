@@ -16,6 +16,7 @@ from app.adapters.billing import billing_provider
 from app.adapters.github.app import GitHubApp
 from app.adapters.github.public import PublicGitHub
 from app.adapters.oauth import OAuthProvider
+from app.adapters.oauth.client_metadata import HttpClientMetadata
 from app.adapters.oauth.github import GitHubProvider
 from app.adapters.oauth.google import GoogleProvider
 from app.adapters.storage import MemoryObjectStore, ObjectStore, S3ObjectStore
@@ -131,6 +132,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     engine = create_engine(settings)
     http = httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=False)
+    # Client metadata documents (0043) are named by anonymous callers: a pool of their own, so slow hosts
+    # never hold the connections other integrations need (security review).
+    metadata_http = httpx.AsyncClient(
+        follow_redirects=False, limits=httpx.Limits(max_connections=4, max_keepalive_connections=0)
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -139,6 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await http.aclose()
+            await metadata_http.aclose()
             await engine.dispose()
             await limiter.dispose()
 
@@ -167,6 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.catalog = catalog.load(settings.model_catalog_file)
     app.state.billing = billing_provider(settings, http)
     app.state.key_verifier = provider_keys.verify_with_provider
+    app.state.client_metadata = HttpClientMetadata(metadata_http)  # MCP sign-in client ID metadata documents
 
     install_error_handlers(app)
     app.middleware("http")(no_store)

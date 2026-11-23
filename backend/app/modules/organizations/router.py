@@ -104,12 +104,22 @@ class OrgWorkspaceList(BaseModel):
     next_cursor: None = None
 
 
+class OrgMemberWorkspace(BaseModel):
+    id: UUID
+    name: str
+    role: str  # the person's role in that workspace
+    via_organization: bool  # given by their organization role (owners and admins)
+
+
 class OrgMemberOut(BaseModel):
     user_id: UUID
     display_name: str
     handle: str
     role: OrgRole
-    created_at: datetime
+    created_at: datetime  # when they joined the organization
+    # Shown to owners and admins only (0042); null for plain members.
+    last_active_at: datetime | None = None
+    workspaces: list[OrgMemberWorkspace] | None = None
 
 
 class OrgMemberList(BaseModel):

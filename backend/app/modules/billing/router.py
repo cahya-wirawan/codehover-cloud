@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -28,9 +28,11 @@ from app.core.tenancy import set_context
 from app.modules.billing import service
 from app.modules.billing.plans import PAID, PLANS, TRIAL_DAYS, price_for
 from app.modules.billing.sync import receipt_details
-from app.modules.identity.sessions import Db
+from app.modules.identity.sessions import CurrentPrincipal, Db
+from app.modules.organizations import service as organizations
 from app.modules.usage import ledger
 from app.modules.workspaces.access import Member, ReadMember, WriteMember
+from app.modules.workspaces.service import audit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["billing"])
@@ -53,6 +55,11 @@ class BillingOwner(BaseModel):
     handle: str
 
 
+class BillingHolder(BaseModel):
+    id: UUID
+    name: str | None  # null when the caller is not a member of that workspace
+
+
 class BillingOut(BaseModel):
     configured: bool
     enforced: bool
@@ -68,6 +75,10 @@ class BillingOut(BaseModel):
     plans: list[PlanOut]
     can_manage: bool = False  # 0040: the caller manages this plan (the person, or an organization owner)
     owner: BillingOwner | None = None  # whose plan this workspace uses
+    # 0042: the workspace that holds the owner's billing rows (customer, subscription, grants), which
+    # cannot be deleted or moved while it holds them; `can_manage` may hand them to this one instead.
+    holder: BillingHolder | None = None
+    holds_billing: bool = False
 
 
 class CheckoutIn(BaseModel):
@@ -166,6 +177,15 @@ async def billing_state(request: Request, db: Db, member: ReadMember) -> Billing
     owner_row = (
         await db.execute(text("SELECT kind, handle FROM namespaces WHERE id = :n"), {"n": owner})
     ).one_or_none()
+    holder = await service.billing_holder(db, owner)
+    holder_name = (
+        (
+            await db.execute(text("SELECT name FROM workspaces WHERE id = :w"), {"w": holder})
+        ).scalar_one_or_none()
+        if holder
+        else None
+    )
+    holds = await service.holds_billing(db, member.workspace_id)
     await db.commit()
     configured = request.app.state.billing is not None and settings.stripe_webhook_secret is not None
     trial_available = not billing.trial_used and not billing.ever_subscribed
@@ -199,6 +219,8 @@ async def billing_state(request: Request, db: Db, member: ReadMember) -> Billing
         plans=plans,
         can_manage=bool(can_manage),
         owner=BillingOwner(kind=owner_row.kind, handle=owner_row.handle) if owner_row else None,
+        holder=BillingHolder(id=holder, name=holder_name) if holder else None,
+        holds_billing=holds,
     )
 
 
@@ -335,6 +357,152 @@ async def start_trial(request: Request, db: Db, member: WriteMember) -> BillingO
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)  # the commit cleared it
     return await billing_state(request, db, member)
+
+
+@router.put("/workspaces/{workspace_id}/billing/anchor", response_model=BillingOut)
+async def hold_billing(request: Request, db: Db, member: WriteMember) -> BillingOut:
+    """Hand the owner's billing rows to this workspace (0042), so the one that held them can be deleted or
+    moved. Stripe is not called: webhooks find the workspace through `billing_customers`."""
+    await _manager(db, member)
+    previous = (
+        await db.execute(text("SELECT app_private.move_billing_anchor(:w)"), {"w": member.workspace_id})
+    ).scalar_one_or_none()
+    if previous != member.workspace_id:
+        await audit(
+            db,
+            member,
+            "billing.anchor_moved",
+            "workspace",
+            member.workspace_id,
+            {"from_workspace_id": str(previous) if previous else None},
+        )
+    await db.commit()
+    await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
+    return await billing_state(request, db, member)
+
+
+class OrgBillingWorkspace(BaseModel):
+    id: UUID
+    name: str
+    reserved_micro_usd: int
+    settled_micro_usd: int
+    holds_billing: bool
+
+
+class OwnerLimits(BaseModel):
+    projects: int
+    seats: int
+    active_builds: int
+
+
+class OwnerTotals(BaseModel):
+    projects: int
+    people: int
+    active_builds: int
+
+
+class OrgBillingOut(BaseModel):
+    """An organization's one plan and allowance (0040), read across its workspaces (0042)."""
+
+    plan: str | None
+    plan_name: str | None
+    status: str | None
+    renews_at: datetime | None
+    cancel_at_period_end: bool
+    trial_ends_at: datetime | None
+    generation_blocked: str | None
+    hosting_suspended: bool
+    period_start: datetime
+    period_end: datetime
+    allowance_micro_usd: int
+    spent_micro_usd: int  # reserved and settled this month, in all its workspaces
+    limits: OwnerLimits | None  # the plan's; null without a plan
+    totals: OwnerTotals
+    workspaces: list[OrgBillingWorkspace]
+    can_manage: bool  # organization owners manage the plan, from any of its workspaces' Plan and usage
+
+
+@router.get("/organizations/{organization_id}/billing", response_model=OrgBillingOut)
+async def organization_billing(
+    organization_id: UUID, request: Request, db: Db, principal: CurrentPrincipal
+) -> OrgBillingOut:
+    settings = _settings(request)
+    found = await organizations.member(db, principal, organization_id, "admin")
+    spaces = await organizations.workspaces(db, found)  # owners and admins are in all of them
+    start, end = ledger.period_bounds(datetime.now(UTC))
+    can_manage = found.role == "owner"
+    if not spaces:
+        await db.commit()
+        return OrgBillingOut(
+            plan=None,
+            plan_name=None,
+            status=None,
+            renews_at=None,
+            cancel_at_period_end=False,
+            trial_ends_at=None,
+            generation_blocked=None,
+            hosting_suspended=False,
+            period_start=start,
+            period_end=end,
+            allowance_micro_usd=settings.generation_allowance_micro_usd,
+            spent_micro_usd=0,
+            limits=None,
+            totals=OwnerTotals(projects=0, people=0, active_builds=0),
+            workspaces=[],
+            can_manage=can_manage,
+        )
+    first: UUID = spaces[0]["id"]
+    await set_context(db, workspace_id=first, user_id=principal.user_id)
+    owner = await ledger.owner_of(db, first)
+    billing = await service.state(db, first, enforced=settings.billing_enforced)
+    allowance = await ledger.owner_allowance(db, owner, settings.generation_allowance_micro_usd, start, end)
+    totals = (await db.execute(text("SELECT * FROM app_private.owner_totals()"))).one()
+    holder = await service.billing_holder(db, owner)
+    rows: list[OrgBillingWorkspace] = []
+    for space in spaces:
+        await set_context(db, workspace_id=space["id"], user_id=principal.user_id)
+        account = (
+            await db.execute(
+                text(
+                    "SELECT reserved_micro_usd, settled_micro_usd FROM usage_accounts"
+                    " WHERE workspace_id = :w AND period_start = :s"
+                ),
+                {"w": space["id"], "s": start},
+            )
+        ).one_or_none()
+        rows.append(
+            OrgBillingWorkspace(
+                id=space["id"],
+                name=space["name"],
+                reserved_micro_usd=account.reserved_micro_usd if account else 0,
+                settled_micro_usd=account.settled_micro_usd if account else 0,
+                holds_billing=space["id"] == holder,
+            )
+        )
+    await db.commit()
+    plan = billing.plan
+    return OrgBillingOut(
+        plan=plan.key if plan else None,
+        plan_name=plan.name if plan else None,
+        status=billing.status,
+        renews_at=billing.period_end,
+        cancel_at_period_end=billing.cancel_at_period_end,
+        trial_ends_at=billing.trial_ends_at,
+        generation_blocked=billing.generation_blocked,
+        hosting_suspended=billing.hosting_suspended,
+        period_start=start,
+        period_end=end,
+        allowance_micro_usd=allowance,
+        spent_micro_usd=sum(r.reserved_micro_usd + r.settled_micro_usd for r in rows),
+        limits=OwnerLimits(projects=plan.projects, seats=plan.seats, active_builds=plan.active_builds)
+        if plan
+        else None,
+        totals=OwnerTotals(
+            projects=totals.projects, people=totals.people, active_builds=totals.active_builds
+        ),
+        workspaces=rows,
+        can_manage=can_manage,
+    )
 
 
 @router.post("/webhooks/stripe")

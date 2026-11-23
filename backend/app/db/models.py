@@ -860,6 +860,7 @@ class OAuthClient(Base):
     redirect_uris: Mapped[list[str]] = mapped_column(ARRAY(Text))
     created_at: Mapped[datetime] = ts(default_now=True)
     last_used_at: Mapped[datetime | None] = ts(nullable=True)
+    fetched_at: Mapped[datetime | None] = ts(nullable=True)  # 0043: a client metadata document's
 
 
 class OAuthAuthorization(Base):
@@ -967,3 +968,19 @@ class ProjectSlugRedirect(Base):
     project_id: Mapped[UUID] = ref("projects.id")
     released_at: Mapped[datetime] = ts()
     reserved_until: Mapped[datetime] = ts()
+
+
+class McpSession(Base):
+    """An MCP session (0043): its subscriptions and the site it belongs to; only the token's digest."""
+
+    __tablename__ = "mcp_sessions"
+    id: Mapped[UUID] = pk()
+    workspace_id: Mapped[UUID] = ref("workspaces.id")
+    project_id: Mapped[UUID] = ref()
+    session_hash: Mapped[bytes] = mapped_column(LargeBinary)
+    user_id: Mapped[UUID | None] = ref("users.id", nullable=True)
+    protocol_version: Mapped[str] = mapped_column(Text)
+    subscriptions: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
+    created_at: Mapped[datetime] = ts(default_now=True)
+    last_seen_at: Mapped[datetime] = ts(default_now=True)
+    expires_at: Mapped[datetime] = ts()

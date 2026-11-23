@@ -44,6 +44,7 @@ _PROJECT_CONTENT = (
     "DELETE FROM artifacts WHERE workspace_id = :w AND build_id = ANY(:b)",
     "DELETE FROM build_events WHERE workspace_id = :w AND build_id = ANY(:b)",
     "DELETE FROM exports WHERE workspace_id = :w AND build_id = ANY(:b)",
+    "DELETE FROM mcp_sessions WHERE workspace_id = :w AND project_id = :p",  # 0043: subscriptions name paths
     # An operator takedown survives: its row (identifiers only) keeps the public address reserved.
     "DELETE FROM publications WHERE workspace_id = :w AND project_id = :p"
     " AND suspended_reason IS DISTINCT FROM 'operator'",

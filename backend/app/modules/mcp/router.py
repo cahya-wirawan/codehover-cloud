@@ -1,9 +1,10 @@
 """Personal access tokens and the hosted MCP endpoint (06 "/mcp/{slug}", 09).
 
-`POST /mcp/{slug}` speaks MCP's Streamable HTTP transport without sessions: every request is one
-JSON-RPC message answered with one JSON body (notifications get 202). There is no server-initiated
-stream, so GET is 405. Each request resolves the site again, exactly like the site's own routes: an
-unpublished or suspended site stops answering at once.
+`POST /mcp/{owner}/{project}` speaks MCP's Streamable HTTP transport: every request is one JSON-RPC
+message answered with one JSON body (notifications get 202). `initialize` opens a session
+(`Mcp-Session-Id`, app.modules.mcp.sessions) for resource subscriptions and the GET stream of site changes;
+requests without one still work statelessly. Each request resolves the site again, exactly like the site's
+own routes: an unpublished or suspended site stops answering at once.
 
 Access: a public site needs nothing. A private site needs `Authorization: Bearer <token>` of a member of
 its workspace who may see the project: a personal access token, or one from MCP sign-in (app.modules.mcp
@@ -30,7 +31,8 @@ from app.core import idempotency, ratelimit
 from app.core.errors import ApiError
 from app.core.tenancy import set_context
 from app.modules.identity.sessions import Db
-from app.modules.mcp import oauth, resources, tokens, tools
+from app.modules.mcp import oauth, resources, sessions, tokens, tools
+from app.modules.projects import events
 from app.modules.published.router import AliasPath, OwnerPath, ProjectPath, Site, find_site
 from app.modules.workspaces.access import PublicReader, ReadMember, WriteMember
 
@@ -135,8 +137,8 @@ def _unauthenticated(request: Request, slug: str, message: str, error: str | Non
     return ApiError(401, "UNAUTHENTICATED", message, headers=headers)
 
 
-async def _site(slug: str, request: Request, db: Db) -> Site:
-    """`slug` is the requested address, "<owner>/<project>" (0039)."""
+async def _site(slug: str, request: Request, db: Db) -> tuple[Site, tokens.TokenPrincipal | None]:
+    """`slug` is the requested address, "<owner>/<project>" (0039); also who reads it (None: anonymous)."""
     settings = request.app.state.settings
     await ratelimit.hit(
         request.app.state.rate_sessions, settings, "public", ratelimit.client_address(request, settings)
@@ -172,16 +174,37 @@ async def _site(slug: str, request: Request, db: Db) -> Site:
         if found is None or allowed is None:
             raise ApiError(404, "NOT_FOUND", "Site not found.")
     await set_context(db, workspace_id=found.workspace_id)
+    reader = None
     if principal is not None and principal.workspace_id == found.workspace_id:
         await tokens.touch(db, principal)
+        reader = principal
     await db.commit()
-    return Site(
+    site = Site(
         PublicReader(found.workspace_id),
         found.project_id,
         found.build_id,
         found.visibility,
         f"{found.owner}/{found.project}",
     )
+    return site, reader
+
+
+async def _session(
+    request: Request, db: Db, site: Site, reader: tokens.TokenPrincipal | None
+) -> sessions.Session | None:
+    """The request's session, or None without the header; an unknown or ended one is 404 (MCP: the
+    client then initializes again)."""
+    token = request.headers.get(sessions.HEADER)
+    if token is None:
+        return None
+    await set_context(db, workspace_id=site.reader.workspace_id)
+    found = await sessions.find(
+        db, site.reader.workspace_id, site.project_id, token, reader.user_id if reader else None
+    )
+    await db.commit()
+    if found is None:
+        raise ApiError(404, "NOT_FOUND", "This MCP session has ended; initialize again.")
+    return found
 
 
 def _result(id_: Any, result: dict[str, Any]) -> JSONResponse:
@@ -256,7 +279,7 @@ async def _answer(slug: str, request: Request, db: Db, protocol: str | None) -> 
     raw = await request.body()
     if len(raw) > MAX_BODY_BYTES:
         raise ApiError(413, "PAYLOAD_TOO_LARGE", "The request is too large.")
-    site = await _site(slug, request, db)
+    site, reader = await _site(slug, request, db)
     try:
         message = json.loads(raw)
     except ValueError:
@@ -269,6 +292,7 @@ async def _answer(slug: str, request: Request, db: Db, protocol: str | None) -> 
         return _error(None, -32600, "Invalid request: send one JSON-RPC 2.0 message", 400)
     method: str = message["method"]
     params = message.get("params") or {}
+    session = await _session(request, db, site, reader) if method != "initialize" else None
     if "id" not in message:  # a notification (initialized, cancelled): nothing to answer
         return Response(status_code=202)
     id_ = message["id"]
@@ -276,19 +300,49 @@ async def _answer(slug: str, request: Request, db: Db, protocol: str | None) -> 
         return _error(id_, -32602, "Invalid params")
     if method == "initialize":
         asked = params.get("protocolVersion")
-        return _result(
+        version = asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
+        await set_context(db, workspace_id=site.reader.workspace_id)
+        opened = await sessions.open_session(
+            db, site.reader.workspace_id, site.project_id, reader.user_id if reader else None, version
+        )
+        await db.commit()
+        answer = _result(
             id_,
             {
-                "protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
+                "protocolVersion": version,
                 "capabilities": {
                     "tools": {"listChanged": False},
-                    "resources": {"listChanged": False, "subscribe": False},
+                    "resources": {"listChanged": True, "subscribe": True},
                     "prompts": {"listChanged": False},
                 },
                 "serverInfo": {"name": "codehover-cloud", "version": __version__},
                 "instructions": INSTRUCTIONS,
             },
         )
+        answer.headers[sessions.HEADER] = opened
+        return answer
+    if method in ("resources/subscribe", "resources/unsubscribe"):
+        uri = params.get("uri")
+        if not isinstance(uri, str) or len(uri) > 2048:
+            return _error(id_, -32602, "Invalid params: uri")
+        if session is None:
+            return _error(
+                id_, -32600, f"Subscriptions need a session: send the {sessions.HEADER} from initialize"
+            )
+        await set_context(db, workspace_id=site.reader.workspace_id)
+        if method == "resources/unsubscribe":
+            await sessions.unsubscribe(db, session, uri)
+            await db.commit()
+            return _result(id_, {})
+        try:
+            await resources.read(db, request.app.state.objects, site, site.address, uri)
+        except resources.NotFound:
+            return _error(id_, -32002, "Resource not found")
+        await set_context(db, workspace_id=site.reader.workspace_id)
+        if not await sessions.subscribe(db, session, uri):
+            return _error(id_, -32602, f"A session holds at most {sessions.MAX_SUBSCRIPTIONS} subscriptions")
+        await db.commit()
+        return _result(id_, {})
     if method == "ping":
         return _result(id_, {})
     if method == "tools/list":
@@ -334,9 +388,42 @@ async def _answer(slug: str, request: Request, db: Db, protocol: str | None) -> 
 
 
 @router.get("/mcp/{owner}/{project}", include_in_schema=False)
+async def mcp_stream(owner: OwnerPath, project: ProjectPath, request: Request, db: Db) -> Response:
+    """The session's stream of site changes (app.modules.mcp.sessions)."""
+    if "text/event-stream" not in request.headers.get("accept", ""):
+        raise ApiError(406, "NOT_ACCEPTABLE", "Accept text/event-stream to open the stream.")
+    if sessions.HEADER.lower() not in request.headers:
+        raise ApiError(
+            400, "VALIDATION_FAILED", f"Open a session with initialize, then send its {sessions.HEADER}."
+        )
+    site, reader = await _site(f"{owner}/{project}", request, db)
+    session = await _session(request, db, site, reader)
+    assert session is not None
+    slot = events.StreamSlot(session.id, session.workspace_id).__enter__()  # 429 past the limit
+    bearer = request.headers.get("authorization", "").partition(" ")[2].strip() or None
+    timing: sessions.Timing = getattr(request.app.state, "mcp_timing", None) or sessions.Timing()
+    return events.SlotResponse(
+        sessions.follow(
+            request.app.state.sessions, request.app.state.objects, site.address, session, bearer, timing
+        ),
+        slot,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.delete("/mcp/{owner}/{project}", include_in_schema=False)
-async def mcp_stream(owner: OwnerPath, project: ProjectPath) -> Response:
-    return Response(status_code=405, headers={"Allow": "POST"})
+async def mcp_end(owner: OwnerPath, project: ProjectPath, request: Request, db: Db) -> Response:
+    """Ends the request's session (MCP: a client leaving)."""
+    if sessions.HEADER.lower() not in request.headers:
+        raise ApiError(400, "VALIDATION_FAILED", f"Send the {sessions.HEADER} to end.")
+    site, reader = await _site(f"{owner}/{project}", request, db)
+    session = await _session(request, db, site, reader)
+    assert session is not None
+    await set_context(db, workspace_id=session.workspace_id)
+    await sessions.end(db, session)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/mcp/{alias}", include_in_schema=False)

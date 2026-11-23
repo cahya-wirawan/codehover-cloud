@@ -14,9 +14,9 @@ addons or WASI). Nothing is installed and no repository script, hook or config r
 source files only. For Rust, the repository's Cargo manifests sit in `<work>/manifests`; this module
 turns them into `out/rust-project.json` (app.engine.rust_project), which `<work>/rust-project.json`
 links to, so rust-analyzer loads that crate graph and never runs cargo, build scripts or proc macros.
-For TypeScript, the repository's tsconfig/jsconfig files sit in `<work>/tsconfigs`; this module reads only
-their path aliases (app.engine.ts_project) and writes projects of its own to `out`, which
-scip-typescript then indexes in place of the checkout's tsconfig.
+For TypeScript, the repository's tsconfig/jsconfig files sit in `<work>/tsconfigs` and its package.json
+files in `<work>/packages`; this module reads only their module resolution (app.engine.ts_project) and
+writes projects of its own to `out`, which scip-typescript then indexes in place of the checkout's tsconfig.
 Output positions match the parser's (02/06): lines 1-based, columns in Unicode scalars. Symbols are
 small integers, local symbols scoped to their document.
 """
@@ -40,6 +40,7 @@ INDEXERS = frozenset({*ENTRY_POINTS, "rust-analyzer"})
 RUST_CONFIG = "rust-analyzer.json"  # written by the worker beside the checkout
 MANIFESTS = "manifests"  # the repository's Cargo.toml files, beside the checkout (never in `src`)
 TSCONFIGS = "tsconfigs"  # the repository's tsconfig/jsconfig files, beside the checkout (never in `src`)
+PACKAGE_FILES = "packages"  # the repository's package.json files (workspace packages), beside the checkout
 TS_PROJECT = "tsconfig.{n}.json"  # generated TypeScript projects, in `out` (the sandbox makes no directories)
 # Node's permission model, a second layer inside the OS sandbox. scip-python cannot run under it: its
 # bundled @yarnpkg/fslib patches the `path` module, which the permission model freezes.
@@ -174,21 +175,26 @@ def write_rust_project(work: Path, sysroot_src: str) -> int:
     return len(graph["crates"])
 
 
-def write_ts_projects(work: Path) -> list[str]:
-    """`out/tsconfig.<n>.json` for each project with path aliases (app.engine.ts_project), plus the
-    plain one; returns their paths, or [] when the repository has no aliases."""
-    src, configs = work / "src", work / TSCONFIGS
+def _texts(folder: Path) -> dict[str, str]:
     texts = {}
-    for path in sorted(configs.rglob("*.json")) if configs.is_dir() else []:
+    for path in sorted(folder.rglob("*.json")) if folder.is_dir() else []:
         if path.is_file() and path.stat().st_size <= ts_project.MAX_CONFIG_BYTES:
-            texts[path.relative_to(configs).as_posix()] = path.read_bytes().decode("utf-8", "replace")
+            texts[path.relative_to(folder).as_posix()] = path.read_bytes().decode("utf-8", "replace")
+    return texts
+
+
+def write_ts_projects(work: Path) -> list[str]:
+    """`out/tsconfig.<n>.json` for each project with something to resolve (app.engine.ts_project), plus
+    the plain one; returns their paths, or [] when nothing in the repository resolves."""
+    src = work / "src"
+    texts, packages = _texts(work / TSCONFIGS), _texts(work / PACKAGE_FILES)
     files = [
         p.relative_to(src).as_posix()
         for p in src.rglob("*")
         if p.is_file() and not (p.parent == src and p.name in WORKER_FILES)
     ]
     written = []
-    for n, config in enumerate(ts_project.projects(texts, files, str(src))):
+    for n, config in enumerate(ts_project.projects(texts, files, str(src), packages)):
         target = work / "out" / TS_PROJECT.format(n=n)
         target.write_text(json.dumps(config))
         written.append(str(target))

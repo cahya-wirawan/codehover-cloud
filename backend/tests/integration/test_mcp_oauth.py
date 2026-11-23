@@ -189,6 +189,7 @@ async def test_a_member_signs_an_mcp_client_in_to_a_private_site(
         shown = (await owner.get(f"/api/v1/oauth/requests/{request_id}")).json()
         assert shown == {
             "client_name": "Claude Code",
+            "client_url": None,  # registered, not named by a metadata document (0043)
             "redirect_host": "http://127.0.0.1:33418",
             "site": slug,
             "project": "API",
@@ -345,3 +346,79 @@ async def test_losing_access_ends_mcp_sign_in(
             ][0]
             == 1
         )  # the expired one was removed
+
+
+class FakeDocuments:
+    """Client ID metadata documents by URL; counts fetches; a missing URL fails like an unreachable host."""
+
+    def __init__(self) -> None:
+        self.documents: dict[str, dict[str, Any]] = {}
+        self.fetched: list[str] = []
+
+    async def fetch(self, url: str) -> dict[str, Any]:
+        from app.adapters.oauth.client_metadata import MetadataError
+
+        self.fetched.append(url)
+        if url not in self.documents:
+            raise MetadataError("unreachable")
+        return self.documents[url]
+
+
+async def test_a_client_named_by_its_metadata_document_signs_in(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub
+) -> None:
+    """0043 (MCP 2025-11-25): an https client_id is the client's metadata document, fetched at sign-in,
+    kept an hour, and used only when it names itself and the redirect URI."""
+    owner, _ws, project, build, app = await ready_build(client, idp, github)
+    slug = await address(owner, project)
+    assert (await publish(owner, project, build_id=build)).status_code == 200
+    documents = FakeDocuments()
+    app.state.client_metadata = documents
+    url = "https://client.example.test/oauth/client.json"
+    documents.documents[url] = {
+        "client_id": url,
+        "client_name": "Example Client",
+        "redirect_uris": [REDIRECT],
+    }
+    async with browser(app) as mcp_client:
+        server = (await mcp_client.get("/.well-known/oauth-authorization-server")).json()
+        assert server["client_id_metadata_document_supported"] is True
+        # The consent page names the document, since the name is the client's own claim.
+        _verifier, challenge = pkce()
+        authorized = await authorize(mcp_client, url, slug, challenge)
+        assert authorized.status_code == 302 and authorized.headers["location"].startswith(
+            "/oauth/authorize?request="
+        )
+        pending = (
+            await owner.get(f"/api/v1/oauth/requests/{query(authorized.headers['location'])['request']}")
+        ).json()
+        assert pending["client_name"] == "Example Client" and pending["client_url"] == url
+        issued = await signed_in(mcp_client, owner, url, slug)
+        assert (await Mcp(mcp_client, slug, issued["access_token"]).post(PING)).status_code == 200
+        assert documents.fetched == [url]  # kept: the second sign-in did not fetch again
+        # A document for another URL, or a redirect it does not list, is refused without redirecting there.
+        other = "https://client.example.test/other.json"
+        documents.documents[other] = {"client_id": url, "redirect_uris": [REDIRECT]}
+        assert query((await authorize(mcp_client, other, slug, challenge)).headers["location"]) == {
+            "error": "invalid_client"
+        }
+        wrong = await authorize(mcp_client, url, slug, challenge, redirect_uri="http://127.0.0.1:9/elsewhere")
+        assert query(wrong.headers["location"]) == {"error": "invalid_client"}
+        # After an hour it is fetched again; an unreachable host keeps the stored copy for a day.
+        ddl("UPDATE oauth_clients SET fetched_at = now() - interval '2 hours' WHERE client_id = :c", c=url)
+        del documents.documents[url]
+        assert (
+            (await authorize(mcp_client, url, slug, challenge))
+            .headers["location"]
+            .startswith("/oauth/authorize?request=")
+        )
+        ddl("UPDATE oauth_clients SET fetched_at = now() - interval '25 hours' WHERE client_id = :c", c=url)
+        assert query((await authorize(mcp_client, url, slug, challenge)).headers["location"]) == {
+            "error": "invalid_client"
+        }
+        # Unknown hosts are never registered.
+        unknown = "https://nobody.example.test/client.json"
+        assert query((await authorize(mcp_client, unknown, slug, challenge)).headers["location"]) == {
+            "error": "invalid_client"
+        }
+        assert ddl("SELECT count(*) FROM oauth_clients WHERE client_id = :c", c=unknown) == [(0,)]

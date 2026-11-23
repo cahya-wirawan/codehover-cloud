@@ -37,7 +37,30 @@ export interface OrgMember {
   display_name: string;
   handle: string;
   role: OrgRole;
+  /** When they joined the organization. */
   created_at: string;
+  /** 0042, owners and admins only (null for plain members): last use of the app, and their workspaces. */
+  last_active_at?: string | null;
+  workspaces?: { id: string; name: string; role: Role; via_organization: boolean }[] | null;
+}
+/** An organization's one plan and allowance across its workspaces (0042; owners and admins). */
+export interface OrgBilling {
+  plan: PlanInfo["key"] | null;
+  plan_name: string | null;
+  status: string | null;
+  renews_at: string | null;
+  cancel_at_period_end: boolean;
+  trial_ends_at: string | null;
+  generation_blocked: "past_due" | "disputed" | null;
+  hosting_suspended: boolean;
+  period_start: string;
+  period_end: string;
+  allowance_micro_usd: number;
+  spent_micro_usd: number;
+  limits: { projects: number; seats: number; active_builds: number } | null;
+  totals: { projects: number; people: number; active_builds: number };
+  workspaces: { id: string; name: string; reserved_micro_usd: number; settled_micro_usd: number; holds_billing: boolean }[];
+  can_manage: boolean;
 }
 export interface OrgInvitation {
   id: string;
@@ -192,6 +215,9 @@ export interface BillingState {
   can_manage?: boolean;
   /** Whose plan the workspace uses: its owner, a person or an organization. */
   owner?: { kind: "user" | "organization"; handle: string } | null;
+  /** 0042: the workspace holding the owner's billing (name null when you are not in it), and whether this one does. */
+  holder?: { id: string; name: string | null } | null;
+  holds_billing?: boolean;
   plans: (PlanInfo & { available: boolean })[];
 }
 export type PushPolicyName = "off" | "snapshot" | "build";
@@ -244,6 +270,8 @@ export interface OAuthGrant {
 /** What an MCP client asks for on the consent page. */
 export interface OAuthConsent {
   client_name: string;
+  /** 0043: the client's metadata document, when its ID is one; it shows who publishes the client. */
+  client_url?: string | null;
   redirect_host: string;
   site: string; // "<owner>/<project>"
   project: string;
@@ -821,6 +849,12 @@ export const api = {
     ),
   billingPortal: async (wid: string) => json<{ url: string }>(await apiSend("POST", `/workspaces/${wid}/billing/portal`)),
   startTrial: async (wid: string) => json<BillingState>(await apiSend("POST", `/workspaces/${wid}/billing/trial`)),
+  /** Hand the owner's billing to this workspace (0042). */
+  holdBilling: async (wid: string) => json<BillingState>(await apiSend("PUT", `/workspaces/${wid}/billing/anchor`)),
+  organizationBilling: (oid: string) => apiJson<OrgBilling>(`/organizations/${oid}/billing`),
+  /** Move a workspace to an organization, or to yourself with `null` (0042). */
+  moveWorkspace: async (wid: string, organizationId: string | null) =>
+    json<Workspace>(await apiSend("POST", `/workspaces/${wid}/move`, { organization_id: organizationId })),
   meta: () => apiJson<SiteMeta>("/meta"),
   variants: (bid: string) => apiJson<Page<Variant>>(`/builds/${bid}/variants`),
   members: (wid: string) => apiJson<Page<WorkspaceMember>>(`/workspaces/${wid}/members?limit=100`),

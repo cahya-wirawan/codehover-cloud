@@ -4,6 +4,36 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-11-23
+
+### Added
+
+- 05, 06, 08, 22 (0043): hosted MCP follow-ups.
+  - **Client ID metadata documents:** MCP sign-in accepts an https `client_id` naming the client's metadata document (MCP 2025-11-25). The document is fetched safely, kept an hour, and its URL is shown on the consent page.
+  - **Sessions:** MCP sessions (`Mcp-Session-Id`) bring resource subscriptions and a server-sent event stream. It sends `resources/list_changed` when the site's publication changes and `resources/updated` for changed subscribed resources, then ends when the site stops being served.
+- 21, 22: scip-typescript reads more of a repository's TypeScript setup.
+  - `references` work, including Vite's solution-style `tsconfig.json`.
+  - `files`, `include` and `exclude` decide which config owns which file.
+  - `rootDirs` and `moduleSuffixes` are read.
+  - Workspace packages resolve by their `package.json` names to sources in the checkout.
+
+
+### Security
+
+- 06 (security review of 0042): only the workspace's owner moves it. That is the person for their own workspace, or an owner of the organization for an organization's workspace. A co-owner, or an organization member given a direct owner role, cannot take a workspace away.
+- 08, 22 (security review of 0043):
+  - One 5-second deadline now covers a whole client metadata fetch, over a connection pool of its own.
+  - tsconfig `include`/`exclude` globs are matched in linear time instead of by backtracking regexes.
+## [0.9.3] - 2026-11-23
+
+### Added
+
+- 02, 06, 11: organization follow-ups (0042).
+  - **Members:** owners and admins see each member's last activity and workspaces with roles. Everyone can search members and filter them by role.
+  - **Plan and usage:** an organization's page shows its plan and usage to owners and admins (`GET /organizations/{oid}/billing`).
+  - **Billing handover:** the plan's manager can hand the owner's billing to another of its workspaces (`PUT /workspaces/{wid}/billing/anchor`).
+  - **Moving a workspace:** owners move a workspace to themselves or to an organization they own or administer (`POST /workspaces/{wid}/move`). Sites follow, and old addresses redirect for 90 days. A clashing project address or held billing refuses the move.
+
 ## [0.9.2] - 2026-11-23
 
 ### Added

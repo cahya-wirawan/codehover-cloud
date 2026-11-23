@@ -11,11 +11,12 @@ afterEach(() => vi.unstubAllGlobals());
 
 type Sent = { method: string; url: string; body: unknown };
 
-function stub(sent: Sent[], me: Record<string, unknown> = {}) {
+function stub(sent: Sent[], me: Record<string, unknown> = {}, answers: Record<string, unknown> = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
+      if (url in answers && (!init?.method || init.method === "GET")) return new Response(JSON.stringify(answers[url]));
       if (url === "/api/v1/auth/csrf") return new Response(JSON.stringify({ csrf_token: "t" }));
       if (init?.method && init.method !== "GET") {
         sent.push({ method: init.method, url, body: init.body ? JSON.parse(String(init.body)) : null });
@@ -155,4 +156,40 @@ test("an organization owner manages roles and invites by name", async () => {
   await waitFor(() =>
     expect(sent).toContainEqual({ method: "POST", url: "/api/v1/organizations/o1/invitations", body: { handle: "katherine", role: "member" } }),
   );
+});
+
+test("owners and admins see members' workspaces and last activity, search them, and see the plan", async () => {
+  const workspaces = [{ id: "w1", name: "Team", role: "viewer", via_organization: false }];
+  stub([], {}, {
+    "/api/v1/organizations/o1/members": {
+      items: [
+        { user_id: "u1", display_name: "Grace", handle: "grace", role: "owner", created_at: "2026-11-01T00:00:00Z", last_active_at: "2026-11-23T08:00:00Z", workspaces: [{ id: "w1", name: "Team", role: "owner", via_organization: true }] },
+        { user_id: "u2", display_name: "Ada", handle: "ada", role: "member", created_at: "2026-11-02T00:00:00Z", last_active_at: null, workspaces },
+      ],
+    },
+    "/api/v1/organizations/o1/billing": {
+      plan: "trial", plan_name: "Trial", status: "trial", renews_at: null, cancel_at_period_end: false,
+      trial_ends_at: "2026-12-07T00:00:00Z", generation_blocked: null, hosting_suspended: false,
+      period_start: "2026-11-01T00:00:00Z", period_end: "2026-12-01T00:00:00Z", allowance_micro_usd: 5_000_000,
+      spent_micro_usd: 1_250_000, limits: { projects: 3, seats: 3, active_builds: 1 },
+      totals: { projects: 1, people: 2, active_builds: 0 },
+      workspaces: [{ id: "w1", name: "Team", reserved_micro_usd: 250_000, settled_micro_usd: 1_000_000, holds_billing: true }],
+      can_manage: true,
+    },
+  });
+  at("/o/o1", [{ path: "/o/:oid", element: <OrganizationPage /> }]);
+  expect(await screen.findByText("In Team (viewer)")).toBeInTheDocument();
+  expect(screen.getByText("In Team (owner, from the organization)")).toBeInTheDocument();
+  expect(screen.getByText("last active never")).toBeInTheDocument();
+  expect(await screen.findByText("Trial")).toBeInTheDocument();
+  expect(screen.getByText("Holds the plan's billing")).toBeInTheDocument();
+  expect(screen.getByText("1 of 3")).toBeInTheDocument(); // projects
+  expect(screen.getByRole("link", { name: "Plan and usage of Team" })).toHaveAttribute("href", "/w/w1/usage");
+  fireEvent.change(screen.getByLabelText("Search members"), { target: { value: "ad" } });
+  expect(screen.queryByText("grace")).toBeNull();
+  expect(screen.getByText("ada")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Search members"), { target: { value: "" } });
+  fireEvent.change(screen.getByLabelText("Show role"), { target: { value: "owner" } });
+  expect(screen.getByText("grace")).toBeInTheDocument();
+  expect(screen.queryByText("ada")).toBeNull();
 });

@@ -275,6 +275,8 @@ async def workspaces(db: AsyncSession, found: OrgMember) -> list[dict[str, Any]]
 
 # ---------------------------------------------------------------- members
 async def members(db: AsyncSession, found: OrgMember) -> list[dict[str, Any]]:
+    """Everyone in the organization with their role and when they joined. Owners and admins also see when
+    each was last active and which of the organization's workspaces they are in (0042)."""
     rows = await db.execute(
         text(
             "SELECT m.user_id, u.display_name, n.handle, m.role, m.created_at FROM organization_members m"
@@ -283,7 +285,20 @@ async def members(db: AsyncSession, found: OrgMember) -> list[dict[str, Any]]:
         ),
         {"o": found.organization_id},
     )
-    return [dict(r._mapping) for r in rows]
+    items = [dict(r._mapping) for r in rows]
+    if found.at_least("admin"):
+        details = {
+            r.user_id: r
+            for r in await db.execute(
+                text("SELECT * FROM app_private.organization_member_details(:o)"),
+                {"o": found.organization_id},
+            )
+        }
+        for item in items:
+            detail = details.get(item["user_id"])
+            item["last_active_at"] = detail.last_active_at if detail else None
+            item["workspaces"] = list(detail.workspaces) if detail else []
+    return items
 
 
 async def _target(db: AsyncSession, found: OrgMember, user_id: UUID) -> str:

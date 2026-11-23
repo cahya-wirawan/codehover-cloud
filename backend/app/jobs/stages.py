@@ -261,8 +261,8 @@ async def index(rt: Runtime, claimed: Claim) -> Apply | None:
                 "SELECT f.path, f.blob_key FROM builds b"
                 " JOIN source_files f ON f.workspace_id = b.workspace_id AND f.snapshot_id = b.snapshot_id"
                 " WHERE b.workspace_id = :w AND b.id = :b AND f.blob_key IS NOT NULL"
-                " AND f.path ~ '(^|/)(tsconfig|jsconfig)[^/]*[.]json$' ORDER BY f.path LIMIT :n",
-                n=indexers.MAX_TSCONFIGS,
+                " AND f.path ~ '(^|/)((tsconfig|jsconfig)[^/]*[.]json|package[.]json)$' ORDER BY f.path LIMIT :n",
+                n=indexers.MAX_TSCONFIGS + indexers.MAX_PACKAGES,
             )
             tsconfigs = [
                 {"path": c.path, "text": (await rt.store.get(c.blob_key)).decode("utf-8")}
