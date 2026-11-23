@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { createMemoryRouter, MemoryRouter, Route, Routes, RouterProvider } from "react-router";
 
 import { RequireSignIn } from "../../app/RequireSignIn";
+import { routes } from "../../app/routes";
 import { WelcomePage } from "../account/WelcomePage";
-import { WorkspacesPage } from "../workspaces/WorkspacesPage";
 import { OrganizationPage } from "./OrganizationPage";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -28,7 +28,14 @@ function stub(sent: Sent[], me: Record<string, unknown> = {}) {
       if (url === "/api/v1/me")
         return new Response(JSON.stringify({ id: "u1", display_name: "Grace", primary_email: null, operator: false, handle: "grace", handle_confirmed: true, ...me }));
       if (url === "/api/v1/workspaces")
-        return new Response(JSON.stringify({ items: [{ id: "w1", name: "Team", slug: "team", role: "owner", owner: { kind: "organization", handle: "acme", organization_id: "o1" } }] }));
+        return new Response(
+          JSON.stringify({
+            items: [
+              { id: "w1", name: "Team", slug: "team", role: "owner", owner: { kind: "organization", handle: "acme", organization_id: "o1" } },
+              { id: "w2", name: "Mine", slug: "mine", role: "owner", owner: { kind: "user", handle: "grace", organization_id: null } },
+            ],
+          }),
+        );
       if (url === "/api/v1/organizations")
         return new Response(
           JSON.stringify({
@@ -81,25 +88,59 @@ test("a person who has not confirmed their name is asked for it once, then conti
   await waitFor(() => expect(sent).toEqual([{ method: "PUT", url: "/api/v1/me/handle", body: { handle: "grace" } }]));
 });
 
-test("the workspaces page lists organizations, answers invitations and creates a workspace for one", async () => {
+test("your own workspaces page lists your workspaces and invitations; accepting one switches to it", async () => {
   const sent: Sent[] = [];
   stub(sent);
-  at("/w", [{ path: "/w", element: <WorkspacesPage /> }]);
-  expect(await screen.findByText("acme / team")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /Acme/ })).toHaveAttribute("href", "/o/o1");
-  fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+  const router = createMemoryRouter(routes, { initialEntries: ["/w?owner=grace"] });
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole("heading", { name: "Your workspaces" })).toBeInTheDocument();
+  expect(await screen.findByText("mine")).toBeInTheDocument();
+  expect(screen.queryByText("team")).toBeNull(); // the organization's workspace is not yours
+  fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
   await waitFor(() => expect(sent.map((s) => s.url)).toContain("/api/v1/organization-invitations/i1/accept"));
-  const owner = screen.getByLabelText("Owner");
-  await waitFor(() => expect(owner).toHaveTextContent("Acme (acme)"));
-  fireEvent.change(owner, { target: { value: "o1" } });
-  const [workspaceName] = screen.getAllByLabelText("Name");
-  if (!workspaceName) throw new Error("no name field");
-  fireEvent.change(workspaceName, { target: { value: "Docs" } });
+  await waitFor(() => expect(router.state.location.search).toBe("?owner=globex"));
+});
+
+test("an organization's workspaces page lists its workspaces and creates new ones in it", async () => {
+  const sent: Sent[] = [];
+  stub(sent);
+  const router = createMemoryRouter(routes, { initialEntries: ["/w?owner=acme"] });
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument();
+  expect(await screen.findByText("team")).toBeInTheDocument();
+  expect(screen.queryByText("mine")).toBeNull();
+  expect(screen.getByRole("link", { name: "Organization settings" })).toHaveAttribute("href", "/o/o1");
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs" } });
   fireEvent.change(screen.getByLabelText("Address"), { target: { value: "docs" } });
   fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
   await waitFor(() =>
     expect(sent).toContainEqual({ method: "POST", url: "/api/v1/workspaces", body: { name: "Docs", slug: "docs", organization_id: "o1" } }),
   );
+});
+
+test("the sidebar switches between you and your organizations", async () => {
+  const sent: Sent[] = [];
+  stub(sent);
+  const router = createMemoryRouter(routes, { initialEntries: ["/w?owner=grace"] });
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  const [switcher] = await screen.findAllByRole("button", { name: /Switch between you and your organizations, 1 open invitation/ });
+  if (!switcher) throw new Error("no switcher");
+  fireEvent.pointerDown(switcher, { button: 0, ctrlKey: false });
+  fireEvent.click(await screen.findByRole("menuitem", { name: /Acme/ }));
+  await waitFor(() => expect(router.state.location.search).toBe("?owner=acme"));
+  expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument();
 });
 
 test("an organization owner manages roles and invites by name", async () => {

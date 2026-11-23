@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-22 · Package version 0.8.2
+Date: 2026-11-23 · Package version 0.8.3
+
+0.8.3 adds the context switcher. Frontend tests check that your own page lists only your workspaces and open invitations and that accepting one switches to the organization, that an organization's page lists its workspaces and creates new ones in it, and that the sidebar switcher moves between you and your organizations. Results: frontend 74 passed, e2e 2 passed.
 
 0.8.2 keeps a renamed project's old address for its own workspace: `test_tenancy.py` checks that a project of another of the owner's workspaces cannot take it while it lasts and one of the same workspace can. Results: the affected integration suites (tenancy, publication, migration cycle) 49 passed.
 
