@@ -13,26 +13,35 @@ export function Select({ className, ...props }: ComponentProps<"select">) {
   return <select className={cn(fieldClass, "pr-8", className)} {...props} />;
 }
 
-/** A visible label above its control, with an optional hint linked by aria-describedby, so the label alone
- * is the control's name (17: forms have visible labels). */
+/** A visible label above its control, with an optional hint and error linked by aria-describedby, so the
+ * label alone is the control's name (17: forms have visible labels). An error marks the control invalid. */
 export function Field({
   label,
   hint,
+  error,
   children,
   className,
 }: {
   label: string;
   hint?: string;
-  children: ReactElement<{ "aria-describedby"?: string }>;
+  error?: string | null;
+  children: ReactElement<{ "aria-describedby"?: string; "aria-invalid"?: boolean }>;
   className?: string;
 }) {
   const hintId = useId();
+  const errorId = useId();
+  const describedBy = [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ");
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <label className="flex flex-col gap-1.5">
         <span className="text-[13px] font-medium">{label}</span>
-        {hint ? cloneElement(children, { "aria-describedby": hintId }) : children}
+        {describedBy ? cloneElement(children, { "aria-describedby": describedBy, ...(error ? { "aria-invalid": true } : {}) }) : children}
       </label>
+      {error ? (
+        <span id={errorId} role="alert" className="text-xs text-destructive">
+          {error}
+        </span>
+      ) : null}
       {hint ? (
         <span id={hintId} className="text-xs text-muted">
           {hint}

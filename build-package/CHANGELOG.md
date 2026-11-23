@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-23
+
+### Changed
+
+- 02, 06: a new project's address is optional in `POST /workspaces/{wid}/projects` and made from its name when left out; a clash is still `SLUG_TAKEN` (now with details `{field: "slug"}`), never suffixed. The new-project form fills the address from the name, shows the site address it will have, and shows a clash at the field.
+
 ## [0.9.0] - 2026-11-23
 
 ### Changed

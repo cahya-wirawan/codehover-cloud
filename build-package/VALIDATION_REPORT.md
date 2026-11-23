@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-23 · Package version 0.9.0
+Date: 2026-11-23 · Package version 0.9.1
+
+0.9.1 makes a new project's address follow its name. `test_uploads.py` checks that a project created without one gets it from the name, that the same name in another workspace of the owner is refused with `SLUG_TAKEN` (never suffixed), and that a name without letters or digits gets `project`; frontend tests check that the field follows the name until edited, shows the site address, and shows a clash at the field. Results: unit 297 passed, integration 282 passed, frontend 76 passed, e2e 2 passed.
 
 0.9.0 makes a workspace's slug internal: `POST /workspaces` takes only a name and makes the slug from it, with a suffix when it is taken (`test_workspaces.py`: two people create workspaces with one name), and deleting a workspace is confirmed by its name (`test_deletion.py`, `test_billing.py`, `test_threats.py`). Minor, as clients that confirmed with the slug now get 422. Results: unit 297 passed, integration 281 passed, frontend 74 passed, e2e 2 passed.
 

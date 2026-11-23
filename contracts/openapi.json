@@ -3984,9 +3984,16 @@
             "title": "Repository Id"
           },
           "slug": {
-            "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
-            "title": "Slug",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           },
           "source": {
             "default": "github",
@@ -4006,8 +4013,7 @@
           }
         },
         "required": [
-          "name",
-          "slug"
+          "name"
         ],
         "title": "ProjectCreate",
         "type": "object"

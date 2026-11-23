@@ -38,6 +38,13 @@ MAX_LINES_PER_REQUEST = 500
 TEXT_STATUSES = ("selected", "unsupported")
 
 
+def slug_from(name: str) -> str:
+    """A project's address made from its name when none is given (02 S04): lowercase letters, digits and
+    single hyphens, at most 48. Never suffixed: a clash is the caller's to resolve (SLUG_TAKEN)."""
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:48].strip("-")
+    return base or "project"
+
+
 # ---------------------------------------------------------------- projects
 async def create_project(
     db: AsyncSession,
@@ -80,7 +87,12 @@ async def create_project(
         ).scalar_one()
     except exc.IntegrityError as error:
         await db.rollback()
-        raise ApiError(409, "SLUG_TAKEN", "This owner already has a project with this address.") from error
+        raise ApiError(
+            409,
+            "SLUG_TAKEN",
+            "This owner already has a project with this address.",
+            details={"field": "slug"},
+        ) from error
     await audit(
         db,
         member,

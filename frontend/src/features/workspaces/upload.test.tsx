@@ -78,3 +78,40 @@ test("a public GitHub repository needs no connection", async () => {
     slug: "hello",
   });
 });
+
+test("the address follows the name, shows the site address, and a clash is shown at the field", async () => {
+  const sent: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/auth/csrf") return new Response(JSON.stringify({ csrf_token: "t" }));
+      if (url === "/api/v1/auth/me" || url === "/api/v1/me")
+        return new Response(JSON.stringify({ id: "u1", display_name: "Grace", handle: "grace", email: null }));
+      if (init?.method === "POST") {
+        sent.push(JSON.parse(String(init.body)));
+        return new Response(
+          JSON.stringify({ error: { code: "SLUG_TAKEN", message: "This owner already has a project with this address.", request_id: null, retryable: false, details: { field: "slug" } } }),
+          { status: 409 },
+        );
+      }
+      if (url === "/api/v1/workspaces") return new Response(JSON.stringify({ items: [{ id: "w1", name: "Team", slug: "team", role: "owner" }], next_cursor: null }));
+      return new Response(JSON.stringify({ items: [], next_cursor: null }));
+    }),
+  );
+  renderPage();
+  await screen.findByRole("radio", { name: "A public GitHub repository" });
+  fireEvent.change(screen.getByLabelText("Public repository"), { target: { value: "octocat/Hello-World" } });
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Hello World!" } });
+  const address = screen.getByLabelText("Address");
+  expect(address).toHaveValue("hello-world");
+  expect(await screen.findByText(/Published at \/sites\/grace\/hello-world\./)).toBeInTheDocument();
+  // Once edited, the address no longer follows the name.
+  fireEvent.change(address, { target: { value: "hello" } });
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Hello again" } });
+  expect(address).toHaveValue("hello");
+  fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+  expect(await screen.findByText("Already used by another project of grace. Choose another address.")).toBeInTheDocument();
+  expect(address).toHaveAttribute("aria-invalid", "true");
+  expect(sent).toEqual([{ source: "public", public_repository: "octocat/Hello-World", tracked_ref: "", name: "Hello again", slug: "hello" }]);
+});
