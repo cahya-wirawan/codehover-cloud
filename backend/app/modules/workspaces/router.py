@@ -26,7 +26,9 @@ SLUG = r"^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$"
 # ---------------------------------------------------------------- models
 class WorkspaceCreate(BaseModel):
     name: Annotated[str, Field(min_length=2, max_length=80)]
-    slug: Annotated[str, Field(pattern=SLUG)]
+    # Internal since 0038 (links use the workspace's ID, site addresses its owner and project): made from
+    # the name when left out.
+    slug: Annotated[str | None, Field(pattern=SLUG)] = None
     # 0038: the owner; none is the caller's personal namespace, else an organization they own or administer
     organization_id: UUID | None = None
 

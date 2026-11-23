@@ -726,10 +726,9 @@ export const api = {
   revokeSupport: async (wid: string, id: string) => {
     await apiSend("DELETE", `/workspaces/${wid}/support-access/${id}`);
   },
-  createWorkspace: async (name: string, slug: string, organizationId?: string | null) =>
-    json<Workspace>(
-      await apiSend("POST", "/workspaces", { name, slug, ...(organizationId ? { organization_id: organizationId } : {}) }),
-    ),
+  /** The workspace's internal address is made from its name (links use the workspace's ID). */
+  createWorkspace: async (name: string, organizationId?: string | null) =>
+    json<Workspace>(await apiSend("POST", "/workspaces", { name, ...(organizationId ? { organization_id: organizationId } : {}) })),
   changeProjectAddress: async (pid: string, slug: string) =>
     json<Project>(await apiSend("PUT", `/projects/${pid}/address`, { slug })),
   setHandle: async (handle: string) => json<{ handle: string }>(await apiSend("PUT", "/me/handle", { handle })),

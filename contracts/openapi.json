@@ -6089,14 +6089,20 @@
             "title": "Organization Id"
           },
           "slug": {
-            "pattern": "^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$",
-            "title": "Slug",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           }
         },
         "required": [
-          "name",
-          "slug"
+          "name"
         ],
         "title": "WorkspaceCreate",
         "type": "object"

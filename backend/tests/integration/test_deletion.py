@@ -239,13 +239,17 @@ async def test_workspace_deletion_is_for_owners_and_removes_every_project(
     client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
 ) -> None:
     owner, ws, project = await setup_project(client, idp, github)
-    slug = (await owner.get(f"/api/v1/workspaces/{ws}")).json()["slug"]
+    name = (await owner.get(f"/api/v1/workspaces/{ws}")).json()["name"]
     admin = await new_user()
     await join(owner, ws, admin, "admin")
     url = f"/api/v1/workspaces/{ws}/deletion"
-    assert (await unsafe(admin, "POST", url, json={"confirmation": slug})).status_code == 403
+    assert (await unsafe(admin, "POST", url, json={"confirmation": name})).status_code == 403
     assert (await unsafe(owner, "POST", url, json={"confirmation": "nope"})).status_code == 422
-    deleted = await unsafe(owner, "POST", url, json={"confirmation": slug})
+    # The confirmation is the workspace's name (its address is internal), not its slug.
+    slug = (await owner.get(f"/api/v1/workspaces/{ws}")).json()["slug"]
+    if slug != name:
+        assert (await unsafe(owner, "POST", url, json={"confirmation": slug})).status_code == 422
+    deleted = await unsafe(owner, "POST", url, json={"confirmation": name})
     assert deleted.status_code == 202 and deleted.json()["scope"] == "workspace"
     assert (await owner.get(f"/api/v1/workspaces/{ws}")).status_code == 404
     assert (await admin.get(f"/api/v1/projects/{project}")).status_code == 404

@@ -112,7 +112,7 @@ export function AccountPage() {
               <label key={w.id} className="flex items-center gap-2">
                 <input type="checkbox" checked={chosen[w.id] ?? false}
                   onChange={(e) => setChosen((c) => ({ ...c, [w.id]: e.target.checked }))} />
-                Delete {w.name} <span className="font-mono text-muted">({w.slug})</span>
+                Delete {w.name}
               </label>
             ))}
           </fieldset>

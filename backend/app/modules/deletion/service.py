@@ -174,17 +174,17 @@ async def delete_workspace(db: AsyncSession, member: Member, confirmation: str) 
     require_role(member, "owner")
     workspace = (
         await db.execute(
-            text("SELECT slug FROM workspaces WHERE id = :w AND status = 'active' FOR UPDATE"),
+            text("SELECT name FROM workspaces WHERE id = :w AND status = 'active' FOR UPDATE"),
             {"w": member.workspace_id},
         )
     ).one_or_none()
     if workspace is None:
         raise ApiError(404, "NOT_FOUND", "Workspace not found.")
-    if confirmation != workspace.slug:
+    if confirmation != workspace.name:  # the name: the address is internal since 0038
         raise ApiError(
             422,
             "CONFIRMATION_MISMATCH",
-            "Type the workspace address exactly to confirm.",
+            "Type the workspace name exactly to confirm.",
             details={"field": "confirmation"},
         )
     tombstone = await _delete_workspace(db, member)

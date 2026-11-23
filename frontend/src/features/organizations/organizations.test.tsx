@@ -98,8 +98,8 @@ test("your own workspaces page lists your workspaces and invitations; accepting 
     </QueryClientProvider>,
   );
   expect(await screen.findByRole("heading", { name: "Your workspaces" })).toBeInTheDocument();
-  expect(await screen.findByText("mine")).toBeInTheDocument();
-  expect(screen.queryByText("team")).toBeNull(); // the organization's workspace is not yours
+  expect(await screen.findByText("Mine")).toBeInTheDocument();
+  expect(screen.queryByText("Team")).toBeNull(); // the organization's workspace is not yours
   fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
   await waitFor(() => expect(sent.map((s) => s.url)).toContain("/api/v1/organization-invitations/i1/accept"));
   await waitFor(() => expect(router.state.location.search).toBe("?owner=globex"));
@@ -115,14 +115,13 @@ test("an organization's workspaces page lists its workspaces and creates new one
     </QueryClientProvider>,
   );
   expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument();
-  expect(await screen.findByText("team")).toBeInTheDocument();
-  expect(screen.queryByText("mine")).toBeNull();
+  expect(await screen.findByText("Team")).toBeInTheDocument();
+  expect(screen.queryByText("Mine")).toBeNull();
   expect(screen.getByRole("link", { name: "Organization settings" })).toHaveAttribute("href", "/o/o1");
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs" } });
-  fireEvent.change(screen.getByLabelText("Address"), { target: { value: "docs" } });
   fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
   await waitFor(() =>
-    expect(sent).toContainEqual({ method: "POST", url: "/api/v1/workspaces", body: { name: "Docs", slug: "docs", organization_id: "o1" } }),
+    expect(sent).toContainEqual({ method: "POST", url: "/api/v1/workspaces", body: { name: "Docs", organization_id: "o1" } }),
   );
 });
 
