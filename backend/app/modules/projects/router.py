@@ -81,8 +81,12 @@ class ProjectCreate(BaseModel):
     # Public GitHub repository without the App: `owner/name` or its github.com URL (source "public").
     public_repository: Annotated[str | None, Field(max_length=200)] = None
     name: Annotated[str, Field(min_length=1, max_length=80)]
-    slug: Annotated[str, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$")]
+    # The site's address is /sites/<owner>/<slug> (0039); made from the name when left out.
+    slug: Annotated[str | None, Field(pattern=r"^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$")] = None
     tracked_ref: Annotated[str, Field(max_length=255)] = ""
+
+    def address_slug(self) -> str:
+        return self.slug or service.slug_from(self.name)
 
     @model_validator(mode="after")
     def _repository_for_github(self) -> ProjectCreate:
@@ -522,7 +526,7 @@ async def create_project(body: ProjectCreate, request: Request, db: Db, member: 
     require_role(member, "editor")
     await billing.require_capacity(db, _settings(request), member.workspace_id, "projects")
     if body.source == "upload":
-        project_id = await uploads.create_upload_project(db, member, body.name.strip(), body.slug)
+        project_id = await uploads.create_upload_project(db, member, body.name.strip(), body.address_slug())
         await db.commit()
         await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
         return ProjectOut(**await service.get_project(db, member, project_id))
@@ -540,14 +544,14 @@ async def create_project(body: ProjectCreate, request: Request, db: Db, member: 
                 member,
                 body.public_repository,
                 body.name.strip(),
-                body.slug,
+                body.address_slug(),
                 body.tracked_ref.strip(),
             )
         )
     assert body.repository_id is not None  # the model validator requires it
     return ProjectOut(
         **await service.create_project(
-            db, member, body.repository_id, body.name.strip(), body.slug, body.tracked_ref.strip()
+            db, member, body.repository_id, body.name.strip(), body.address_slug(), body.tracked_ref.strip()
         )
     )
 

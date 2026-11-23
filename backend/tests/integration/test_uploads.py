@@ -62,6 +62,33 @@ async def upload(
     )
 
 
+async def test_a_project_address_is_made_from_its_name_and_a_clash_is_never_suffixed(
+    client: httpx.AsyncClient, new_user: NewUser
+) -> None:
+    owner = await new_user()
+    ws = await workspace(owner)
+    url = f"/api/v1/workspaces/{ws}/projects"
+    made = await unsafe(owner, "POST", url, json={"source": "upload", "name": "My Demo App!"})
+    assert made.status_code == 201, made.text
+    assert made.json()["slug"] == "my-demo-app"
+    # Another workspace of the same owner: one address space, so the clash is reported, not suffixed.
+    other_ws = await workspace(owner)
+    clash = await unsafe(
+        owner,
+        "POST",
+        f"/api/v1/workspaces/{other_ws}/projects",
+        json={"source": "upload", "name": "my demo app"},
+    )
+    assert clash.status_code == 409 and code(clash) == "SLUG_TAKEN"
+    assert clash.json()["error"]["details"] == {"field": "slug"}
+    chosen = await unsafe(
+        owner, "POST", url, json={"source": "upload", "name": "My Demo App!", "slug": "demo-two"}
+    )
+    assert chosen.status_code == 201 and chosen.json()["slug"] == "demo-two"
+    symbols = await unsafe(owner, "POST", url, json={"source": "upload", "name": "日本"})
+    assert symbols.status_code == 201 and symbols.json()["slug"] == "project"
+
+
 async def test_an_uploaded_repository_is_scanned_and_built_without_github(
     client: httpx.AsyncClient, new_user: NewUser
 ) -> None:

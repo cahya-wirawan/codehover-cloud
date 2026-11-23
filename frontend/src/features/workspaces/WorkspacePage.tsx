@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import { FolderGit2, GitBranch, Lock, Plus } from "lucide-react";
 
+import { useOwnerContext } from "../../app/ownerContext";
 import { ConfirmDeletion } from "../../components/ConfirmDeletion";
 import { Button } from "../../components/ui/button";
 import { Field, Input, Select } from "../../components/ui/input";
@@ -11,6 +12,7 @@ import { EmptyState, PageHeader, Section } from "../../components/ui/section";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ApiError } from "../../lib/api/client";
 import { api } from "../../lib/api/resources";
+import { projectSlugFrom } from "../../lib/slug";
 import { AccessTokenPanel, ConnectedAppsPanel } from "./AccessTokenPanel";
 import { SupportAccessPanel } from "./SupportAccessPanel";
 
@@ -28,7 +30,10 @@ export function WorkspacePage() {
   });
   const [repositoryId, setRepositoryId] = useState("");
   const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
+  // The address follows the name until the person edits it.
+  const [typedSlug, setTypedSlug] = useState<string | null>(null);
+  const slug = typedSlug ?? projectSlugFrom(name);
+  const { current: owner } = useOwnerContext();
   const navigate = useNavigate();
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
   const workspace = workspaces.data?.items.find((w) => w.id === wid);
@@ -63,10 +68,14 @@ export function WorkspacePage() {
       return project;
     },
     onSuccess: async (project) => {
+      setName("");
+      setTypedSlug(null);
       await queryClient.invalidateQueries({ queryKey: ["projects", wid] });
       if (chosenSource !== "github") await navigate(`/p/${project.id}`);
     },
   });
+  // A clash is shown at the address field; nothing is suffixed (the person chooses).
+  const slugTaken = create.error instanceof ApiError && create.error.code === "SLUG_TAKEN";
 
   return (
     <section aria-labelledby="w-title" className="max-w-5xl">
@@ -213,12 +222,17 @@ export function WorkspacePage() {
             <Field label="Name">
               <Input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
-            <Field label="Address" hint="Lowercase letters, digits and hyphens.">
+            <Field
+              label="Address"
+              hint={`Published at /sites/${owner?.handle ?? "<owner>"}/${slug || "<address>"}. Lowercase letters, digits and hyphens; you can change it later.`}
+              error={slugTaken ? `Already used by another project of ${owner?.handle ?? "this owner"}. Choose another address.` : null}
+            >
               <Input
                 required
+                maxLength={48}
                 pattern="[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                onChange={(e) => setTypedSlug(e.target.value.toLowerCase())}
               />
             </Field>
             <div className="sm:col-span-2">
@@ -233,7 +247,7 @@ export function WorkspacePage() {
                 <Plus aria-hidden="true" /> Create project
               </Button>
             </div>
-            {create.error ? (
+            {create.error && !slugTaken ? (
               <p role="alert" className="text-destructive sm:col-span-2">
                 {create.error instanceof ApiError ? create.error.message : "Could not create the project."}
               </p>

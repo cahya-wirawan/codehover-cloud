@@ -72,7 +72,12 @@ async def create_upload_project(db: AsyncSession, member: Member, name: str, slu
         ).scalar_one()
     except exc.IntegrityError as error:
         await db.rollback()
-        raise ApiError(409, "SLUG_TAKEN", "This owner already has a project with this address.") from error
+        raise ApiError(
+            409,
+            "SLUG_TAKEN",
+            "This owner already has a project with this address.",
+            details={"field": "slug"},
+        ) from error
     await audit(db, member, "project.created", "project", project_id, {"source": "upload"})
     return project_id
 
