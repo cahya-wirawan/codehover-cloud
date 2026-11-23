@@ -701,15 +701,15 @@ async def test_a_subscribed_workspace_cannot_be_deleted_until_cancelled(
 ) -> None:
     owner = await new_user()
     ws = await workspace(owner)
-    slug = (await owner.get(f"/api/v1/workspaces/{ws}")).json()["slug"]
+    name = (await owner.get(f"/api/v1/workspaces/{ws}")).json()["name"]
     customer = billing.customer_for(ws)
     sub = billing.fake.subscribe(customer)
     await billing.reconcile()
-    refused = await unsafe(owner, "POST", f"/api/v1/workspaces/{ws}/deletion", json={"confirmation": slug})
+    refused = await unsafe(owner, "POST", f"/api/v1/workspaces/{ws}/deletion", json={"confirmation": name})
     assert refused.status_code == 409 and code(refused) == "SUBSCRIPTION_ACTIVE"
     billing.fake.update(sub, status="canceled", ended_at=int(time.time()))
     await billing.reconcile()
-    deleted = await unsafe(owner, "POST", f"/api/v1/workspaces/{ws}/deletion", json={"confirmation": slug})
+    deleted = await unsafe(owner, "POST", f"/api/v1/workspaces/{ws}/deletion", json={"confirmation": name})
     assert deleted.status_code == 202, deleted.text
 
 

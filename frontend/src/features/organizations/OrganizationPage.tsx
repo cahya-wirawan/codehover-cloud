@@ -101,7 +101,6 @@ export function OrganizationPage() {
                 <Link to={`/w/${w.id}`} className="group flex items-center gap-3 px-4 py-3 hover:bg-surface-muted/60">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{w.name}</span>
-                    <span className="block truncate font-mono text-xs text-muted">{w.slug}</span>
                   </span>
                   <span className="text-xs text-muted capitalize">{w.role}</span>
                   <ChevronRight aria-hidden="true" className="size-4 text-muted group-hover:text-foreground" />

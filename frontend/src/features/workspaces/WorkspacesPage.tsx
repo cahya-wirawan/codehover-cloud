@@ -21,17 +21,15 @@ export function WorkspacesPage() {
   const all = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
   const orgs = useQuery({ queryKey: ["organizations"], queryFn: api.organizations });
   const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
   useEffect(() => {
     if (owner) rememberOwner(owner.handle);
   }, [owner]);
   const isOrg = owner?.kind === "organization";
   const mayCreate = !isOrg || owner.role === "owner" || owner.role === "admin";
   const create = useMutation({
-    mutationFn: () => api.createWorkspace(name.trim(), slug.trim(), isOrg ? owner.organizationId : null),
+    mutationFn: () => api.createWorkspace(name.trim(), isOrg ? owner.organizationId : null),
     onSuccess: async () => {
       setName("");
-      setSlug("");
       await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
     },
   });
@@ -109,7 +107,6 @@ export function WorkspacesPage() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{w.name}</span>
-                  <span className="block truncate font-mono text-xs text-muted">{w.slug}</span>
                 </span>
                 <span className="text-xs text-muted capitalize">{w.role}</span>
                 <ChevronRight aria-hidden="true" className="size-4 text-muted group-hover:text-foreground" />
@@ -121,33 +118,18 @@ export function WorkspacesPage() {
       {mayCreate ? (
         <Section title={isOrg ? `New workspace in ${owner.name}` : "New workspace"} className="mt-10">
           <form
-            className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
+            className="flex max-w-xl flex-col gap-4 sm:flex-row sm:items-end"
             onSubmit={(event) => {
               event.preventDefault();
               create.mutate();
             }}
           >
-            <Field label="Name">
+            <Field label="Name" className="flex-1">
               <Input required minLength={2} maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
-            <Field label="Address" hint="Lowercase letters, digits and hyphens; used in links.">
-              <Input
-                required
-                pattern="[a-z0-9][a-z0-9-]{1,46}[a-z0-9]"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase())}
-                placeholder="my-team"
-              />
-            </Field>
-            {/* An empty label row puts the button on the inputs' line; the Address hint hangs below. */}
-            <div className="flex flex-col gap-1.5">
-              <span aria-hidden="true" className="hidden text-[13px] font-medium sm:block">
-                &nbsp;
-              </span>
-              <Button type="submit" variant="primary" disabled={create.isPending}>
-                Create workspace
-              </Button>
-            </div>
+            <Button type="submit" variant="primary" disabled={create.isPending}>
+              Create workspace
+            </Button>
           </form>
           {create.error ? (
             <p role="alert" className="mt-3 text-destructive">

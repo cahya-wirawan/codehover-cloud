@@ -89,6 +89,23 @@ async def test_create_list_and_slug_conflict(new_user: NewUser) -> None:
     assert bad.status_code == 422
 
 
+async def test_a_workspace_needs_only_a_name(new_user: NewUser) -> None:
+    # The slug is internal (links use the ID, sites the owner and project): made from the name, with a
+    # suffix when the name's is taken, by anyone.
+    first, second = await new_user(), await new_user()
+    name = f"Docs Team {secrets.token_hex(3)}"
+    one = await unsafe(first, "POST", "/api/v1/workspaces", json={"name": name})
+    assert one.status_code == 201, one.text
+    assert one.json()["name"] == name and one.json()["slug"] == name.lower().replace(" ", "-")
+    two = await unsafe(second, "POST", "/api/v1/workspaces", json={"name": name})
+    assert two.status_code == 201, two.text
+    assert (
+        two.json()["slug"].startswith(one.json()["slug"] + "-") and two.json()["slug"] != one.json()["slug"]
+    )
+    short = await unsafe(first, "POST", "/api/v1/workspaces", json={"name": "Ü!"})
+    assert short.status_code == 201 and short.json()["slug"].startswith("workspace")
+
+
 async def test_non_members_get_404_everywhere(new_user: NewUser) -> None:
     owner, stranger = await new_user(), await new_user()
     ws = await create_workspace(owner)

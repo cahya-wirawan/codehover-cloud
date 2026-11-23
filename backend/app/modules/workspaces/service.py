@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -100,30 +101,49 @@ async def commit_or_conflict(db: AsyncSession) -> None:
 
 
 # ---------------------------------------------------------------- workspaces
+def slug_from(name: str) -> str:
+    """An internal address made from a workspace's name (3-48 lowercase letters, digits, hyphens)."""
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-")
+    return base if len(base) >= 3 else f"workspace-{base}".strip("-")
+
+
 async def create_workspace(
-    db: AsyncSession, principal: Principal, name: str, slug: str, organization_id: UUID | None = None
+    db: AsyncSession, principal: Principal, name: str, slug: str | None, organization_id: UUID | None = None
 ) -> UUID:
-    """In the caller's personal namespace, or in an organization they own or administer (0038)."""
-    await set_context(db, user_id=principal.user_id)
-    try:
-        workspace_id: UUID = (
-            await db.execute(
-                text("SELECT app_private.create_workspace(:n, :s, :o)"),
-                {"n": name, "s": slug, "o": organization_id},
-            )
-        ).scalar_one()
-    except exc.IntegrityError as error:
-        await db.rollback()
-        if "uq_workspaces_live_slug" in str(error.orig):  # unique among live workspaces (0015)
-            raise ApiError(409, "SLUG_TAKEN", "That workspace address is already in use.") from error
-        raise ApiError(422, "VALIDATION_FAILED", "Workspace name or address is invalid.") from error
-    except exc.DBAPIError as error:
-        await db.rollback()
-        if getattr(error.orig, "sqlstate", "") == "42501":
-            raise ApiError(
-                403, "FORBIDDEN", "Only an organization's owners and admins create its workspaces."
-            ) from error
-        raise
+    """In the caller's personal namespace, or in an organization they own or administer (0038). Without
+    a `slug`, one is made from the name, with a short suffix when that one is taken (addresses are
+    internal: unique among live workspaces, but never shown in a link)."""
+    candidates = (
+        [slug]
+        if slug
+        else [slug_from(name)] + [f"{slug_from(name)}-{secrets.token_hex(3)}" for _ in range(5)]
+    )
+    workspace_id: UUID | None = None
+    for candidate in candidates:
+        await set_context(db, user_id=principal.user_id)
+        try:
+            workspace_id = (
+                await db.execute(
+                    text("SELECT app_private.create_workspace(:n, :s, :o)"),
+                    {"n": name, "s": candidate, "o": organization_id},
+                )
+            ).scalar_one()
+            slug = candidate
+            break
+        except exc.IntegrityError as error:
+            await db.rollback()
+            if "uq_workspaces_live_slug" not in str(error.orig):
+                raise ApiError(422, "VALIDATION_FAILED", "Workspace name or address is invalid.") from error
+            if candidate == candidates[-1]:  # unique among live workspaces (0015)
+                raise ApiError(409, "SLUG_TAKEN", "That workspace address is already in use.") from error
+        except exc.DBAPIError as error:
+            await db.rollback()
+            if getattr(error.orig, "sqlstate", "") == "42501":
+                raise ApiError(
+                    403, "FORBIDDEN", "Only an organization's owners and admins create its workspaces."
+                ) from error
+            raise
+    assert workspace_id is not None
     await set_context(db, workspace_id=workspace_id, user_id=principal.user_id)
     role = (
         await db.execute(

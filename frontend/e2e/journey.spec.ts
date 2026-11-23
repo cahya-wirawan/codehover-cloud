@@ -57,12 +57,11 @@ test("sign in, build, read, review, publish to members then the public, withdraw
 
   // Workspace, GitHub connection (seeded: the connect flow has its own API tests), project.
   await page.goto("/w");
-  await page.getByLabel("Name", { exact: true }).fill("E2E Team");
-  await page.getByLabel("Address", { exact: true }).fill(`e2e-${run}`);
+  await page.getByLabel("Name", { exact: true }).fill(`E2E Team ${run}`);
   await page.getByRole("button", { name: "Create workspace" }).click();
-  await expect(page.getByRole("link", { name: /E2E Team/ })).toBeVisible();
-  const workspaces = (await (await page.request.get("/api/v1/workspaces")).json()) as { items: { id: string; slug: string }[] };
-  const wid = workspaces.items.find((w) => w.slug === `e2e-${run}`)?.id ?? "";
+  await expect(page.getByRole("link", { name: new RegExp(`E2E Team ${run}`) })).toBeVisible();
+  const workspaces = (await (await page.request.get("/api/v1/workspaces")).json()) as { items: { id: string; name: string }[] };
+  const wid = workspaces.items.find((w) => w.name === `E2E Team ${run}`)?.id ?? "";
   expect(wid).not.toBe("");
   expect((await page.request.post("/__e2e__/seed-github", { data: { workspace_id: wid } })).ok()).toBe(true);
   await page.goto(`/w/${wid}`);
@@ -227,10 +226,9 @@ test("plan and usage: the trial, then the privacy, terms and support pages", asy
   await expect(page.getByRole("heading", { name: "Plans" })).toBeVisible();
   await accessible(page, "start page with plans");
   await page.goto("/w");
-  await page.getByLabel("Name", { exact: true }).fill("Plan Team");
-  await page.getByLabel("Address", { exact: true }).fill(`plan-${run}`);
+  await page.getByLabel("Name", { exact: true }).fill(`Plan Team ${run}`);
   await page.getByRole("button", { name: "Create workspace" }).click();
-  await page.getByRole("link", { name: /Plan Team/ }).click();
+  await page.getByRole("link", { name: new RegExp(`Plan Team ${run}`) }).click();
   await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Plan and usage" }).click();
   await expect(page.getByRole("heading", { name: "Plan and usage" })).toBeVisible();
   await expect(page.getByText("Paid plans are not offered on this deployment yet.")).toBeVisible();

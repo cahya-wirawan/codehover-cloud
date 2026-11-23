@@ -33,7 +33,7 @@ export function WorkspacePage() {
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: api.workspaces });
   const workspace = workspaces.data?.items.find((w) => w.id === wid);
   const remove = useMutation({
-    mutationFn: () => api.deleteWorkspace(wid, workspace?.slug ?? ""),
+    mutationFn: () => api.deleteWorkspace(wid, workspace?.name ?? ""),
     onSuccess: async () => {
       queryClient.clear();
       await navigate("/w", { replace: true });
@@ -246,8 +246,8 @@ export function WorkspacePage() {
       {workspace?.role === "owner" ? (
         <ConfirmDeletion
           title="Delete workspace"
-          expected={workspace.slug}
-          expectedLabel="the workspace address"
+          expected={workspace.name}
+          expectedLabel="the workspace name"
           actionLabel={`Delete ${workspace.name}`}
           pending={remove.isPending}
           error={remove.error}

@@ -4,6 +4,12 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-23
+
+### Changed
+
+- 02, 05, 06: a workspace needs only a name. Its slug is internal (links use the workspace ID, sites `/sites/<owner>/<project>`), so the "New workspace" form drops the address field; `POST /workspaces` makes the slug from the name when none is given, with a random suffix when it is taken. Deleting a workspace is confirmed by typing its name instead of its address.
+
 ## [0.8.3] - 2026-11-23
 
 ### Added

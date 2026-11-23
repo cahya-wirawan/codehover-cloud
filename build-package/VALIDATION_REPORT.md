@@ -1,6 +1,8 @@
 # Package validation
 
-Date: 2026-11-23 · Package version 0.8.3
+Date: 2026-11-23 · Package version 0.9.0
+
+0.9.0 makes a workspace's slug internal: `POST /workspaces` takes only a name and makes the slug from it, with a suffix when it is taken (`test_workspaces.py`: two people create workspaces with one name), and deleting a workspace is confirmed by its name (`test_deletion.py`, `test_billing.py`, `test_threats.py`). Minor, as clients that confirmed with the slug now get 422. Results: unit 297 passed, integration 281 passed, frontend 74 passed, e2e 2 passed.
 
 0.8.3 adds the context switcher. Frontend tests check that your own page lists only your workspaces and open invitations and that accepting one switches to the organization, that an organization's page lists its workspaces and creates new ones in it, and that the sidebar switcher moves between you and your organizations. Results: frontend 74 passed, e2e 2 passed.
 

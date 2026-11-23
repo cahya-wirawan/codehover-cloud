@@ -153,11 +153,11 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
         "owner": owner,
         "app": app,
         "ids": ids,
-        "workspace_slug": (await owner.get(f"/api/v1/workspaces/{ws}")).json()["slug"],
+        "workspace_name": (await owner.get(f"/api/v1/workspaces/{ws}")).json()["name"],
     }
 
 
-def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], dict[str, Any]]:
+def bodies(ids: dict[str, str], workspace_name: str) -> dict[tuple[str, str], dict[str, Any]]:
     """A valid body per unsafe route, so authorization (not validation) decides."""
     return {
         ("POST", "/api/v1/builds/{build_id}/cancel"): {},
@@ -200,7 +200,7 @@ def bodies(ids: dict[str, str], workspace_slug: str) -> dict[tuple[str, str], di
         ("PUT", "/api/v1/projects/{project_id}/address"): {"slug": "hijacked"},
         ("PUT", "/api/v1/projects/{project_id}/access/members/{user_id}"): {"role": "editor"},
         ("PATCH", "/api/v1/workspaces/{workspace_id}"): {"name": "Hijacked"},
-        ("POST", "/api/v1/workspaces/{workspace_id}/deletion"): {"confirmation": workspace_slug},
+        ("POST", "/api/v1/workspaces/{workspace_id}/deletion"): {"confirmation": workspace_name},
         ("POST", "/api/v1/workspaces/{workspace_id}/github/install"): {},
         ("POST", "/api/v1/workspaces/{workspace_id}/invitations"): {
             "email": "attacker@example.test",
@@ -266,7 +266,7 @@ async def test_another_tenant_is_refused_on_every_route_and_changes_nothing(
     world = await victim(client, idp, github)
     ids, owner = world["ids"], world["owner"]
     stranger, _ws, _project = await setup_project(client, idp, github)
-    payloads = bodies(ids, world["workspace_slug"])
+    payloads = bodies(ids, world["workspace_name"])
     before = {
         "workspace": (await owner.get(f"/api/v1/workspaces/{ids['workspace_id']}")).json(),
         "members": (await owner.get(f"/api/v1/workspaces/{ids['workspace_id']}/members")).json(),
@@ -337,7 +337,7 @@ async def test_anonymous_visitors_get_nothing_from_private_routes(
 ) -> None:
     world = await victim(client, idp, github)
     ids = world["ids"]
-    payloads = bodies(ids, world["workspace_slug"])
+    payloads = bodies(ids, world["workspace_name"])
     failures = []
     async with browser(world["app"]) as visitor:
         for method, path in routes():
