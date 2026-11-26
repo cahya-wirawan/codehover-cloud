@@ -64,6 +64,7 @@ class User(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     updated_at: Mapped[datetime] = ts(default_now=True)
     deleted_at: Mapped[datetime | None] = ts(nullable=True)
+    disabled_at: Mapped[datetime | None] = ts(nullable=True)  # 0044: suspended by an operator
 
 
 class OAuthIdentity(Base):
@@ -984,3 +985,15 @@ class McpSession(Base):
     created_at: Mapped[datetime] = ts(default_now=True)
     last_seen_at: Mapped[datetime] = ts(default_now=True)
     expires_at: Mapped[datetime] = ts()
+
+
+class MemberLimit(Base):
+    """A member's monthly spending limit in one workspace (0044); ends with the membership."""
+
+    __tablename__ = "member_limits"
+    workspace_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    monthly_limit_micro_usd: Mapped[int] = mapped_column(BigInteger)
+    set_by: Mapped[UUID] = ref("users.id")
+    created_at: Mapped[datetime] = ts(default_now=True)
+    updated_at: Mapped[datetime] = ts(default_now=True)

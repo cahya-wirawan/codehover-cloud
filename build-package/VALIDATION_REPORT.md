@@ -1,6 +1,15 @@
 # Package validation
 
-Date: 2026-11-23 · Package version 0.9.4
+Date: 2026-11-26 · Package version 0.9.5
+
+0.9.5 (0044) adds operator people and owners, suspensions, credits and member spending limits.
+- **People and owners.** `test_operator_controls.py`: only operators reach the new routes (everyone else gets 404). People are found by handle or by an exact email in any case, and the responses carry no name or email. A person's workspaces, sign-in providers and sessions are listed, people are paged, and owners show their workspaces, projects and plan.
+- **Suspension.** A suspended person's session ends, their tokens are revoked, their running build is cancelled, their public site stays up, and signing in again answers `?error=suspended`. Repeating it cancels nothing more and records one operator event; each workspace's audit log records it. Reinstating lets them sign in, and their ended tokens stay ended. Operators cannot suspend themselves. `test_pushes.py`: pushes are skipped while the policy's admin is suspended, the policy stays on, and builds resume once they are reinstated.
+- **Credits.** A credit hands back this month's settled spending once, until the month ends. A second credit has nothing left, and further spending can be credited again. The ledger's settled amount is unchanged.
+- **Member limits.** Admins limit editors but not owners. A larger cap is refused with `MEMBER_LIMIT_EXCEEDED`, the default cap stops at the limit, and a used-up limit refuses further starts while others still build. Spending by member is for owners and admins, removal and changes are audited, and a limit ends with the membership. `test_tenancy.py` covers `member_limits` and the operator functions; the threat sweep covers every new route.
+
+Results: unit 323 passed (9 skipped), integration 299 passed (the threat sweep's route table gained the new routes), frontend 86 passed, e2e 2 passed.
+
 
 0.9.4 (0043) adds MCP sessions and client ID metadata documents, and more TypeScript resolution.
 - **MCP sessions.** `test_mcp.py`: a session subscribes, and its stream sends `list_changed` with `updated` for a changed subscribed page when the site is republished, then ends when it is withdrawn. Another member's token cannot use a person's session, and a revoked token ends the stream. `test_tenancy.py` covers `mcp_sessions`.

@@ -4,6 +4,18 @@ All notable changes to this build package. The format follows [Keep a Changelog 
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-11-26
+
+### Added
+
+- 02, 05, 06, 08, 09, 22 (0044): operator people and owners.
+  - **People:** operators list people by handle and status, or find one by an exact email that is matched and never shown. Each person shows when they joined and were last active, their workspaces and organizations, and this month's builds and spending.
+  - **Suspension:** operators suspend and reinstate a person with a reason. A suspended person cannot sign in, every session, access token and MCP sign-in ends, their running builds are cancelled, and nothing starts on their behalf. Their workspaces and sites stay up.
+  - **Owners:** people and organizations with plan, workspaces, projects, sites, builds, spending and allowance this month.
+- 02, 05, 06, 11, 22 (0044): credits and member limits.
+  - **Credits:** an operator hands back an owner's spending this month as a grant until the month ends (kind `credit`), never by editing the ledger.
+  - **Member limits:** owners and admins give a member a monthly spending limit in a workspace and see spending by member on Plan and usage. A start beyond the limit gets `MEMBER_LIMIT_EXCEEDED`.
+
 ## [0.9.4] - 2026-11-23
 
 ### Added

@@ -142,6 +142,7 @@ async def victim(client: httpx.AsyncClient, idp: FakeIdP, gh: FakeGitHub) -> dic
         "token_id": token.json()["id"],
         "oauth_grant_id": oauth_grant,
         "organization_id": organization.json()["id"],
+        "namespace_id": one("SELECT namespace_id FROM workspaces WHERE id = :w", w=ws),  # 0044: the owner
         "request_id": request_id,
         "session_id": one(
             "SELECT id FROM sessions WHERE user_id = :u AND revoked_at IS NULL LIMIT 1", u=me["id"]
@@ -227,6 +228,13 @@ def bodies(ids: dict[str, str], workspace_name: str) -> dict[tuple[str, str], di
             "allowance_micro_usd": 1_000_000_000,
             "days": 366,
             "reason": "free money",
+        },
+        # 0044: operator people and owners, and member spending limits
+        ("POST", "/api/v1/ops/people/lookup"): {"email": "victim@example.test"},
+        ("POST", "/api/v1/ops/people/{user_id}/suspension"): {"reason": "lock them out"},
+        ("POST", "/api/v1/ops/owners/{namespace_id}/credit"): {"reason": "free money"},
+        ("PUT", "/api/v1/workspaces/{workspace_id}/members/{user_id}/spending-limit"): {
+            "monthly_limit_micro_usd": 0
         },
     }
 

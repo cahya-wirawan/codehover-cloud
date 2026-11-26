@@ -3,6 +3,8 @@ import { type FormEvent, useState } from "react";
 
 import { ApiError } from "../../lib/api/client";
 import { api, formatUsd, type OpsBuild } from "../../lib/api/resources";
+import { OwnersPanel } from "./OwnersPanel";
+import { PeoplePanel } from "./PeoplePanel";
 
 function failure(error: unknown, fallback: string) {
   return error ? (
@@ -78,7 +80,7 @@ export function OpsPage() {
   return (
     <section aria-labelledby="ops-title" className="max-w-4xl space-y-6">
       <h1 id="ops-title" className="text-[22px] leading-8 font-semibold">Operations</h1>
-      <p className="text-muted">Identifiers, states and counts only. Reading a workspace needs its admins' support grant.</p>
+      <p className="text-muted">Identifiers, handles, states and counts only. Reading a workspace needs its admins' support grant.</p>
 
       <section aria-labelledby="queue-title" className="panel p-4">
         <h2 id="queue-title" className="section-title">Job system</h2>
@@ -163,6 +165,10 @@ export function OpsPage() {
         ) : null}
       </section>
 
+      <PeoplePanel />
+
+      <OwnersPanel />
+
       <section aria-labelledby="takedown-title" className="panel p-4">
         <h2 id="takedown-title" className="section-title">Site takedown</h2>
         <p className="mt-1 text-sm text-muted">Stops the project's site at once; its admins cannot lift or unpublish it. Recorded in the workspace's audit log.</p>
@@ -212,6 +218,7 @@ export function OpsPage() {
             {grants.data.items.map((g) => (
               <li key={g.id} className="flex items-center justify-between gap-2 py-1">
                 <span>
+                  {g.kind === "credit" ? "Credit of " : ""}
                   {formatUsd(g.allowance_micro_usd)} until {new Date(g.expires_at).toLocaleDateString()} · {g.reason}
                   {g.revoked_at ? " · revoked" : ""}
                 </span>
