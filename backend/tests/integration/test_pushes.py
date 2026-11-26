@@ -291,3 +291,29 @@ async def test_work_stops_when_the_policy_admin_loses_the_role(
     )
     listed = await owner.get(f"/api/v1/projects/{project}/push-requests")
     assert listed.status_code == 200 and listed.json()["items"][0]["outcome"] == "policy_admin_lost"
+
+
+async def test_pushes_wait_while_the_policy_admin_is_suspended(
+    client: httpx.AsyncClient, idp: FakeIdP, github: FakeGitHub, new_user: NewUser
+) -> None:
+    """An operator suspended the policy's admin (0044): nothing runs for them, and the policy stays on, so
+    pushes build again once they are reinstated."""
+    owner, ws, project = await setup_project(client, idp, github)
+    app = configure(client)
+    installation, repo, _ = source_of(project)
+    admin = await new_user()
+    await join(owner, ws, admin, "admin")
+    assert (await set_policy(admin, project, "build")).status_code == 200
+    admin_id = (await admin.get("/api/v1/me")).json()["id"]
+    ddl("UPDATE users SET status = 'disabled', disabled_at = now() WHERE id = :u", u=admin_id)
+    try:
+        await signed(client, push_body(installation, repo, new_sha()), event="push")
+        await process(app)
+        assert requests_of(project)[-1][2:4] == ("skipped", "policy_admin_suspended")
+        assert (await owner.get(f"/api/v1/projects/{project}/push-policy")).json()["policy"] == "build"
+        assert ddl("SELECT count(*) FROM builds WHERE project_id = :p", p=project)[0][0] == 0
+    finally:
+        ddl("UPDATE users SET status = 'active', disabled_at = NULL WHERE id = :u", u=admin_id)
+    await signed(client, push_body(installation, repo, new_sha()), event="push")
+    await process(app)
+    assert requests_of(project)[-1][2:4] == ("done", "build_started")

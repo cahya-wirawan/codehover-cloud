@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Query, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.core.pagination import Position, clamp_limit, decode_cursor, encode_cursor
@@ -16,8 +16,8 @@ from app.engine.catalog import Catalog
 from app.modules.identity.sessions import CurrentPrincipal, Db
 from app.modules.projects.estimates import batch_available, own_key_usable, preset_available
 from app.modules.providers import keys as provider_keys
-from app.modules.usage import ledger
-from app.modules.workspaces.access import ReadMember, read_member, require_role
+from app.modules.usage import ledger, limits
+from app.modules.workspaces.access import ReadMember, WriteMember, read_member, require_role
 
 router = APIRouter(tags=["usage"])
 
@@ -29,6 +29,33 @@ class UsageOut(BaseModel):
     reserved_micro_usd: int
     settled_micro_usd: int
     available_micro_usd: int
+    # The caller's own monthly limit in this workspace and what their builds hold or settled (0044).
+    member_limit_micro_usd: int | None = None
+    member_used_micro_usd: int = 0
+
+
+class MemberUsage(BaseModel):
+    user_id: UUID
+    display_name: str
+    handle: str | None
+    role: str
+    builds: int
+    settled_micro_usd: int
+    reserved_micro_usd: int
+    limit_micro_usd: int | None
+
+
+class MemberUsageList(BaseModel):
+    period_start: datetime
+    period_end: datetime
+    items: list[MemberUsage]
+    next_cursor: None = None
+
+
+class LimitIn(BaseModel):
+    """A monthly limit in micro-USD, or null for none."""
+
+    monthly_limit_micro_usd: Annotated[int, Field(ge=0, le=limits.MAX_LIMIT_MICRO_USD)] | None
 
 
 class EntryOut(BaseModel):
@@ -72,6 +99,12 @@ async def usage(request: Request, db: Db, member: ReadMember) -> UsageOut:
     account = await ledger.current_account(
         db, member.workspace_id, _settings(request).generation_allowance_micro_usd, lock=False
     )
+    room = await limits.room(db, member.workspace_id, account.id, member.user_id)
+    used = (
+        room.used_micro_usd
+        if room
+        else await limits.used(db, member.workspace_id, account.id, member.user_id)
+    )
     await db.commit()
     return UsageOut(
         period_start=account.period_start,
@@ -80,7 +113,34 @@ async def usage(request: Request, db: Db, member: ReadMember) -> UsageOut:
         reserved_micro_usd=account.reserved_micro_usd,
         settled_micro_usd=account.settled_micro_usd,
         available_micro_usd=account.available_micro_usd,
+        member_limit_micro_usd=room.limit_micro_usd if room else None,
+        member_used_micro_usd=used,
     )
+
+
+@router.get("/workspaces/{workspace_id}/usage/members", response_model=MemberUsageList)
+async def usage_by_member(request: Request, db: Db, member: ReadMember) -> MemberUsageList:
+    """This period's builds and spending of each member, and their limits (admins and owners)."""
+    require_role(member, "admin")
+    account = await ledger.current_account(
+        db, member.workspace_id, _settings(request).generation_allowance_micro_usd, lock=False
+    )
+    rows = await limits.by_member(db, member.workspace_id, account.id)
+    await db.commit()
+    return MemberUsageList(
+        period_start=account.period_start,
+        period_end=account.period_end,
+        items=[MemberUsage(**r) for r in rows],
+    )
+
+
+@router.put("/workspaces/{workspace_id}/members/{user_id}/spending-limit", status_code=204)
+async def set_spending_limit(user_id: UUID, body: LimitIn, db: Db, member: WriteMember) -> Response:
+    """Owners limit anyone; admins limit editors and viewers. Applies to builds started from now on."""
+    require_role(member, "admin")
+    await limits.set_limit(db, member, user_id, body.monthly_limit_micro_usd)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/workspaces/{workspace_id}/usage/entries", response_model=EntryList)

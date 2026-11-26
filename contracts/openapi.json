@@ -1653,6 +1653,11 @@
             "title": "Id",
             "type": "string"
           },
+          "kind": {
+            "default": "manual",
+            "title": "Kind",
+            "type": "string"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
@@ -3125,6 +3130,29 @@
         "title": "KeyOut",
         "type": "object"
       },
+      "LimitIn": {
+        "description": "A monthly limit in micro-USD, or null for none.",
+        "properties": {
+          "monthly_limit_micro_usd": {
+            "anyOf": [
+              {
+                "maximum": 1000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Limit Micro Usd"
+          }
+        },
+        "required": [
+          "monthly_limit_micro_usd"
+        ],
+        "title": "LimitIn",
+        "type": "object"
+      },
       "LinkResponse": {
         "properties": {
           "redirect_url": {
@@ -3155,6 +3183,21 @@
           "version"
         ],
         "title": "LiveResponse",
+        "type": "object"
+      },
+      "LookupIn": {
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "LookupIn",
         "type": "object"
       },
       "MeResponse": {
@@ -3284,6 +3327,101 @@
           "created_at"
         ],
         "title": "MemberOut",
+        "type": "object"
+      },
+      "MemberUsage": {
+        "properties": {
+          "builds": {
+            "title": "Builds",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "limit_micro_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Micro Usd"
+          },
+          "reserved_micro_usd": {
+            "title": "Reserved Micro Usd",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "settled_micro_usd": {
+            "title": "Settled Micro Usd",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "handle",
+          "role",
+          "builds",
+          "settled_micro_usd",
+          "reserved_micro_usd",
+          "limit_micro_usd"
+        ],
+        "title": "MemberUsage",
+        "type": "object"
+      },
+      "MemberUsageList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberUsage"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "null"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "items"
+        ],
+        "title": "MemberUsageList",
         "type": "object"
       },
       "MentionedSymbol": {
@@ -4058,6 +4196,115 @@
         "title": "OwnerLimits",
         "type": "object"
       },
+      "OwnerList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OwnerOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "OwnerList",
+        "type": "object"
+      },
+      "OwnerOut": {
+        "properties": {
+          "allowance_micro_usd": {
+            "title": "Allowance Micro Usd",
+            "type": "integer"
+          },
+          "builds_this_month": {
+            "title": "Builds This Month",
+            "type": "integer"
+          },
+          "granted_micro_usd": {
+            "title": "Granted Micro Usd",
+            "type": "integer"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "namespace_id": {
+            "format": "uuid",
+            "title": "Namespace Id",
+            "type": "string"
+          },
+          "plan_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Key"
+          },
+          "projects": {
+            "title": "Projects",
+            "type": "integer"
+          },
+          "published_sites": {
+            "title": "Published Sites",
+            "type": "integer"
+          },
+          "reserved_micro_usd": {
+            "title": "Reserved Micro Usd",
+            "type": "integer"
+          },
+          "settled_micro_usd": {
+            "title": "Settled Micro Usd",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "workspaces": {
+            "title": "Workspaces",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "handle",
+          "kind",
+          "status",
+          "workspaces",
+          "projects",
+          "published_sites",
+          "builds_this_month",
+          "allowance_micro_usd",
+          "settled_micro_usd",
+          "reserved_micro_usd",
+          "granted_micro_usd",
+          "plan_key"
+        ],
+        "title": "OwnerOut",
+        "type": "object"
+      },
       "OwnerTotals": {
         "properties": {
           "active_builds": {
@@ -4152,6 +4399,318 @@
           "reason"
         ],
         "title": "PauseIn",
+        "type": "object"
+      },
+      "PersonDetail": {
+        "properties": {
+          "cancelled_builds": {
+            "default": 0,
+            "title": "Cancelled Builds",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "live_sessions": {
+            "title": "Live Sessions",
+            "type": "integer"
+          },
+          "live_tokens": {
+            "title": "Live Tokens",
+            "type": "integer"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "boolean"
+          },
+          "organizations": {
+            "items": {
+              "$ref": "#/components/schemas/PersonOrganization"
+            },
+            "title": "Organizations",
+            "type": "array"
+          },
+          "sign_in": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sign In",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/PersonWorkspace"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "user_id",
+          "handle",
+          "status",
+          "created_at",
+          "disabled_at",
+          "last_active_at",
+          "operator",
+          "workspaces",
+          "organizations",
+          "sign_in",
+          "live_sessions",
+          "live_tokens"
+        ],
+        "title": "PersonDetail",
+        "type": "object"
+      },
+      "PersonList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PersonOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "PersonList",
+        "type": "object"
+      },
+      "PersonOrganization": {
+        "properties": {
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_id",
+          "handle",
+          "role"
+        ],
+        "title": "PersonOrganization",
+        "type": "object"
+      },
+      "PersonOut": {
+        "properties": {
+          "builds_this_month": {
+            "title": "Builds This Month",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "boolean"
+          },
+          "organizations": {
+            "title": "Organizations",
+            "type": "integer"
+          },
+          "spent_this_month_micro_usd": {
+            "title": "Spent This Month Micro Usd",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "workspaces": {
+            "title": "Workspaces",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "handle",
+          "status",
+          "created_at",
+          "disabled_at",
+          "last_active_at",
+          "workspaces",
+          "organizations",
+          "builds_this_month",
+          "spent_this_month_micro_usd",
+          "operator"
+        ],
+        "title": "PersonOut",
+        "type": "object"
+      },
+      "PersonWorkspace": {
+        "properties": {
+          "builds_this_month": {
+            "title": "Builds This Month",
+            "type": "integer"
+          },
+          "owner_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Handle"
+          },
+          "owner_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Kind"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "spent_this_month_micro_usd": {
+            "title": "Spent This Month Micro Usd",
+            "type": "integer"
+          },
+          "via_organization": {
+            "title": "Via Organization",
+            "type": "boolean"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "owner_handle",
+          "owner_kind",
+          "role",
+          "via_organization",
+          "builds_this_month",
+          "spent_this_month_micro_usd"
+        ],
+        "title": "PersonWorkspace",
         "type": "object"
       },
       "PlanOut": {
@@ -6241,6 +6800,22 @@
           },
           "available_micro_usd": {
             "title": "Available Micro Usd",
+            "type": "integer"
+          },
+          "member_limit_micro_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Limit Micro Usd"
+          },
+          "member_used_micro_usd": {
+            "default": 0,
+            "title": "Member Used Micro Usd",
             "type": "integer"
           },
           "period_end": {
@@ -8647,6 +9222,422 @@
           }
         },
         "summary": "Events",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/owners": {
+      "get": {
+        "description": "People and organizations by handle, with this month's allowance (plan or default, plus grants)\nand spending across their workspaces. `cursor` is the last row's handle.",
+        "operationId": "owners_api_v1_ops_owners_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "handle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owners",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/owners/{namespace_id}/credit": {
+      "post": {
+        "description": "Hand back what the owner settled this month: a grant of that amount until the month ends,\nrecorded in the workspace it goes through. The ledger keeps the real spending (22).",
+        "operationId": "credit_owner_api_v1_ops_owners__namespace_id__credit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspensionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitlementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Credit Owner",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/people": {
+      "get": {
+        "description": "Newest first. `cursor` is the last row's `created_at|user_id` from the previous page.",
+        "operationId": "people_api_v1_ops_people_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "handle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(active|disabled)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "People",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/people/lookup": {
+      "post": {
+        "description": "People whose account or sign-in email is exactly this one (accounts are never merged by email,\nso there may be several). The email is matched, never returned.",
+        "operationId": "lookup_person_api_v1_ops_people_lookup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup Person",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/people/{user_id}": {
+      "get": {
+        "operationId": "person_api_v1_ops_people__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Person",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/ops/people/{user_id}/suspension": {
+      "delete": {
+        "description": "The person can sign in again. Ended sessions, tokens and MCP sign-ins stay ended.",
+        "operationId": "reinstate_person_api_v1_ops_people__user_id__suspension_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 3,
+              "title": "Reason",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reinstate Person",
+        "tags": [
+          "operations"
+        ]
+      },
+      "post": {
+        "description": "The person cannot sign in; their sessions, access tokens and MCP sign-ins end, and their queued or\nrunning builds are cancelled. Their workspaces and sites stay up. Repeating it is harmless.",
+        "operationId": "suspend_person_api_v1_ops_people__user_id__suspension_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspensionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suspend Person",
         "tags": [
           "operations"
         ]
@@ -12692,6 +13683,63 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/members/{user_id}/spending-limit": {
+      "put": {
+        "description": "Owners limit anyone; admins limit editors and viewers. Applies to builds started from now on.",
+        "operationId": "set_spending_limit_api_v1_workspaces__workspace_id__members__user_id__spending_limit_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LimitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Spending Limit",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/move": {
       "post": {
         "description": "Owners move a workspace to another owner (0042); its sites follow, old addresses redirect 90 days.",
@@ -13452,6 +14500,50 @@
           }
         },
         "summary": "Usage Entries",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/usage/members": {
+      "get": {
+        "description": "This period's builds and spending of each member, and their limits (admins and owners).",
+        "operationId": "usage_by_member_api_v1_workspaces__workspace_id__usage_members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberUsageList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Usage By Member",
         "tags": [
           "usage"
         ]

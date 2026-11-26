@@ -8,6 +8,7 @@ const ERRORS: Record<string, string> = {
   expired: "That sign-in link expired or was already used. Please try again.",
   provider: "The sign-in provider could not confirm your identity. Please try again.",
   unavailable: "This sign-in option is not available right now.",
+  suspended: "This account is suspended, so it cannot sign in. Contact support (see the Support page) to find out why.",
 };
 
 const PROVIDERS: { id: Provider; label: string }[] = [

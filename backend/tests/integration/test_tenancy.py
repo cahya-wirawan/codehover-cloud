@@ -1048,3 +1048,47 @@ def test_mcp_sessions_are_tenant_scoped_and_bound_to_their_project(world: World,
     runtime.context()
     assert runtime.one("SELECT app_private.sweep_mcp_sessions()") == 0  # not expired
     assert runtime.one("SELECT count(*) FROM mcp_sessions") == 0  # the resolver exposes no rows
+
+
+def test_member_limits_are_tenant_scoped_and_only_for_members(world: World, runtime: Db) -> None:
+    """0044: limits follow the tenant policy, name only a member of their own workspace, change only in
+    amount, and the operator functions refuse anyone who is not an operator."""
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    runtime.run(
+        "INSERT INTO member_limits(workspace_id, user_id, monthly_limit_micro_usd, set_by) VALUES (:w, :u, 5, :u)",
+        w=world.b.workspace,
+        u=world.b.user,
+    )
+    runtime.context(workspace=world.a.workspace, user=world.a.user)
+    assert runtime.one("SELECT count(*) FROM member_limits WHERE workspace_id = :w", w=world.b.workspace) == 0
+    expect(
+        runtime,
+        DENIED,
+        "INSERT INTO member_limits(workspace_id, user_id, monthly_limit_micro_usd, set_by) VALUES (:w, :u, 5, :u)",
+        w=world.b.workspace,
+        u=world.b.user,
+    )
+    # Someone who is not a member of the workspace cannot be given a limit there (composite key).
+    expect(
+        runtime,
+        sa.exc.IntegrityError,
+        "INSERT INTO member_limits(workspace_id, user_id, monthly_limit_micro_usd, set_by) VALUES (:w, :u, 5, :a)",
+        w=world.a.workspace,
+        u=world.b.user,
+        a=world.a.user,
+    )
+    runtime.context(workspace=world.b.workspace, user=world.b.user)
+    expect(runtime, DENIED, "UPDATE member_limits SET user_id = :u", u=world.a.user)
+    expect(runtime, DENIED, "UPDATE member_limits SET workspace_id = :w", w=world.a.workspace)
+    runtime.run(
+        "UPDATE member_limits SET monthly_limit_micro_usd = 7 WHERE workspace_id = :w", w=world.b.workspace
+    )
+    runtime.context(user=world.a.user)
+    for call in (
+        "SELECT * FROM app_private.ops_people(NULL, NULL, NULL, NULL, NULL, 10)",
+        "SELECT app_private.ops_person(:u)",
+        "SELECT * FROM app_private.ops_set_person_status(:u, true, 'nope')",
+        "SELECT * FROM app_private.ops_owners(NULL, NULL, 10, '{active}')",
+    ):
+        expect(runtime, DENIED, call, u=world.b.user)
+    expect(runtime, DENIED, "SELECT * FROM app_private.person_month_spend(:u)", u=world.b.user)

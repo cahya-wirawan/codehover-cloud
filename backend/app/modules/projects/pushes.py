@@ -338,6 +338,12 @@ async def process_request(rt: PushRuntime, workspace_id: UUID, request_id: UUID)
             await db.commit()
             await _finish(db, workspace_id, row.id, "skipped", "policy_admin_lost")
             return "policy_admin_lost"
+        suspended = not (
+            await db.execute(text("SELECT app_private.user_active(:u)"), {"u": row.push_policy_by})
+        ).scalar_one()
+        if suspended:  # an operator suspended the policy's admin (0044): nothing runs for them, the
+            await _finish(db, workspace_id, row.id, "skipped", "policy_admin_suspended")  # policy stays
+            return "policy_admin_suspended"
         member = _acting_member(workspace_id, row.push_policy_by, role)
         await set_context(db, workspace_id=workspace_id, user_id=member.user_id)
         try:

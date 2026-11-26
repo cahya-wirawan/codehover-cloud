@@ -185,7 +185,11 @@ async def sign_in(
             created = True
         except exc.IntegrityError as error:  # subject exists but its user is not active
             await db.rollback()
-            raise AuthFlowError("unavailable") from error
+            suspended = (
+                await db.execute(text("SELECT app_private.identity_suspended(:p, :i, :s)"), params)
+            ).scalar_one()
+            await db.rollback()
+            raise AuthFlowError("suspended" if suspended else "unavailable") from error
     if previous is not None:
         await _revoke(db, previous)
     token = new_token()

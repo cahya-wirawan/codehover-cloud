@@ -6,6 +6,7 @@ import { Link, useParams, useSearchParams } from "react-router";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { PageHeader, Section } from "../../components/ui/section";
+import { MemberLimitsPanel } from "./MemberLimitsPanel";
 import { ProviderKeyPanel } from "./ProviderKeyPanel";
 import { ApiError } from "../../lib/api/client";
 import { api, formatUsd, type BillingState, type PlanInfo } from "../../lib/api/resources";
@@ -365,6 +366,12 @@ export function UsagePage() {
               <p className="mt-2 text-xs text-muted">
                 Used {formatUsd(usage.data.settled_micro_usd)} · held for running builds {formatUsd(usage.data.reserved_micro_usd)}
               </p>
+              {usage.data.member_limit_micro_usd != null ? (
+                <p className="mt-2">
+                  Your limit in this workspace is {formatUsd(usage.data.member_limit_micro_usd)} a month. Your builds have
+                  used {formatUsd(usage.data.member_used_micro_usd ?? 0)} of it.
+                </p>
+              ) : null}
             </div>
             {entries.data?.items.length ? (
               <div className="panel overflow-x-auto">
@@ -396,6 +403,8 @@ export function UsagePage() {
           <p className="text-muted">Loading usage…</p>
         )}
       </Section>
+
+      {ledgerReader && role ? <MemberLimitsPanel wid={wid} role={role} /> : null}
     </section>
   );
 }

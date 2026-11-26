@@ -30,7 +30,7 @@ from app.jobs import store as jobs
 from app.modules.billing import service as billing
 from app.modules.projects import estimates, quality, uploads
 from app.modules.providers import keys as provider_keys
-from app.modules.usage import ledger
+from app.modules.usage import ledger, limits
 from app.modules.workspaces.access import Member, Reader
 from app.modules.workspaces.service import audit
 
@@ -324,20 +324,45 @@ async def start_generation_build(
     if approved.snapshot_status != "scanned":
         raise ApiError(409, "SNAPSHOT_NOT_READY", "This snapshot is not available for building.")
     account = await _admit(db, settings, member, generation=True)
-    requested_cap = min(account.available_micro_usd, approved.high_micro_usd) if cap is None else cap
-    if funding != "own_key" and requested_cap > account.available_micro_usd:
+    available = account.available_micro_usd
+    # A member's own monthly limit in this workspace (0044) narrows what the allowance leaves them; the
+    # owner's lock taken by _admit serializes it with every other start.
+    member_room = (
+        None
+        if funding == "own_key"
+        else await limits.room(db, member.workspace_id, account.id, member.user_id)
+    )
+    limited = member_room is not None and member_room.room_micro_usd < available
+    if member_room is not None:
+        available = min(available, member_room.room_micro_usd)
+    requested_cap = min(available, approved.high_micro_usd) if cap is None else cap
+    if funding != "own_key" and requested_cap > available:
         await db.rollback()
+        if limited:
+            raise ApiError(
+                409,
+                "MEMBER_LIMIT_EXCEEDED",
+                "The build cap is larger than your spending limit in this workspace leaves this month.",
+                details={"available_micro_usd": available, "cap_micro_usd": requested_cap},
+            )
         raise ApiError(
             409,
             "ALLOWANCE_EXCEEDED",
             "The build cap is larger than the generation allowance left this period.",
-            details={"available_micro_usd": account.available_micro_usd, "cap_micro_usd": requested_cap},
+            details={"available_micro_usd": available, "cap_micro_usd": requested_cap},
         )
     if requested_cap == 0 and approved.high_micro_usd > 0:
         # A priced preset's calls cannot fit a zero envelope: the build could only stop at once. A free
         # preset (the replay model, priced at zero) runs with a zero cap.
         await db.rollback()
         if cap is None and funding != "own_key":
+            if limited:
+                raise ApiError(
+                    409,
+                    "MEMBER_LIMIT_EXCEEDED",
+                    "Your spending limit in this workspace is used up this month.",
+                    details={"available_micro_usd": 0, "cap_micro_usd": 0},
+                )
             raise ApiError(
                 409,
                 "ALLOWANCE_EXCEEDED",
@@ -457,6 +482,10 @@ async def _admit(
 ) -> ledger.Account:
     """Lock the period's usage account: serializes reservations and the workspace active-build limit.
     Generation builds also need billing in good standing (11: not past due, no open dispute)."""
+    # A person an operator suspended starts nothing, also through a push policy they set (0044).
+    if not (await db.execute(text("SELECT app_private.user_active(:u)"), {"u": member.user_id})).scalar_one():
+        await db.rollback()
+        raise ApiError(403, "ACCOUNT_SUSPENDED", "This account is suspended.")
     paused = (await db.execute(text("SELECT builds_paused FROM platform_settings"))).scalar_one_or_none()
     if paused:  # the operator kill switch (22): reads stay available, new builds wait
         await db.rollback()
@@ -983,6 +1012,36 @@ async def request_cancel(
     await db.commit()
     await set_context(db, workspace_id=member.workspace_id, user_id=member.user_id)
     return await get_build(db, member, build_id)
+
+
+async def cancel_for_suspension(db: AsyncSession, workspace_id: UUID, build_id: UUID, operator: UUID) -> bool:
+    """Cancel a build of a person an operator suspended (0044). The workspace and build come from
+    `app_private.ops_set_person_status`, never from the request; the caller set this workspace's context
+    and commits. False when the build already stopped or is stopping."""
+    build = (
+        await db.execute(
+            text(
+                "SELECT status, cancel_requested_at FROM builds WHERE workspace_id = :w AND id = :b FOR UPDATE"
+            ),
+            {"w": workspace_id, "b": build_id},
+        )
+    ).one_or_none()
+    if build is None or build.status not in ("queued", "running") or build.cancel_requested_at is not None:
+        return False
+    await _cancel_one(db, workspace_id, build_id, {"reason": "account_suspended"})
+    await db.execute(
+        text(
+            "INSERT INTO audit_events(workspace_id, actor_user_id, action, resource_type, resource_id, metadata)"
+            " VALUES (:w, :u, 'build.cancel_requested', 'build', :b, CAST(:m AS jsonb))"
+        ),
+        {
+            "w": workspace_id,
+            "u": operator,
+            "b": build_id,
+            "m": json.dumps({"operator": True, "reason": "account_suspended"}),
+        },
+    )
+    return True
 
 
 async def _cancel_one(db: AsyncSession, workspace_id: UUID, build_id: UUID, payload: dict[str, Any]) -> None:

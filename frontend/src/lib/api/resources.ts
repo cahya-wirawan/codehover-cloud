@@ -181,6 +181,19 @@ export interface Usage {
   reserved_micro_usd: number;
   settled_micro_usd: number;
   available_micro_usd: number;
+  member_limit_micro_usd?: number | null; // the caller's own monthly limit in this workspace (0044)
+  member_used_micro_usd?: number;
+}
+/** One member's builds and spending this period, and their limit (0044; owners and admins). */
+export interface MemberUsage {
+  user_id: string;
+  display_name: string;
+  handle: string | null;
+  role: Role;
+  builds: number;
+  settled_micro_usd: number;
+  reserved_micro_usd: number;
+  limit_micro_usd: number | null;
 }
 export interface UsageEntry {
   id: string;
@@ -698,6 +711,59 @@ export interface Entitlement {
   expires_at: string;
   reason: string;
   revoked_at: string | null;
+  kind?: "manual" | "trial" | "credit";
+}
+/** A person in the operations view (0044): handle, states, counts and money; never names or emails. */
+export interface OpsPerson {
+  user_id: string;
+  handle: string | null;
+  status: "active" | "disabled";
+  created_at: string;
+  disabled_at: string | null;
+  last_active_at: string | null;
+  workspaces: number;
+  organizations: number;
+  builds_this_month: number;
+  spent_this_month_micro_usd: number;
+  operator: boolean;
+}
+export interface OpsPersonDetail {
+  user_id: string;
+  handle: string | null;
+  status: "active" | "disabled";
+  created_at: string;
+  disabled_at: string | null;
+  last_active_at: string | null;
+  operator: boolean;
+  workspaces: {
+    workspace_id: string;
+    owner_handle: string | null;
+    owner_kind: string | null;
+    role: Role;
+    via_organization: boolean;
+    builds_this_month: number;
+    spent_this_month_micro_usd: number;
+  }[];
+  organizations: { organization_id: string; handle: string | null; role: string }[];
+  sign_in: string[];
+  live_sessions: number;
+  live_tokens: number;
+  cancelled_builds: number;
+}
+export interface OpsOwner {
+  namespace_id: string;
+  handle: string;
+  kind: "user" | "organization";
+  status: string;
+  workspaces: number;
+  projects: number;
+  published_sites: number;
+  builds_this_month: number;
+  allowance_micro_usd: number;
+  settled_micro_usd: number;
+  reserved_micro_usd: number;
+  granted_micro_usd: number;
+  plan_key: string | null;
 }
 export interface OperatorEvent {
   id: string;
@@ -748,6 +814,30 @@ export const api = {
     await apiSend("DELETE", `/ops/entitlements/${encodeURIComponent(id)}?${new URLSearchParams({ reason }).toString()}`);
   },
   opsEvents: () => apiJson<{ items: OperatorEvent[]; next_cursor: string | null }>("/ops/events"),
+  opsPeople: (filters: { handle?: string; status?: string; cursor?: string | null }) => {
+    const query = new URLSearchParams();
+    if (filters.handle) query.set("handle", filters.handle);
+    if (filters.status) query.set("status", filters.status);
+    if (filters.cursor) query.set("cursor", filters.cursor);
+    return apiJson<{ items: OpsPerson[]; next_cursor: string | null }>(`/ops/people?${query.toString()}`);
+  },
+  /** Exact email match, sent in the body so it stays out of URLs; the email is never returned. */
+  opsLookupPerson: async (email: string) =>
+    json<{ items: OpsPerson[]; next_cursor: null }>(await apiSend("POST", "/ops/people/lookup", { email })),
+  opsPerson: (uid: string) => apiJson<OpsPersonDetail>(`/ops/people/${encodeURIComponent(uid)}`),
+  opsSuspendPerson: async (uid: string, reason: string) =>
+    json<OpsPersonDetail>(await apiSend("POST", `/ops/people/${encodeURIComponent(uid)}/suspension`, { reason })),
+  opsReinstatePerson: async (uid: string, reason: string) => {
+    await apiSend("DELETE", `/ops/people/${encodeURIComponent(uid)}/suspension?${new URLSearchParams({ reason }).toString()}`);
+  },
+  opsOwners: (filters: { handle?: string; cursor?: string | null }) => {
+    const query = new URLSearchParams();
+    if (filters.handle) query.set("handle", filters.handle);
+    if (filters.cursor) query.set("cursor", filters.cursor);
+    return apiJson<{ items: OpsOwner[]; next_cursor: string | null }>(`/ops/owners?${query.toString()}`);
+  },
+  opsCreditOwner: async (namespaceId: string, reason: string) =>
+    json<Entitlement>(await apiSend("POST", `/ops/owners/${encodeURIComponent(namespaceId)}/credit`, { reason })),
   supportGrants: (wid: string) => apiJson<Page<SupportGrant>>(`/workspaces/${wid}/support-access`),
   grantSupport: async (wid: string, hours: number, reason: string) =>
     json<SupportGrant>(await apiSend("POST", `/workspaces/${wid}/support-access`, { hours, reason })),
@@ -842,6 +932,12 @@ export const api = {
     json<{ redirect_to: string }>(await apiSend("POST", `/oauth/requests/${requestId}/decision`, { approve })),
   usage: (wid: string) => apiJson<Usage>(`/workspaces/${wid}/usage`),
   usageEntries: (wid: string) => apiJson<Page<UsageEntry>>(`/workspaces/${wid}/usage/entries?limit=20`),
+  usageByMember: (wid: string) =>
+    apiJson<{ period_start: string; period_end: string; items: MemberUsage[] }>(`/workspaces/${wid}/usage/members`),
+  /** A member's monthly limit in micro-USD, or null to remove it (0044). */
+  setSpendingLimit: async (wid: string, userId: string, limit: number | null) => {
+    await apiSend("PUT", `/workspaces/${wid}/members/${userId}/spending-limit`, { monthly_limit_micro_usd: limit });
+  },
   billing: (wid: string) => apiJson<BillingState>(`/workspaces/${wid}/billing`),
   checkout: async (wid: string, plan: "pro" | "team") =>
     json<{ url: string }>(
